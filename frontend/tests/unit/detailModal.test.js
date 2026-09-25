@@ -20,7 +20,8 @@ const tick = async () => {
 
 async function editInline(modal, selector, value) {
   const target = modal.querySelector(selector);
-  target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  const eventName = selector === '.editable-salary' ? 'click' : 'dblclick';
+  target.dispatchEvent(new MouseEvent(eventName, { bubbles: true, cancelable: true }));
   const editor = target.parentElement.querySelector('.inline-edit-input, .inline-edit-textarea');
   editor.value = value;
   editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -33,6 +34,7 @@ const job = (stages = []) => ({
   recruiter_type: 'external', recruiter_name: 'Recruiter', recruiter_agency: 'Agency', recruiter_contact: 'r@example.com',
   keyword_note: 'remote', company_overview: 'Company', reasons_to_change: 'Growth', experience_notes: 'Platform work',
   expected_salary: '€85k base, flexible', interview_notes: 'Notes',
+  work_arrangement: 'unknown', employment_type: 'unknown',
   job_post_url: 'https://example.com/job', description: 'Original description', avatar_seed: 'seed', company_domain: 'acme.test',
   attachments: [], interviewers: [], stages,
 });
@@ -172,7 +174,10 @@ describe('detail modal', () => {
     expect(backdrop.classList.contains('active')).toBe(true);
     expect(modal.querySelector('.modal-title').textContent).toContain('Engineer');
     expect(modal.querySelector('.job-status-picker')).not.toBeNull();
-    expect(modal.querySelector('#work-arrangement-select').value).toBe('unknown');
+    expect(modal.querySelector('#work-arrangement-select')).toBeNull();
+    expect(modal.querySelector('#employment-type-select')).toBeNull();
+    expect(modal.querySelector('.work-arrangement-tag').textContent).toBe('Not specified');
+    expect(modal.querySelector('.employment-type-tag').textContent).toBe('Not specified');
     expect(modal.querySelector('.stage-empty-state')).not.toBeNull();
     const addFirstStageButton = modal.querySelector('#btn-init-first-stage');
     expect(addFirstStageButton).not.toBeNull();
@@ -189,24 +194,32 @@ describe('detail modal', () => {
     expect(modal.querySelector('.editable-expected-salary').textContent).toBe('€85k base, flexible');
     expect(modal.querySelector('.editable-interview-notes').textContent).toBe('Notes');
 
-    const workArrangement = modal.querySelector('#work-arrangement-select');
-    workArrangement.value = 'remote';
-    workArrangement.dispatchEvent(new Event('change', { bubbles: true }));
+    modal.querySelector('.work-arrangement-tag').click();
     await tick();
     expect(api.updateJob).toHaveBeenCalledWith('job-1', { work_arrangement: 'remote' });
 
-    const employmentType = modal.querySelector('#employment-type-select');
-    employmentType.value = 'permanent_b2b';
-    employmentType.dispatchEvent(new Event('change', { bubbles: true }));
+    modal.querySelector('.employment-type-tag').click();
     await tick();
-    expect(api.updateJob).toHaveBeenCalledWith('job-1', { employment_type: 'permanent_b2b' });
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { employment_type: 'permanent' });
   });
 
-  it('renders employment type choices and selects the stored type', async () => {
-    api.getJob.mockResolvedValue({ ...job(), employment_type: 'permanent_b2b' });
+  it('renders and cycles the stored employment type and work arrangement', async () => {
+    const fixture = { ...job(), employment_type: 'permanent_b2b', work_arrangement: 'remote' };
+    api.getJob.mockImplementation(async () => fixture);
+    api.updateJob.mockImplementation(async (_id, updates) => Object.assign(fixture, updates));
     await openDetailModal('job-1');
-    const employmentTypeSelect = document.querySelector('#employment-type-select');
-    expect(Array.from(employmentTypeSelect.options, (option) => option.value)).toEqual(['unknown', 'permanent', 'b2b', 'permanent_b2b']);
+    expect(document.querySelector('.employment-type-tag').textContent).toBe('Permanent / B2B');
+    expect(document.querySelector('.work-arrangement-tag').textContent).toBe('Remote');
+    document.querySelector('.employment-type-tag').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { employment_type: 'permanent' });
+
+    for (const arrangement of ['hybrid', 'on_site', 'remote']) {
+      document.querySelector('.work-arrangement-tag').click();
+      await tick();
+      expect(fixture.work_arrangement).toBe(arrangement);
+    }
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { work_arrangement: 'hybrid' });
   });
 
   it('renders active stage questions, changes stage, toggles description, and submits a question', async () => {
@@ -568,7 +581,7 @@ describe('detail modal', () => {
     await tick();
     expect(api.updateJob).not.toHaveBeenCalledWith('job-1', { position_title: '' });
 
-    modal.querySelector('.editable-modal-referral').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    modal.querySelector('.editable-modal-referral').click();
     await tick();
     expect(api.updateJob).toHaveBeenCalledWith('job-1', { is_referral: 0 });
     expect(inlineToast).toHaveBeenCalledWith('Marked as Non-referral', 'success', 1200);
@@ -596,9 +609,9 @@ describe('detail modal', () => {
     api.deleteJob.mockRejectedValueOnce(new Error('delete job failed'));
     modal.querySelector('.btn-delete-job').click();
     api.updateJob.mockRejectedValueOnce(new Error('referral failed'));
-    modal.querySelector('.editable-modal-referral').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    modal.querySelector('.editable-modal-referral').click();
     api.updateJob.mockRejectedValueOnce(new Error('employment type failed'));
-    modal.querySelector('.employment-type-select').dispatchEvent(new Event('change'));
+    modal.querySelector('.employment-type-tag').click();
     api.setCurrentStage.mockRejectedValueOnce(new Error('current stage failed'));
     modal.querySelector('#btn-toggle-current-stage').click();
     api.reorderStages.mockRejectedValueOnce(new Error('reorder failed'));

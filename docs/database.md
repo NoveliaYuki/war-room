@@ -1,6 +1,6 @@
 # Database model review
 
-This review describes the SQLite model shipped in War Room 0.0.1 and the persistence rules enforced by the application.
+This review describes the SQLite model and persistence rules enforced by the application.
 
 ## Relationships and storage
 

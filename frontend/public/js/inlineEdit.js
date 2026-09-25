@@ -16,6 +16,7 @@
  * @param {string} [options.placeholder=''] - Placeholder text for empty state
  * @param {number} [options.maxLength] - Maximum character length
  * @param {number} [options.rows] - Default rows for textarea
+ * @param {string} [options.eventName='dblclick'] - Event that starts inline editing.
  * @param {boolean} [options.updateText=true] - Optimistically update element text immediately
  * @param {(val: string) => string} [options.formatDisplay] - Formatter function for display value
  * @param {(newValue: string) => Promise<void> | void} options.onSave - Callback when value is confirmed
@@ -24,7 +25,7 @@
 export function makeInlineEditable(element, options = {}) {
   if (!element) return;
   element.classList.add("editable-text");
-  element.addEventListener("dblclick", (event) => startInlineEditing(element, options, event));
+  element.addEventListener(options.eventName || "dblclick", (event) => startInlineEditing(element, options, event));
 }
 
 /** Resolves the current value before replacing the display with an editor. */

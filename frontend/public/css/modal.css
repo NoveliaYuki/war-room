@@ -115,6 +115,15 @@
   flex-wrap: wrap;
 }
 
+.modal-meta-pills button:hover {
+  filter: brightness(1.12);
+}
+
+.modal-meta-pills button:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
 .modal-header-actions {
   display: flex;
   align-items: center;

@@ -1,4 +1,4 @@
-# War Room 0.0.1
+# War Room
 
 War Room is a local command center for tracking interview and candidate-selection processes. It keeps roles, stages, interview questions, meetings, notes, and related files together in one browser-based app.
 
@@ -53,7 +53,7 @@ Copy `.env.example` to `.env`. Compose uses these local settings:
 | `BACKEND_HOST` | `0.0.0.0` | API listen address inside its container |
 | `CORS_ALLOWED_ORIGINS` | localhost origins | Browser origins allowed by the API |
 | `LOGO_LOOKUP_ENABLED` | `false` | Allow remote company-favicon lookups |
-| `BASE_VERSION` | `0.0.0` | Previous release version for the first release check; update when preparing a later release |
+| `BASE_VERSION` | Previous release version | Previous release used to verify the requested semantic-version bump |
 | `VERSION_BUMP` | `patch` | Required semantic-version increment: `patch`, `minor`, or `major` |
 
 Compose uses the bind address and host ports for published-port mappings. It passes backend and test settings into the appropriate containers. A fresh `warroom-data` volume starts with an empty database. The backend stores its SQLite database, generated backup, company logos, and attachments in that local Docker volume. Workspace `data/` and `backend/data/` folders are ignored by Git and excluded from Docker build contexts; they are for local state only. Protect the volume and backups as private data.
@@ -89,7 +89,7 @@ To report a vulnerability, contact the maintainers privately through the hosting
 
 ## Versioning
 
-`VERSION` is the release source of truth and currently remains `0.0.1`. The initial release is based on `0.0.0`; keep `package.json`, this heading, and both image labels synchronized. Later releases require the exact next semantic-version bump.
+`VERSION` is the release source of truth. Keep `package.json` and both image labels synchronized with it. Later releases require the exact next semantic-version bump.
 
 ## License
 

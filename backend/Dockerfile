@@ -28,7 +28,7 @@ FROM scratch
 
 LABEL maintainer="War Room Team" \
       description="War Room Candidate Selection Process Command Center Backend" \
-      version="0.0.1"
+      version="0.0.2"
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
