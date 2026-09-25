@@ -26,6 +26,7 @@
     border-color var(--duration-fast),
     background-color var(--duration-fast),
     box-shadow var(--duration-fast);
+  -webkit-user-select: none;
   user-select: none;
   overflow: hidden;
 }
@@ -460,6 +461,12 @@
   pointer-events: none !important;
   transition: none !important;
   transform: scale(1.04) rotate(1.2deg);
+}
+
+body.is-reordering-cards,
+body.is-reordering-cards * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
 .card-drop-placeholder {

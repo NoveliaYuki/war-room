@@ -190,7 +190,7 @@
 
 .modal-split-layout {
   display: grid;
-  grid-template-columns: minmax(340px, var(--split-left-fr, 47fr)) 14px minmax(400px, var(--split-right-fr, 53fr));
+  grid-template-columns: minmax(0, var(--split-left-fr, 47fr)) 14px minmax(0, var(--split-right-fr, 53fr));
   height: calc(100% - 88px);
   overflow: hidden;
 }
@@ -288,6 +288,8 @@ body.is-resizing-split * {
 /* --- Left Pane: Job Details & Profile --- */
 .split-pane-left {
   background: rgba(16, 19, 28, 0.45);
+  min-width: 0;
+  box-sizing: border-box;
   padding: 22px 24px;
   overflow-y: auto;
   display: flex;
@@ -565,6 +567,7 @@ body.is-resizing-split * {
 .split-pane-right {
   background: var(--bg-surface);
   min-width: 0;
+  box-sizing: border-box;
   padding: 22px clamp(12px, 2vw, 28px);
   overflow-y: auto;
   display: flex;

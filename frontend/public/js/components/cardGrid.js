@@ -356,6 +356,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     isDragging = true;
     card.classList.remove("is-holding");
     card.classList.add("is-dragging");
+    document.body.classList.add("is-reordering-cards");
 
     // Capture initial order to detect actual changes
     initialOrder = Array.from(containerEl.querySelectorAll(".process-card"))
@@ -451,6 +452,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     card.style.margin = "";
     card.style.pointerEvents = "";
     card.classList.remove("is-dragging");
+    document.body.classList.remove("is-reordering-cards");
 
     if (placeholder && placeholder.parentNode) {
       placeholder.parentNode.insertBefore(card, placeholder);
