@@ -1,0 +1,343 @@
+/**
+ * Dynamic Selection Process Stages & Interview Questions Styles
+ */
+
+.stages-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stage-card {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.stage-card.is-current {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.08);
+}
+
+.stage-card.is-completed {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* Stage Header Bar */
+.stage-header {
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.stage-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-index-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.stage-card.is-current .stage-index-badge {
+  background: var(--accent-blue);
+  color: #ffffff;
+}
+
+.stage-card.is-completed .stage-index-badge {
+  background: var(--status-accepted);
+  color: #ffffff;
+}
+
+.stage-type-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stage-type-badge.HR {
+  background: var(--stage-hr-bg);
+  color: var(--stage-hr);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.stage-type-badge.Technical {
+  background: var(--stage-tech-bg);
+  color: var(--stage-tech);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.stage-type-badge.Cultural {
+  background: var(--stage-cultural-bg);
+  color: var(--stage-cultural);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.stage-type-badge.Offer-Decision {
+  background: var(--stage-offer-bg);
+  color: var(--stage-offer);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.stage-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stage-status-select {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.stage-action-btn {
+  color: var(--text-muted);
+  padding: 4px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  transition: all var(--duration-fast);
+}
+
+.stage-action-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Stage Body */
+.stage-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.stage-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Questions Section */
+.stage-questions-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 12px;
+}
+
+.questions-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.question-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.question-item {
+  background: rgba(16, 19, 28, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.question-row-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.question-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.question-delete-btn {
+  color: var(--text-muted);
+  font-size: 13px;
+  opacity: 0.6;
+  padding: 2px 4px;
+}
+.question-delete-btn:hover {
+  opacity: 1;
+  color: var(--status-rejected);
+}
+
+.question-drag-handle {
+  color: var(--text-muted);
+  cursor: grab;
+  padding: 3px 5px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  opacity: 0.5;
+  transition: all var(--duration-fast);
+  user-select: none;
+  touch-action: none;
+}
+
+.question-drag-handle:hover {
+  opacity: 1;
+  color: var(--accent-blue);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.question-drag-handle:active {
+  cursor: grabbing;
+}
+
+.question-item.is-dragging {
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--accent-blue);
+  background: #131722 !important;
+  border-color: var(--accent-blue) !important;
+  opacity: 0.95;
+  cursor: grabbing !important;
+  z-index: 10000 !important;
+}
+
+.question-drop-placeholder {
+  border: 2px dashed rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: var(--radius-sm);
+  box-sizing: border-box;
+}
+
+.question-answer-box {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-xs);
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 100%;
+  resize: vertical;
+  min-height: 48px;
+  margin-left: 24px;
+  width: calc(100% - 24px);
+}
+
+.question-answer-box:focus {
+  border-color: var(--accent-blue);
+  outline: none;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Add Question Form */
+.add-question-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.add-question-input {
+  flex: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.add-question-input:focus {
+  border-color: var(--accent-blue);
+  outline: none;
+}
+
+.btn-add-question {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all var(--duration-fast);
+}
+
+.btn-add-question:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-medium);
+}
+
+/* Add Stage Action */
+.add-stage-box {
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.01);
+  transition: all var(--duration-fast);
+}
+
+.add-stage-box:hover {
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.btn-new-stage {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-new-stage:hover {
+  color: var(--text-primary);
+}

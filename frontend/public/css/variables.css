@@ -1,0 +1,71 @@
+/**
+ * Design Tokens & Theme Variables
+ * macOS dark aesthetic with polished glassmorphism, crisp typography and spring curves.
+ */
+
+:root {
+  /* Color Palette - Dark Elegance */
+  --bg-app: #0c0e14;
+  --bg-surface: #141721;
+  --bg-surface-elevated: #1b202e;
+  --bg-card: #181c28;
+  --bg-card-hover: #1f2434;
+  --bg-input: #10131c;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.14);
+  --border-bright: rgba(255, 255, 255, 0.25);
+
+  --text-primary: #f3f4f8;
+  --text-secondary: #9aa2b6;
+  --text-muted: #5e667e;
+  --text-inverse: #0c0e14;
+
+  /* Accents */
+  --accent-blue: #3b82f6;
+  --accent-blue-subtle: rgba(59, 130, 246, 0.15);
+  --accent-indigo: #6366f1;
+  --accent-purple: #8b5cf6;
+
+  /* Status Colors */
+  --status-ongoing: #0ea5e9;
+  --status-ongoing-bg: rgba(14, 165, 233, 0.12);
+  --status-accepted: #10b981;
+  --status-accepted-bg: rgba(16, 185, 129, 0.12);
+  --status-rejected: #f43f5e;
+  --status-rejected-bg: rgba(244, 63, 94, 0.12);
+
+  /* Stage Type Badges */
+  --stage-hr: #f59e0b;
+  --stage-hr-bg: rgba(245, 158, 11, 0.12);
+  --stage-tech: #3b82f6;
+  --stage-tech-bg: rgba(59, 130, 246, 0.12);
+  --stage-cultural: #8b5cf6;
+  --stage-cultural-bg: rgba(139, 92, 246, 0.12);
+  --stage-offer: #10b981;
+  --stage-offer-bg: rgba(16, 185, 129, 0.12);
+
+  /* Elevation Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px -4px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 24px 64px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--border-medium);
+
+  /* Border Radii */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Spring Physics Timings */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 180ms;
+  --duration-normal: 320ms;
+  --duration-slow: 450ms;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", Menlo, Monaco, Consolas, monospace;
+}
