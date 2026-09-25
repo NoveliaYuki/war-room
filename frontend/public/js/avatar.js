@@ -1,5 +1,17 @@
 import { escapeAttr } from "./utils/sanitize.js";
 
+const DEMO_COMPANY_LOGOS = new Map([
+  ["google", "google-g.png"],
+  ["openai", "openai.svg"],
+  ["factorial", "factorial-mark.png"],
+  ["apple", "apple.svg"],
+  ["microsoft", "microsoft.svg"],
+  ["datadog", "datadog.svg"],
+  ["meta", "meta.svg"],
+  ["stripe", "stripe.svg"],
+  ["spotify", "spotify.svg"],
+]);
+
 /**
  * @fileoverview Procedural Bauhaus/Geometric SVG Avatar Generator.
  * Creates deterministic, aesthetically pleasing vector avatars from string seeds.
@@ -112,6 +124,16 @@ export function renderCompanyAvatar(companyName = "Unknown", seed = "default", s
     return `<div class="avatar-svg-wrapper" style="width: 100%; height: 100%; border-radius: inherit;">${fallbackSvg}</div>`;
   }
 
+  const isDemo = window.location.pathname.startsWith("/demo/") || new URLSearchParams(window.location.search).has("demo");
+  if (isDemo) {
+    const logo = DEMO_COMPANY_LOGOS.get(companyName.toLowerCase().trim());
+    if (logo) {
+      return `<div class="company-avatar-box" style="width: 100%; height: 100%; position: relative; border-radius: inherit; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff;">
+        <img src="/demo/assets/logos/${logo}" alt="${escapeAttr(companyName)} logo" class="company-logo-img" style="width: 100%; height: 100%; object-fit: contain; padding: 6px; border-radius: inherit;" loading="lazy" />
+      </div>`;
+    }
+    return `<div class="avatar-svg-wrapper" style="width: 100%; height: 100%; border-radius: inherit;">${fallbackSvg}</div>`;
+  }
   const logoUrl = `/api/company-logo?company=${encodeURIComponent(companyName)}&domain=${encodeURIComponent(companyDomain || '')}&job_id=${encodeURIComponent(jobId || '')}`;
 
   return `

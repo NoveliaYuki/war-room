@@ -8,7 +8,7 @@ function pathSegment(value) {
 }
 
 /** Sends typed API requests for jobs, stages, questions, and attachments. */
-export const api = {
+const backendApi = {
   /**
    * Fetches job processes with optional status and search filters.
    */
@@ -242,3 +242,17 @@ export const api = {
     return res.json();
   },
 };
+
+let activeApi = backendApi;
+
+/** Selects the browser-side implementation before app components are loaded. */
+export function useApiAdapter(adapter) {
+  activeApi = adapter;
+}
+
+/** Dispatches API calls to the currently selected backend or demo adapter. */
+export const api = new Proxy({}, {
+  get(_target, property) {
+    return activeApi[property];
+  },
+});

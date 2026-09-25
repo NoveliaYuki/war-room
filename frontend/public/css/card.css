@@ -294,11 +294,11 @@
 /* Card Role Highlights */
 .card-summary {
   border-top: 1px solid var(--border-subtle);
-  padding-top: 12px;
+  padding-top: 8px;
 }
 
 .card-summary-label {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 600;

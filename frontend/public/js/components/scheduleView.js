@@ -87,6 +87,13 @@ function renderMeetingNotes(notes) {
   return `<div style="font-size: 12px; color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); padding: 8px 10px; border-radius: var(--radius-xs); font-family: var(--font-mono);">Note: ${escapeHtml(notes)}</div>`;
 }
 
+/** Renders the obviously fictional panel assigned to a demo meeting. */
+function renderMeetingInterviewers(interviewers = []) {
+  const names = interviewers.map((person) => person.name).filter(Boolean);
+  if (!names.length) return "";
+  return `<div class="inline-icon-text" style="font-size: 12px; color: var(--text-muted);">${icon("users", 12)} Interviewers: ${escapeHtml(names.join(", "))}</div>`;
+}
+
 /** Renders the join link or phone call details for a meeting. */
 function renderMeetingJoinAction(meeting) {
   const url = safeUrl(meeting.meeting_url);
@@ -106,7 +113,7 @@ function renderTodayMeeting(meeting) {
     </div><span class="stage-type-badge ${getStageTypeClass(meeting.stage_type)}">${escapeHtml(meeting.stage_type)}</span></div>
     <div><div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${escapeHtml(meeting.position_title)}</div>
       <div class="inline-icon-text" style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">${renderMeetingCompany(meeting.company_name)}</div></div>
-    ${renderMeetingRecruiter(meeting)}${renderMeetingNotes(meeting.stage_notes)}
+    ${renderMeetingRecruiter(meeting)}${renderMeetingInterviewers(meeting.stage_interviewers)}${renderMeetingNotes(meeting.stage_notes)}
     <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap;">${renderMeetingJoinAction(meeting)}
       <button class="btn-primary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(meeting.job_id)}" style="padding: 6px 12px; font-size: 12px; justify-content: center;">${icon("chat", 13)} Open Questions & Prep ${icon("arrowUpRight", 11)}</button>
     </div>
@@ -296,6 +303,7 @@ function renderMeetingsRows(list = []) {
                 ${icon("calendar", 12)} ${formatNiceDate(m.meeting_date)} • ${escapeHtml(m.meeting_time || 'Time TBD')}
               </span>
               ${m.recruiter_name ? `<span class="inline-icon-text">${icon("user", 12)} ${escapeHtml(m.recruiter_name)}</span>` : ''}
+              ${renderMeetingInterviewers(m.stage_interviewers)}
               ${m.stage_notes ? `<span style="color: #7dd3fc; font-family: var(--font-mono); font-size: 12px;">${escapeHtml(m.stage_notes)}</span>` : ''}
             </div>
           </div>

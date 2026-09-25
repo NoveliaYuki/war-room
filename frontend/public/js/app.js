@@ -378,4 +378,5 @@ backdropEl.addEventListener("click", (e) => {
 
 window.addEventListener("keydown", handleGlobalKeydown);
 
+document.body.dataset.appReady = "true";
 refreshApp();

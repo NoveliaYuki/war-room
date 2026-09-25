@@ -18,6 +18,7 @@
 **/*.backup
 **/*.dump
 **/data/
+!demo/data/
 **/uploads/
 **/attachments/
 **/secrets/
