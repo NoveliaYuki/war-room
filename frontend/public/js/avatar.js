@@ -63,6 +63,13 @@ const ACCENT_SHAPES = [
   (color) => `<circle cx="70" cy="30" r="10" fill="${color}"/>`,
 ];
 
+/** Returns whether the shared UI is running with the browser-only demo adapter. */
+function isDemoMode() {
+  return document.body.dataset.demo === "true"
+    || window.location.pathname.startsWith("/demo/")
+    || new URLSearchParams(window.location.search).has("demo");
+}
+
 /** Renders a deterministic geometric primitive from a bounded set. */
 function renderShape(variants, selector, color) {
   return variants[selector](color);
@@ -124,8 +131,7 @@ export function renderCompanyAvatar(companyName = "Unknown", seed = "default", s
     return `<div class="avatar-svg-wrapper" style="width: 100%; height: 100%; border-radius: inherit;">${fallbackSvg}</div>`;
   }
 
-  const isDemo = window.location.pathname.startsWith("/demo/") || new URLSearchParams(window.location.search).has("demo");
-  if (isDemo) {
+  if (isDemoMode()) {
     const logo = DEMO_COMPANY_LOGOS.get(companyName.toLowerCase().trim());
     if (logo) {
       return `<div class="company-avatar-box" style="width: 100%; height: 100%; position: relative; border-radius: inherit; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff;">

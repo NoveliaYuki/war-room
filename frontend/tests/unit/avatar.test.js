@@ -45,6 +45,10 @@ describe('avatar', () => {
 
   it('uses bundled demo logos and falls back for unlisted companies', () => {
     const originalUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    document.body.dataset.demo = 'true';
+    expect(renderCompanyAvatar('Google')).toContain('/demo/assets/logos/google-g.png');
+    expect(renderCompanyAvatar('Unlisted Company')).toContain('<svg');
+    delete document.body.dataset.demo;
     window.history.replaceState({}, '', '/?demo');
     expect(renderCompanyAvatar('Google')).toContain('/demo/assets/logos/google-g.png');
     expect(renderCompanyAvatar('Unlisted Company')).toContain('<svg');
