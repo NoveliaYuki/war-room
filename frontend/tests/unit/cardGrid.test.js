@@ -383,6 +383,7 @@ describe('cardGrid', () => {
     card.dispatchEvent(pointerEvent('pointerdown', { x: 10, y: 10 }));
     vi.advanceTimersByTime(180);
     expect(card.classList.contains('is-dragging')).toBe(true);
+    expect(document.body.classList.contains('is-reordering-cards')).toBe(true);
     window.dispatchEvent(pointerEvent('pointermove', { x: 150, y: 10 }));
     window.dispatchEvent(pointerEvent('pointermove', { x: 190, y: 40 }));
     window.dispatchEvent(pointerEvent('pointermove', { x: 180, y: 40 }));
@@ -393,6 +394,7 @@ describe('cardGrid', () => {
     window.dispatchEvent(pointerEvent('pointerup'));
     await Promise.resolve();
     expect(card.classList.contains('is-dragging')).toBe(false);
+    expect(document.body.classList.contains('is-reordering-cards')).toBe(false);
     expect(mocks.api.reorderJobs).toHaveBeenCalledOnce();
     expect(mocks.api.reorderJobs.mock.calls[0][0]).toHaveLength(3);
   });
