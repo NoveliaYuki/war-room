@@ -42,4 +42,12 @@ describe('avatar', () => {
     expect(markup).toContain('alt="Acme &amp; Sons"');
     expect(renderCompanyAvatar(' unknown ', '', 48)).toContain('viewBox="0 0 48 48"');
   });
+
+  it('uses bundled demo logos and falls back for unlisted companies', () => {
+    const originalUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.history.replaceState({}, '', '/?demo');
+    expect(renderCompanyAvatar('Google')).toContain('/demo/assets/logos/google-g.png');
+    expect(renderCompanyAvatar('Unlisted Company')).toContain('<svg');
+    window.history.replaceState({}, '', originalUrl);
+  });
 });

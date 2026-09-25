@@ -41,12 +41,23 @@ const job = (stages = []) => ({
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="detail-modal"></div><div id="modal-backdrop"></div>';
+  delete document.body.dataset.demo;
   window.localStorage.removeItem('war-room-detail-split-ratio');
   toast.mockClear();
   Object.values(calls).forEach((fn) => fn.mockReset().mockResolvedValue({}));
 });
 
 describe('detail modal', () => {
+  it('explains that file attachments are unavailable in demo mode', async () => {
+    document.body.dataset.demo = 'true';
+    api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]));
+    await openDetailModal('job-1');
+
+    const attachmentSections = [...document.querySelectorAll('.attachments-grid')];
+    expect(attachmentSections).toHaveLength(2);
+    expect(attachmentSections.every((section) => section.textContent.includes('Attachments are unavailable in the static demo.'))).toBe(true);
+  });
+
   it('supports keyboard and pointer resizing and remembers the pane ratio', async () => {
     api.getJob.mockResolvedValue(job());
     const modal = document.querySelector('#detail-modal');

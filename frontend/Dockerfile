@@ -4,7 +4,9 @@ FROM node:24-alpine AS assets
 WORKDIR /src
 COPY package.json ./package.json
 COPY public ./public
-RUN find public/js -type f -name '*.js' -exec node --check {} +
+COPY demo ./demo
+COPY index.html ./index.html
+RUN find public/js demo -type f -name '*.js' -exec node --check {} +
 
 FROM nginx:alpine-slim AS runtime
 
@@ -17,7 +19,9 @@ RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 COPY nginx.conf /etc/nginx/conf.d/war-room.conf
 COPY security-headers.conf /etc/nginx/war-room-security-headers.conf
 
-COPY --from=assets /src/public /usr/share/nginx/html
+COPY --from=assets /src/index.html /usr/share/nginx/html/index.html
+COPY --from=assets /src/public /usr/share/nginx/html/public
+COPY --from=assets /src/demo /usr/share/nginx/html/demo
 
 EXPOSE 80
 

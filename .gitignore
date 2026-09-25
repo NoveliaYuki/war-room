@@ -22,6 +22,7 @@ Thumbs.db
 *.out
 bin/
 dist/
+frontend/dist-demo/
 /server
 /server-bin
 __debug_bin*
@@ -31,6 +32,8 @@ backend/bin/
 # Local application data, including databases, company logos, attachments, and backups.
 data/
 backend/data/
+!frontend/demo/data/
+!frontend/demo/data/**
 
 # Local database files, journals, backups, and snapshots (any directory)
 *.db

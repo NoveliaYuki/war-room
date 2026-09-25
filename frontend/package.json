@@ -6,7 +6,8 @@
     "lint": "node scripts/check-quality.mjs",
     "test": "npm run test:unit",
     "test:unit": "vitest run --coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:demo": "node scripts/build-demo.mjs"
   },
   "devDependencies": {
     "@babel/parser": "7.29.9",

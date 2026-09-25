@@ -222,6 +222,9 @@ function renderJobDescription(job) {
 
 /** Renders the general attachment chips. */
 function renderGeneralAttachments(attachments) {
+  if (document.body.dataset.demo === "true") {
+    return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">Attachments are unavailable in the static demo.</div>';
+  }
   if (!attachments.length) return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No additional files attached (e.g. job spec PDF, company research, notes).</div>';
   return attachments.map((att) => `<div class="attachment-chip">
     <div class="attachment-meta"><span>${icon("fileText", 14)}</span><div>
@@ -276,6 +279,9 @@ function renderInterviewerRoster(interviewers) {
 /** Renders attachment rows for an active stage. */
 function renderStageAttachmentRows(view) {
   const { stageAttachments, activeStageIndex } = view;
+  if (document.body.dataset.demo === "true") {
+    return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">Attachments are unavailable in the static demo.</div>';
+  }
   if (!stageAttachments.length) {
     return activeStageIndex === 0
       ? '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No screening documents attached.</div>'

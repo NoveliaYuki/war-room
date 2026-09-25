@@ -79,7 +79,7 @@ func runTests(m *testing.M) int {
 // startServer launches the Go application with isolated test data and static assets.
 func startServer(root, dataDir string) *exec.Cmd {
 	backendDir := filepath.Join(root, "backend")
-	staticDir := filepath.Join(root, "frontend", "public")
+	staticDir := filepath.Join(root, "frontend")
 	cmd := exec.Command("go", "run", "./cmd/server")
 	cmd.Dir = backendDir
 	cmd.Env = append(os.Environ(),
@@ -154,6 +154,9 @@ func newPage(t *testing.T) playwright.Page {
 	})
 	if _, err := page.Goto(baseURL); err != nil {
 		t.Fatalf("open application: %v", err)
+	}
+	if _, err := page.WaitForFunction("() => document.body.dataset.appReady === 'true'", nil); err != nil {
+		t.Fatalf("wait for application initialization: %v", err)
 	}
 	return page
 }
