@@ -37,7 +37,6 @@ docker compose down
 - `backend/tests/unit/` and `backend/tests/integration/` — backend unit and API integration tests.
 - `frontend/tests/unit/` — frontend unit tests.
 - `e2e/tests/` — Go Playwright browser tests.
-- `fixtures/seed.json` — empty starter data (`[]`); new installations contain no application records.
 - `docs/database.md` — schema, constraints, migrations, and persistence review.
 
 The production backend is built in a Go builder stage and runs as a non-root user in `scratch`. The frontend build validates assets before copying them into an Nginx runtime image. The Playwright runner starts only after its isolated test backend and test frontend pass their 5-second health checks. Its test backend uses a temporary filesystem; application data remains in the separate `warroom-data` volume.
@@ -57,7 +56,7 @@ Copy `.env.example` to `.env`. Compose uses these local settings:
 | `BASE_VERSION` | `0.0.0` | Previous release version for the first release check; update when preparing a later release |
 | `VERSION_BUMP` | `patch` | Required semantic-version increment: `patch`, `minor`, or `major` |
 
-Compose uses the bind address and host ports for published-port mappings. It passes backend and test settings into the appropriate containers. On a fresh clone, the empty seed fixture leaves the application blank. The backend stores its SQLite database, generated backup, company logos, and attachments in the local `warroom-data` Docker volume. Workspace `data/` and `backend/data/` folders are ignored by Git and excluded from Docker build contexts; they are for local state only. Protect the volume and backups as private data.
+Compose uses the bind address and host ports for published-port mappings. It passes backend and test settings into the appropriate containers. A fresh `warroom-data` volume starts with an empty database. The backend stores its SQLite database, generated backup, company logos, and attachments in that local Docker volume. Workspace `data/` and `backend/data/` folders are ignored by Git and excluded from Docker build contexts; they are for local state only. Protect the volume and backups as private data.
 
 ## Development and tests
 

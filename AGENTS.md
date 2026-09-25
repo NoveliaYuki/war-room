@@ -18,7 +18,7 @@ Open <http://localhost:3000>. Check app health with `docker compose ps`; view br
 ## Required practices
 
 - Use project Docker containers for development, formatting, linting, and tests. The default `docker compose up` starts an isolated test backend, test frontend, and Go Playwright runner; the runner waits for both test services to become healthy.
-- Keep all runtime data, company logos, and attachments out of Git and Docker build contexts. The `data/` and `backend/data/` directories are local-only; do not add placeholders or exceptions that make their contents trackable. Keep `fixtures/seed.json` empty (`[]`) so fresh installs contain no job-selection records. Never print private values while checking local state.
+- Keep all runtime data, company logos, and attachments out of Git and Docker build contexts. The `data/` and `backend/data/` directories are local-only; do not add placeholders or exceptions that make their contents trackable. Fresh installs must start with no job-selection records; synthetic records may be used in tests only. Never print private values while checking local state.
 - Keep `.env` and secrets local. Add safe defaults to `.env.example`, pass settings through Compose to the process that consumes them, and document each new setting. Never put credentials in the example file.
 - Use SVG for icons. Do not use emoji or emoticons in the app or documentation.
 - Keep comments short and useful. Use Google-style Go doc comments and JSDoc for exported interfaces; remove comments that merely narrate obvious code. Retain rationale for security-sensitive or non-obvious behavior.

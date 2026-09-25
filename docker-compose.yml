@@ -10,12 +10,10 @@ services:
       PORT: "4040"
       HOST: "${BACKEND_HOST:-0.0.0.0}"
       WARROOM_DATA_DIR: /data
-      WARROOM_INITIAL_BACKUP: /seed/seed.json
       LOGO_LOOKUP_ENABLED: "${LOGO_LOOKUP_ENABLED:-false}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000},http://frontend"
     volumes:
       - warroom-data:/data
-      - ./fixtures/seed.json:/seed/seed.json:ro
     healthcheck:
       test: ["CMD", "/healthcheck"]
       interval: 5s
@@ -53,13 +51,10 @@ services:
       PORT: "4040"
       HOST: "${BACKEND_HOST:-0.0.0.0}"
       WARROOM_DATA_DIR: /data
-      WARROOM_INITIAL_BACKUP: /seed/seed.json
       LOGO_LOOKUP_ENABLED: "false"
       CORS_ALLOWED_ORIGINS: http://test-frontend
     tmpfs:
       - /data:uid=65532,gid=65532,mode=0750
-    volumes:
-      - ./fixtures/seed.json:/seed/seed.json:ro
     healthcheck:
       test: ["CMD", "/healthcheck"]
       interval: 5s
