@@ -1,0 +1,72 @@
+/**
+ * Fluid Animations & FLIP Transition Keyframes
+ * Hardware-accelerated transitions utilizing compositor properties (transform, opacity).
+ */
+
+/* Modal FLIP container animation classes */
+.modal-animating {
+  pointer-events: none !important;
+}
+
+.card-detail-modal {
+  transform-origin: top left;
+  will-change: transform, opacity, border-radius;
+  transition:
+    transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 240ms ease-out;
+}
+
+/* Modal Staggered Children Entry */
+.modal-body > * {
+  animation: modalItemFadeIn 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.modal-body > *:nth-child(1) { animation-delay: 80ms; }
+.modal-body > *:nth-child(2) { animation-delay: 130ms; }
+.modal-body > *:nth-child(3) { animation-delay: 180ms; }
+.modal-body > *:nth-child(4) { animation-delay: 230ms; }
+.modal-body > *:nth-child(5) { animation-delay: 280ms; }
+
+@keyframes modalItemFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card Fade In on Grid Render */
+.process-card {
+  animation: cardEntrance 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes cardEntrance {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Pulse for ongoing indicators */
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.4;
+  }
+}
+
+.pulse-active {
+  animation: pulseDot 2s infinite ease-in-out;
+}

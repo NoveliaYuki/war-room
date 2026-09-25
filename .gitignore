@@ -1,0 +1,94 @@
+# ====================================================================
+# War Room - Candidate Selection Process Command Center
+# Git Ignore Configuration
+# ====================================================================
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Go Build & Binary Artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+dist/
+/server
+/server-bin
+__debug_bin*
+backend/bin/
+/backend/server
+
+# Local application data, including databases, company logos, attachments, and backups.
+data/
+backend/data/
+
+# Local database files, journals, backups, and snapshots (any directory)
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.sqlitedb
+*.mdb
+*.accdb
+*.bak
+*.backup
+*.dump
+*.sql.gz
+backup*.json
+
+# File uploads outside the standard application data directories
+uploads/
+**/uploads/
+
+# Node, Bun & JavaScript dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+
+# Test, Coverage & Playwright Artifacts
+coverage/
+test-results/
+playwright-report/
+.playwright/
+*.lcov
+backend/tests/unit/.tmp.*
+
+# Environment & Local Secrets
+.env
+.env.*
+!.env.example
+
+# Local credentials and key material
+secrets/
+**/secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# IDE, Editor & Agent Working Directories
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.system_generated/
+scratch/

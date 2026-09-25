@@ -1,0 +1,23 @@
+{
+  "name": "war-room",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "go run ./backend/cmd/server",
+    "lint:format": "node scripts/check-gofmt.mjs",
+    "docker:format": "node scripts/docker-format.mjs",
+    "lint:backend": "node scripts/lint-backend.mjs",
+    "lint:frontend": "npm --prefix frontend run lint",
+    "lint": "npm run lint:format && npm run lint:backend && npm run lint:frontend",
+    "check:version": "node scripts/check-version.mjs",
+    "test": "node scripts/test-all.mjs",
+    "docker:test": "node scripts/docker-test.mjs",
+    "test:unit": "node scripts/test-backend-unit.mjs && npm --prefix frontend run test:unit",
+    "test:integration": "go test -C backend -count=1 ./tests/integration/...",
+    "test:e2e": "go test -C e2e -count=1 ./tests/...",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  }
+}
