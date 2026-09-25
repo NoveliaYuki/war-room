@@ -349,12 +349,22 @@ function renderModalHeader(view) {
           </div>
           <h2 class="modal-title editable-position-title" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h2>
           <div class="modal-meta-pills">
-            <span class="salary-tag editable-salary ${job.salary_type === 'unknown' ? 'undisclosed' : ''} inline-icon-text" data-raw-value="${escapeAttr(getSalaryRawValue(job))}">
+            <button type="button" class="salary-tag editable-salary ${job.salary_type === 'unknown' ? 'undisclosed' : ''} inline-icon-text" data-raw-value="${escapeAttr(getSalaryRawValue(job))}" aria-label="Salary: ${escapeAttr(formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency))}. Click to edit." title="Click to edit salary">
               ${icon("euro", 13)} ${escapeHtml(formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency))}
-            </span>
-            <span class="referral-tag ${job.is_referral ? 'is-referral' : 'not-referral'} editable-modal-referral inline-icon-text" data-id="${escapeAttr(job.id)}" title="Double click to toggle Referral status">
+            </button>
+            <button type="button" class="referral-tag ${job.is_referral ? 'is-referral' : 'not-referral'} editable-modal-referral inline-icon-text" data-id="${escapeAttr(job.id)}" title="Click to toggle referral status" aria-label="${job.is_referral ? 'Referral' : 'No referral'}. Click to toggle.">
               ${icon("userCheck", 12)} ${job.is_referral ? 'Referral' : 'No referral'}
-            </span>
+            </button>
+            ${renderJobMetadataTag("employment-type-tag", "Employment type", "employment_type", job.employment_type, {
+              permanent: "Permanent",
+              b2b: "B2B",
+              permanent_b2b: "Permanent / B2B",
+            })}
+            ${renderJobMetadataTag("work-arrangement-tag", "Work arrangement", "work_arrangement", job.work_arrangement, {
+              remote: "Remote",
+              hybrid: "Hybrid",
+              on_site: "On-site",
+            })}
           </div>
         </div>
       </div>
@@ -371,30 +381,19 @@ function renderModalHeader(view) {
 
   `;
 }
+
+/** Renders employment and work arrangement badges in the job detail header. */
+function renderJobMetadataTag(className, title, field, value, labels) {
+  const label = labels[value] || "Not specified";
+  return `<button type="button" class="${className}" data-cycle-field="${field}" title="Click to change ${escapeAttr(title.toLowerCase())}" aria-label="${escapeAttr(title)}: ${escapeAttr(label)}. Click to change.">${escapeHtml(label)}</button>`;
+}
+
 /** Renders employer and role information inside the general process section. */
 function renderJobDetailsSection(view) {
   const { job, generalAttachments } = view;
   return `
         <section class="process-subsection job-details-group">
           <div class="process-subsection-header"><span class="group-title inline-icon-text">${icon("building", 13)} Job Details</span></div>
-
-          <div class="detail-section">
-            <div class="work-arrangement-setting">
-              <label class="meta-label" for="work-arrangement-select">Work arrangement</label>
-              <select class="work-arrangement-select" id="work-arrangement-select" aria-label="Work arrangement">
-                ${renderWorkArrangementOptions(job.work_arrangement || "unknown")}
-              </select>
-            </div>
-          </div>
-
-          <div class="detail-section">
-            <div class="work-arrangement-setting">
-              <label class="meta-label" for="employment-type-select">Employment type</label>
-              <select class="work-arrangement-select employment-type-select" id="employment-type-select" aria-label="Employment type">
-                ${renderEmploymentTypeOptions(job.employment_type || "unknown")}
-              </select>
-            </div>
-          </div>
 
           <div class="detail-section">
             <div class="section-title">
@@ -439,28 +438,6 @@ function renderJobDetailsSection(view) {
           </div>
         </section>
   `;
-}
-
-/** Renders the valid work-arrangement choices. */
-function renderWorkArrangementOptions(value) {
-  const options = [
-    ["unknown", "Not specified"],
-    ["remote", "Fully remote"],
-    ["hybrid", "Hybrid"],
-    ["on_site", "On-site"],
-  ];
-  return options.map(([option, label]) => `<option value="${option}" ${value === option ? "selected" : ""}>${label}</option>`).join("");
-}
-
-/** Renders the valid employment-type choices. */
-function renderEmploymentTypeOptions(value) {
-  const options = [
-    ["unknown", "Not specified"],
-    ["permanent", "Permanent"],
-    ["b2b", "B2B"],
-    ["permanent_b2b", "Permanent / B2B"],
-  ];
-  return options.map(([option, label]) => `<option value="${option}" ${value === option ? "selected" : ""}>${label}</option>`).join("");
 }
 
 /** Renders personal preparation notes within the general process section. */
@@ -724,24 +701,6 @@ function bindBasicModalActions(context) {
     }
   });
 
-  modalEl.querySelector(".work-arrangement-select")?.addEventListener("change", async (event) => {
-    try {
-      await api.updateJob(job.id, { work_arrangement: event.target.value });
-      refreshModal();
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
-
-  modalEl.querySelector(".employment-type-select")?.addEventListener("change", async (event) => {
-    try {
-      await api.updateJob(job.id, { employment_type: event.target.value });
-      refreshModal();
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
-
   modalEl.querySelector(".btn-delete-job")?.addEventListener("click", async () => {
     try {
       if (confirm(`Permanently delete selection process for "${job.company_name} - ${job.position_title}"?`)) {
@@ -798,6 +757,7 @@ function bindPrimaryJobEditors(context) {
   const elSalary = modalEl.querySelector(".editable-salary");
   if (elSalary) {
     makeInlineEditable(elSalary, {
+      eventName: "click",
       placeholder: "e.g. 70k - 90k, up to 85k, undisclosed",
       onSave: async (newVal) => {
         const parsed = parseSalaryInput(newVal);
@@ -809,11 +769,11 @@ function bindPrimaryJobEditors(context) {
 
   const elModalReferral = modalEl.querySelector(".editable-modal-referral");
   if (elModalReferral) {
-    elModalReferral.classList.add("editable-text");
-    elModalReferral.addEventListener("dblclick", async (e) => {
+    elModalReferral.addEventListener("click", async (event) => {
       try {
-        e.preventDefault();
-        e.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
+        elModalReferral.disabled = true;
         const nextVal = job.is_referral ? 0 : 1;
         await api.updateJob(job.id, { is_referral: nextVal });
         if (typeof window !== "undefined" && typeof window.showToast === "function") {
@@ -821,10 +781,34 @@ function bindPrimaryJobEditors(context) {
         }
         refreshModal();
       } catch (err) {
+        elModalReferral.disabled = false;
         showToast(err.message, "error");
       }
     });
   }
+
+  bindMetadataCycle(modalEl, job, "employment_type", ["permanent", "b2b", "permanent_b2b"], refreshModal);
+  bindMetadataCycle(modalEl, job, "work_arrangement", ["remote", "hybrid", "on_site"], refreshModal);
+}
+
+/** Cycles a top-level metadata badge to its next value and persists it. */
+function bindMetadataCycle(modalEl, job, field, values, refreshModal) {
+  const badge = modalEl.querySelector(`[data-cycle-field="${field}"]`);
+  if (!badge) return;
+  badge.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    badge.disabled = true;
+    const currentIndex = values.indexOf(job[field]);
+    const nextValue = values[(currentIndex + 1) % values.length];
+    try {
+      await api.updateJob(job.id, { [field]: nextValue });
+      refreshModal();
+    } catch (error) {
+      badge.disabled = false;
+      showToast(error.message, "error");
+    }
+  });
 }
 
 /** Wires bindJobTextEditors fields. */

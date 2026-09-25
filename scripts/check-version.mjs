@@ -8,11 +8,6 @@ function verifySynchronization(version) {
     throw new Error(`package.json version ${manifest.version} does not match VERSION ${version}`);
   }
 
-  const readme = readFileSync(resolve(root, 'README.md'), 'utf8');
-  if (!readme.startsWith(`# War Room ${version}\n`)) {
-    throw new Error(`README.md release heading does not match VERSION ${version}`);
-  }
-
   for (const dockerfile of ['backend/Dockerfile', 'frontend/Dockerfile']) {
     const content = readFileSync(resolve(root, dockerfile), 'utf8');
     const label = /version="([^"]+)"/i.exec(content)?.[1];

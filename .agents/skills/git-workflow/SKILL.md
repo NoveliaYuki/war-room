@@ -45,7 +45,7 @@ Never stage `data/`, `backend/data/`, databases, company logos, attachments, or 
 | --- | --- |
 | Stage or commit | User explicitly asks for a commit |
 | Amend or rewrite history | User explicitly asks for that operation |
-| Push | User says exactly `push the current version to remote` |
+| Push | User explicitly requests a push |
 | Create a branch, issue, or PR | User explicitly asks |
 
 ## 5. Step 2 — Choose Type and Version
@@ -70,7 +70,7 @@ Use Semantic Versioning only when a release bump is authorized.
 
 Keep the initial version `0.0.1` unless the user authorizes a later release.
 Bump once per PR, then reuse that version on every commit in the PR.
-Synchronize `VERSION`, package metadata, README version, and image labels.
+Synchronize `VERSION`, package metadata, and image labels.
 
 ## 6. Step 3 — Write the Commit Subject
 
@@ -95,7 +95,7 @@ Report the commit hash or push destination only if that operation occurred.
 ### Never
 
 - Never stage or commit without an explicit request.
-- Never push without the exact authorization phrase in §4.
+- Never push without an explicit user request.
 - Never include private data, local state, or generated artifacts.
 - Never bypass pre-commit checks or rewrite published history.
 - Never make multiple version bumps in one PR.

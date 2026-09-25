@@ -26,7 +26,7 @@ Open <http://localhost:3000>. Check app health with `docker compose ps`; view br
 - Make database changes with versioned migrations and tests covering new and existing data. Preserve user data; never replace a populated local volume with fixture data.
 - Keep production Docker images multi-stage and minimal. Health checks run every 5 seconds; the test runner must wait for both isolated test services to be healthy.
 - Keep `VERSION` at `0.0.1` for the initial release. Change it only when the user requests a later release, and update all version references together.
-- For release commits, follow `.agents/skills/git-workflow/SKILL.md`: use `type: [vX.Y.Z] - summary`, assign one version per PR, and reuse it for every commit in that PR. Never push unless the user says exactly: `push the current version to remote`.
+- For release commits, follow `.agents/skills/git-workflow/SKILL.md`: use `type: [vX.Y.Z] - summary`, assign one version per PR, and reuse it for every commit in that PR. Push only when the user explicitly requests it.
 
 ## Checks before handoff
 
