@@ -14,7 +14,7 @@ Do not stage or commit unless the user explicitly authorizes it.
 | Gate | Required result |
 | --- | --- |
 | Git/data boundary | Local records, images, attachments, databases, and secrets are untracked |
-| Fresh install | `fixtures/seed.json` is `[]`; no company-specific images are bundled |
+| Fresh install | New databases start empty; no company-specific images are bundled |
 | Configuration | `.env` values flow through Compose to their consuming service |
 | Code and schema | Quality, complexity, security, and data-model checks pass |
 | Tests | Unit, integration, and Go Playwright suites pass in order |
@@ -29,7 +29,7 @@ Never print private job-selection records, attachment contents, credentials, or 
 | --- | --- |
 | `data/`, `backend/data/` | Entire directories ignored by `.gitignore` |
 | Docker build contexts | Exclude runtime data, databases, logos, uploads, and backups |
-| `fixtures/seed.json` | Valid empty array `[]`; synthetic data belongs only in tests |
+| Fresh database | No job-selection records; synthetic data belongs only in tests |
 | `.env` | Local and ignored; never commit credentials |
 | `.env.example` | Safe defaults only; document each variable |
 
@@ -99,7 +99,7 @@ Run `down` even if tests fail; never add `--volumes` to routine cleanup.
 ### Always
 
 - Always verify Git ignore rules and Docker build-context exclusions.
-- Always verify the seed fixture is `[]` and `.env` values reach their consumers.
+- Always verify a fresh database contains no job-selection records and `.env` values reach their consumers.
 - Always review data ownership, constraints, migrations, and query efficiency.
 - Always run unit, integration, and Playwright suites in the listed order.
 - Always report pass/fail, coverage, blockers, and the final file list.
