@@ -303,6 +303,28 @@
   margin: 0 auto 20px;
 }
 
+@media (min-width: 901px) and (max-width: 1500px) {
+  .header-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .header-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px 16px;
+    width: 100%;
+  }
+
+  .header-controls .filter-tabs { grid-column: 1 / -1; }
+  .header-controls .search-wrapper { grid-column: 1; width: 100%; }
+  .header-controls .search-input,
+  .header-controls .search-input:focus { width: 100%; }
+  .header-controls #btn-new-process { grid-column: 2; justify-self: end; }
+}
+
 @media (max-width: 900px) {
   .app-container {
     padding: 0 14px 32px;

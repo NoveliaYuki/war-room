@@ -199,6 +199,23 @@ func TestNarrowViewportNavigation(t *testing.T) {
 	}
 }
 
+func TestIntermediateViewportGroupsSearchAndAction(t *testing.T) {
+	page := newPage(t)
+	if err := page.SetViewportSize(1100, 850); err != nil {
+		t.Fatalf("set intermediate viewport: %v", err)
+	}
+	groupedLayout, err := page.Evaluate(`() => {
+		const menu = document.querySelector("#btn-menu-toggle");
+		const search = document.querySelector("#search-input").getBoundingClientRect();
+		const action = document.querySelector("#btn-new-process").getBoundingClientRect();
+		return getComputedStyle(menu).display === "none" &&
+			search.top < action.bottom && search.bottom > action.top && search.left < action.left;
+	}`, nil)
+	if err != nil || groupedLayout != true {
+		t.Fatalf("intermediate header should keep search left of action without hamburger (valid=%v, err=%v)", groupedLayout, err)
+	}
+}
+
 func TestSecurityHeadersBlockExternalImages(t *testing.T) {
 	client := &http.Client{Timeout: 3 * time.Second}
 	response, err := client.Get(baseURL) // #nosec G107 -- targets the configured local E2E application.
