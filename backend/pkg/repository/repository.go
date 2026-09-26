@@ -810,7 +810,8 @@ func (r *Repository) GetScheduledMeetings() ([]models.ScheduledMeeting, error) {
 			COALESCE(stages.recruiter_contact, jobs.recruiter_contact) as recruiter_contact,
 			COALESCE(stages.recruiter_agency, jobs.recruiter_agency) as recruiter_agency,
 			jobs.job_post_url,
-			jobs.avatar_seed
+			jobs.avatar_seed,
+			COALESCE(jobs.company_domain, '')
 		FROM stages
 		INNER JOIN jobs ON jobs.id = stages.job_id
 		WHERE stages.meeting_date IS NOT NULL AND stages.meeting_date != ''
@@ -829,7 +830,7 @@ func (r *Repository) GetScheduledMeetings() ([]models.ScheduledMeeting, error) {
 			&m.StageDescription, &m.StageStatus, &m.MeetingDate, &m.MeetingTime,
 			&m.MeetingURL, &m.MeetingType, &m.StageNotes, &m.CompanyName,
 			&m.PositionTitle, &m.JobStatus, &m.RecruiterName, &m.RecruiterContact,
-			&m.RecruiterAgency, &m.JobPostURL, &m.AvatarSeed,
+			&m.RecruiterAgency, &m.JobPostURL, &m.AvatarSeed, &m.CompanyDomain,
 		)
 		if err != nil {
 			return nil, err

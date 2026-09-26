@@ -16,6 +16,7 @@ import { renderQuestionList, enableQuestionReordering } from '../../public/js/co
 import { renderStageTracker } from '../../public/js/components/stageTracker.js';
 import { renderScheduleView } from '../../public/js/components/scheduleView.js';
 import { renderCardGrid } from '../../public/js/components/cardGrid.js';
+import { renderCompanyAvatar } from '../../public/js/avatar.js';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -219,7 +220,7 @@ describe('schedule view', () => {
       meeting('today', 0, { recruiter_name: 'R', recruiter_contact: '123|abc', stage_notes: 'Bring notes', meeting_url: 'https://meet.example' }),
       meeting('phone', 0, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '<img src=x onerror=alert(1)>|x' }),
       meeting('untrusted-type', 0, { meeting_type: 'video\" onmouseover=alert(1)', stage_type: '<img src=x onerror=alert(1)>' }),
-      meeting('tomorrow', 1, { meeting_type: 'video" onmouseover=alert(1)', meeting_url: 'https://future.example', recruiter_name: 'Future recruiter', stage_notes: 'Confirm panel' }),
+      meeting('tomorrow', 1, { meeting_type: 'video" onmouseover=alert(1)', meeting_url: 'https://future.example', recruiter_name: 'Future recruiter', stage_notes: 'Confirm panel', company_domain: 'acme.example', avatar_seed: 'Acme' }),
       meeting('future', 4, { company_name: 'Unknown' }),
       meeting('future-phone', 5, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '555-0100|mobile' }),
       meeting('undated', null),
@@ -240,6 +241,10 @@ describe('schedule view', () => {
     expect(root.querySelector('.meeting-format-pill[onmouseover]')).toBeNull();
     expect(root.querySelector('.meeting-row-card .meeting-format-pill[onmouseover]')).toBeNull();
     expect(root.querySelector('.meeting-row-card .meeting-format-pill').classList.contains('pill-video')).toBe(true);
+    const scheduleLogo = root.querySelector('.meeting-row-card .company-logo-img');
+    const jobCardLogo = document.createElement('div');
+    jobCardLogo.innerHTML = renderCompanyAvatar('Acme', 'Acme', 64, 'acme.example', 'tomorrow');
+    expect(scheduleLogo.getAttribute('src')).toBe(jobCardLogo.querySelector('.company-logo-img').getAttribute('src'));
     expect(root.querySelector('.stage-type-badge img')).toBeNull();
     expect(root.querySelector('.today-meeting-card img')).toBeNull();
     root.querySelector('.btn-open-meeting').click();

@@ -25,7 +25,20 @@ function handleAvatarImageError(event) {
 
 document.addEventListener("error", handleAvatarImageError, true);
 
-let currentFilter = "ongoing";
+const FILTER_STORAGE_KEY = "war-room.active-filter";
+const validFilters = new Set(["ongoing", "accepted", "rejected", "all", "schedule"]);
+
+/** Restores a saved filter when it is a supported page. */
+function getSavedFilter() {
+  try {
+    const savedFilter = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    return validFilters.has(savedFilter) ? savedFilter : "ongoing";
+  } catch {
+    return "ongoing";
+  }
+}
+
+let currentFilter = getSavedFilter();
 let currentSearch = "";
 let searchDebounceTimer = null;
 
@@ -43,6 +56,16 @@ const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
 const filterTabs = document.querySelectorAll(".filter-tab");
 const btnNewProcess = document.querySelector("#btn-new-process");
+const menuToggle = document.querySelector("#btn-menu-toggle");
+const headerControls = document.querySelector("#header-controls");
+
+/** Closes the compact navigation menu after choosing an action. */
+function closeMobileMenu() {
+  if (!menuToggle || !headerControls) return;
+  menuToggle.setAttribute("aria-expanded", "false");
+  menuToggle.setAttribute("aria-label", "Open navigation menu");
+  headerControls.classList.remove("is-open");
+}
 
 /**
  * Updates filter counters and re-renders cards.
@@ -131,7 +154,13 @@ async function submitNewJobForm(event, form, closeForm) {
  * Sets active filter tab.
  */
 function setFilter(filter) {
+  if (!validFilters.has(filter)) return;
   currentFilter = filter;
+  try {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, filter);
+  } catch {
+    // Keep navigation working when browser storage is unavailable.
+  }
   filterTabs.forEach((tab) => {
     tab.classList.toggle("active", tab.getAttribute("data-filter") === filter);
   });
@@ -355,6 +384,7 @@ function openNewProcessModal() {
 filterTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     setFilter(tab.getAttribute("data-filter"));
+    closeMobileMenu();
   });
 });
 
@@ -367,6 +397,13 @@ searchInput.addEventListener("input", () => {
 });
 
 btnNewProcess.addEventListener("click", openNewProcessModal);
+menuToggle?.addEventListener("click", () => {
+  const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
+  menuToggle.setAttribute("aria-expanded", String(!isOpen));
+  menuToggle.setAttribute("aria-label", isOpen ? "Open navigation menu" : "Close navigation menu");
+  headerControls?.classList.toggle("is-open", !isOpen);
+});
+searchInput.addEventListener("focus", closeMobileMenu);
 
 backdropEl.addEventListener("click", (e) => {
   if (e.target === backdropEl) {
@@ -377,6 +414,10 @@ backdropEl.addEventListener("click", (e) => {
 });
 
 window.addEventListener("keydown", handleGlobalKeydown);
+
+filterTabs.forEach((tab) => {
+  tab.classList.toggle("active", tab.getAttribute("data-filter") === currentFilter);
+});
 
 document.body.dataset.appReady = "true";
 refreshApp();
