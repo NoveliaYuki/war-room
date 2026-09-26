@@ -31,6 +31,22 @@
   flex-wrap: wrap;
 }
 
+.menu-toggle {
+  display: none;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.menu-icon-close { display: none; }
+.menu-toggle[aria-expanded="true"] .menu-icon-open { display: none; }
+.menu-toggle[aria-expanded="true"] .menu-icon-close { display: inline-block; }
+
 .brand-section {
   display: flex;
   align-items: center;
@@ -276,6 +292,71 @@
   font-size: 14px;
   max-width: 400px;
   margin: 0 auto 20px;
+}
+
+@media (max-width: 1100px) {
+  .app-container {
+    padding: 0 14px 32px;
+  }
+
+  .app-header {
+    padding: 10px 14px;
+    margin: 0 -14px 18px;
+  }
+
+  .header-inner {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0 12px;
+  }
+
+  .menu-toggle { display: inline-flex; grid-column: 1; grid-row: 1; }
+  .brand-section { grid-column: 2; grid-row: 1; }
+  #btn-new-process {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
+    justify-content: center;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    padding: 0;
+  }
+  .header-controls {
+    display: none;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 0 4px;
+  }
+
+  .header-controls.is-open { display: flex; }
+  .filter-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filter-tab { justify-content: flex-start; min-height: 42px; padding: 8px 10px; }
+  .filter-tab.tab-schedule { grid-column: 1 / -1; }
+  .search-wrapper, .search-input { width: 100%; }
+  .search-input:focus { width: 100%; }
+  #btn-new-process .new-process-label { display: none; }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .app-container { padding-inline: 20px; }
+  .app-header { margin-inline: -20px; padding-inline: 20px; }
+  .header-inner { align-items: flex-start; }
+  .header-controls { width: 100%; justify-content: space-between; gap: 10px; }
+  .filter-tabs { max-width: 100%; }
+  .filter-tab { padding-inline: 9px; }
+  .cards-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .cards-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .process-card { min-height: 0; }
 }
 
 /* Toast Notification System */

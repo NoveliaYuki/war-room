@@ -94,7 +94,7 @@ function toMeeting(job, stage) {
     company_name: job.company_name,
     position_title: job.position_title, job_status: job.status, recruiter_name: stage.recruiter_name || job.recruiter_name,
     recruiter_contact: stage.recruiter_contact || job.recruiter_contact, recruiter_agency: stage.recruiter_agency || job.recruiter_agency,
-    job_post_url: job.job_post_url, avatar_seed: job.avatar_seed,
+    job_post_url: job.job_post_url, avatar_seed: job.avatar_seed, company_domain: job.company_domain,
   };
 }
 

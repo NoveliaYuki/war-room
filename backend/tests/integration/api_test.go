@@ -111,6 +111,7 @@ func createLifecycleJob(t *testing.T, client *http.Client, serverURL string) mod
 	maxSal := int64(83000)
 	recName := "Casey Example"
 	employmentType := models.EmploymentTypePermanentB2B
+	companyDomain := "example.test"
 	createPayload := models.CreateJobInput{
 		CompanyName:    "Example Company",
 		PositionTitle:  "Software Engineer",
@@ -118,6 +119,7 @@ func createLifecycleJob(t *testing.T, client *http.Client, serverURL string) mod
 		SalaryMax:      &maxSal,
 		RecruiterName:  &recName,
 		EmploymentType: &employmentType,
+		CompanyDomain:  &companyDomain,
 	}
 	response := mustRequest(t, client, http.MethodPost, serverURL+"/api/jobs", encodeJSON(t, createPayload))
 	t.Cleanup(func() { closeIntegrationResource(t, response.Body) })
@@ -166,6 +168,9 @@ func assertLifecycleMeeting(t *testing.T, client *http.Client, serverURL string)
 	mustDecode(t, response, &meetings)
 	if len(meetings) == 0 {
 		t.Fatal("expected a scheduled meeting")
+	}
+	if meetings[0].CompanyDomain != "example.test" {
+		t.Errorf("meeting company domain = %q, want %q", meetings[0].CompanyDomain, "example.test")
 	}
 }
 

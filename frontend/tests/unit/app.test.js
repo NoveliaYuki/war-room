@@ -15,12 +15,17 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('application entry point', () => {
   it('boots, filters and searches, opens the creation form, and submits valid data', async () => {
+    const localStorageGet = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
     document.body.innerHTML = `
-      <div id="cards-grid"></div><div id="detail-modal"></div><div id="modal-backdrop"></div>
-      <input id="search-input"><button id="btn-new-process"></button>
+      <div id="cards-grid"></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
+      <button id="btn-menu-toggle" aria-expanded="false"></button>
+      <button id="btn-new-process"></button>
+      <div id="header-controls"><input id="search-input">
       <button class="filter-tab" data-filter="ongoing"></button><button class="filter-tab" data-filter="accepted"></button>
       <button class="filter-tab" data-filter="rejected"></button><button class="filter-tab" data-filter="all"></button>
-      <button class="filter-tab" data-filter="schedule"></button>
+      <button class="filter-tab" data-filter="schedule"></button><button class="filter-tab" data-filter="invalid"></button></div>
       <span id="count-all"></span><span id="count-ongoing"></span><span id="count-accepted"></span><span id="count-rejected"></span><span id="count-meetings"></span>`;
     mocks.api.getJobCounts.mockResolvedValue({ all: 1, ongoing: 1, accepted: 0, rejected: 0 });
     mocks.api.getMeetings.mockResolvedValue([]);
@@ -28,10 +33,22 @@ describe('application entry point', () => {
     mocks.api.createJob.mockResolvedValue({ id: 'new' });
     mocks.renderScheduleView.mockResolvedValue(undefined);
     await import('../../public/js/app.js');
+    localStorageGet.mockRestore();
     await flush();
     expect(mocks.renderCardGrid).toHaveBeenCalled();
 
+    const menuToggle = document.querySelector('#btn-menu-toggle');
+    const headerControls = document.querySelector('#header-controls');
+    menuToggle.click();
+    expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(headerControls.classList.contains('is-open')).toBe(true);
+    menuToggle.click();
+    expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
+    menuToggle.click();
+
     document.querySelector('[data-filter="accepted"]').click();
+    expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(headerControls.classList.contains('is-open')).toBe(false);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' }));
     expect(document.querySelector('[data-filter="rejected"]').classList.contains('active')).toBe(true);
     document.querySelector('#search-input').value = 'engineer';
@@ -44,6 +61,7 @@ describe('application entry point', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '5' }));
     await flush();
     expect(mocks.renderScheduleView).toHaveBeenCalled();
+    expect(window.localStorage.getItem('war-room.active-filter')).toBe('schedule');
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
     const form = document.querySelector('#new-process-form');
@@ -67,6 +85,10 @@ describe('application entry point', () => {
 
     // Cover keyboard shortcuts while typing, search focus, modal closing, and both salary bounds.
     document.querySelector('#search-input').focus();
+    document.querySelector('#search-input').blur();
+    menuToggle.click();
+    document.querySelector('#search-input').focus();
+    expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
     expect(document.querySelector('#new-process-form')).toBeNull();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }));
@@ -149,5 +171,32 @@ describe('application entry point', () => {
     await flush();
     expect(logError).toHaveBeenCalledWith('Failed to load jobs data:', expect.any(Error));
     logError.mockRestore();
+
+    const localStorageSet = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    document.querySelector('[data-filter="schedule"]').click();
+    await flush();
+    localStorageSet.mockRestore();
+
+    mocks.api.createJob.mockRejectedValueOnce(new Error('offline'));
+    document.querySelector('#btn-new-process').click();
+    const failedForm = document.querySelector('#new-process-form');
+    failedForm.querySelector('[name="position_title"]').value = 'Unavailable role';
+    failedForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(mocks.showToast).toHaveBeenLastCalledWith('offline', 'error');
+
+    document.querySelector('[data-filter="invalid"]').click();
+    expect(document.querySelector('[data-filter="schedule"]').classList.contains('active')).toBe(true);
+    document.querySelector('#btn-new-process').click();
+    const maxOnlyForm = document.querySelector('#new-process-form');
+    maxOnlyForm.querySelector('[name="salary_max"]').value = '100000';
+    maxOnlyForm.querySelector('[name="position_title"]').value = 'Maximum-only role';
+    maxOnlyForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(mocks.api.createJob).toHaveBeenLastCalledWith(expect.objectContaining({
+      salary_type: 'no_min', salary_min: null, salary_max: 100000,
+    }));
   });
 });

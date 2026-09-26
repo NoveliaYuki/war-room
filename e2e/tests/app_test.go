@@ -175,6 +175,24 @@ func TestApplicationShellAndFilters(t *testing.T) {
 	}
 }
 
+func TestNarrowViewportNavigation(t *testing.T) {
+	page := newPage(t)
+	if err := page.SetViewportSize(1000, 850); err != nil {
+		t.Fatalf("set narrow viewport: %v", err)
+	}
+	assertVisible(t, page.Locator("#btn-menu-toggle"))
+	validLayout, err := page.Evaluate(`() => {
+		const toggle = document.querySelector("#btn-menu-toggle");
+		toggle.click();
+		return getComputedStyle(document.querySelector("#header-controls")).display !== "none" &&
+			getComputedStyle(document.querySelector("#btn-new-process .new-process-label")).display === "none" &&
+			document.documentElement.scrollWidth <= window.innerWidth;
+	}`, nil)
+	if err != nil || validLayout != true {
+		t.Fatalf("narrow viewport navigation or layout is incorrect (valid=%v, err=%v)", validLayout, err)
+	}
+}
+
 func TestSecurityHeadersBlockExternalImages(t *testing.T) {
 	client := &http.Client{Timeout: 3 * time.Second}
 	response, err := client.Get(baseURL) // #nosec G107 -- targets the configured local E2E application.

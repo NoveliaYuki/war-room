@@ -281,6 +281,7 @@ type ScheduledMeeting struct {
 	RecruiterAgency  *string `json:"recruiter_agency"`
 	JobPostURL       *string `json:"job_post_url"`
 	AvatarSeed       string  `json:"avatar_seed"`
+	CompanyDomain    string  `json:"company_domain"`
 }
 
 // CreateJobInput contains fields accepted when creating a job.
