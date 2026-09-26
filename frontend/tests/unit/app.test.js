@@ -21,7 +21,7 @@ describe('application entry point', () => {
     document.body.innerHTML = `
       <div id="cards-grid"></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
       <button id="btn-menu-toggle" aria-expanded="false"></button>
-      <button id="btn-new-process"></button>
+      <button id="btn-new-process" class="new-process-trigger"></button>
       <div id="header-controls"><input id="search-input">
       <button class="filter-tab" data-filter="ongoing"></button><button class="filter-tab" data-filter="accepted"></button>
       <button class="filter-tab" data-filter="rejected"></button><button class="filter-tab" data-filter="all"></button>

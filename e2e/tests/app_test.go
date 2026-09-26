@@ -173,6 +173,7 @@ func TestApplicationShellAndFilters(t *testing.T) {
 	for _, selector := range []string{".brand-title", "#search-input", `[data-filter="ongoing"]`, `[data-filter="accepted"]`, `[data-filter="rejected"]`, `[data-filter="all"]`} {
 		assertVisible(t, page.Locator(selector))
 	}
+	assertVisible(t, page.Locator("#btn-new-process"))
 }
 
 func TestNarrowViewportNavigation(t *testing.T) {
@@ -185,7 +186,8 @@ func TestNarrowViewportNavigation(t *testing.T) {
 		const toggle = document.querySelector("#btn-menu-toggle");
 		toggle.click();
 		return getComputedStyle(document.querySelector("#header-controls")).display !== "none" &&
-			getComputedStyle(document.querySelector("#btn-new-process .new-process-label")).display === "none" &&
+			getComputedStyle(document.querySelector("#btn-new-process-mobile")).display !== "none" &&
+			getComputedStyle(document.querySelector("#btn-new-process-mobile .new-process-label")).display === "none" &&
 			document.documentElement.scrollWidth <= window.innerWidth;
 	}`, nil)
 	if err != nil || validLayout != true {
