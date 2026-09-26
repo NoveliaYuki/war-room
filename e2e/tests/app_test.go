@@ -174,6 +174,10 @@ func TestApplicationShellAndFilters(t *testing.T) {
 		assertVisible(t, page.Locator(selector))
 	}
 	assertVisible(t, page.Locator("#btn-new-process"))
+	mobileActionVisible, err := page.Locator("#btn-new-process-mobile").IsVisible()
+	if err != nil || mobileActionVisible {
+		t.Fatalf("expected compact new-process action to be hidden on desktop (visible=%t, err=%v)", mobileActionVisible, err)
+	}
 }
 
 func TestNarrowViewportNavigation(t *testing.T) {
