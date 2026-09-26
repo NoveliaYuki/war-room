@@ -55,7 +55,7 @@ const modalEl = document.querySelector("#detail-modal");
 const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
 const filterTabs = document.querySelectorAll(".filter-tab");
-const btnNewProcess = document.querySelector("#btn-new-process");
+const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 
@@ -396,7 +396,7 @@ searchInput.addEventListener("input", () => {
   }, 200);
 });
 
-btnNewProcess.addEventListener("click", openNewProcessModal);
+newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
 menuToggle?.addEventListener("click", () => {
   const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
   menuToggle.setAttribute("aria-expanded", String(!isOpen));
