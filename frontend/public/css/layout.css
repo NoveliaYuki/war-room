@@ -31,7 +31,7 @@
   flex-wrap: wrap;
 }
 
-.mobile-new-process { display: none; }
+.btn-primary.mobile-new-process { display: none; }
 
 .menu-toggle {
   display: none;
