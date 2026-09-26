@@ -1,6 +1,6 @@
 # War Room
 
-War Room is a local command center for tracking interview and candidate-selection processes. It keeps roles, stages, interview questions, meetings, notes, and related files together in one browser-based app.
+War Room is a self-hosted, single-user app for tracking interview and candidate-selection processes. Run it with Docker on a machine you control; it keeps roles, stages, interview questions, meetings, notes, and related files together in one browser-based app. By default, it is available only from that machine because its ports bind to loopback.
 
 ## Quick start
 
@@ -30,6 +30,12 @@ docker compose down
 - Notes, salary details, company information, and attachments.
 - SQLite storage, schema migrations, and a recovery snapshot in a Docker volume.
 
+## Static browser demo
+
+The repository also includes a frontend-only demo with fictional sample processes. It uses the same UI as the self-hosted app, stores edits in the current browser's local storage, and does not include or require the Go API. File attachments are unavailable in the demo. See [`frontend/demo/README.md`](frontend/demo/README.md) for details.
+
+Build the static demo from `frontend/` with `npm run build:demo`. The generated site is written to `frontend/dist-demo` and can be hosted by any static-site host; it does not deploy the backend.
+
 ## Architecture
 
 - `frontend/` — static HTML, CSS, and JavaScript served by Nginx.
@@ -53,8 +59,6 @@ Copy `.env.example` to `.env`. Compose uses these local settings:
 | `BACKEND_HOST` | `0.0.0.0` | API listen address inside its container |
 | `CORS_ALLOWED_ORIGINS` | localhost origins | Browser origins allowed by the API |
 | `LOGO_LOOKUP_ENABLED` | `false` | Allow remote company-favicon lookups |
-| `BASE_VERSION` | Previous release version | Previous release used to verify the requested semantic-version bump |
-| `VERSION_BUMP` | `patch` | Required semantic-version increment: `patch`, `minor`, or `major` |
 
 Compose uses the bind address and host ports for published-port mappings. It passes backend and test settings into the appropriate containers. A fresh `warroom-data` volume starts with an empty database. The backend stores its SQLite database, generated backup, company logos, and attachments in that local Docker volume. Workspace `data/` and `backend/data/` folders are ignored by Git and excluded from Docker build contexts; they are for local state only. Protect the volume and backups as private data.
 
@@ -77,7 +81,7 @@ Use focused changes, add tests and documentation when behavior changes, and incl
 
 ## Security and privacy
 
-This is a single-user app with no authentication or authorization. Its default ports bind to loopback for trusted local use; do not expose it to a public or shared network. CORS is not access control. Remote logo lookup is disabled by default; if enabled, the backend sends the inferred company domain to Google's favicon service. Avoid enabling it when company-search privacy matters.
+This is a single-user app with no authentication or authorization. “Self-hosted” means you run and manage it on a machine you control; it does not mean LAN access is enabled. The default ports bind to loopback. Do not expose the app to a public or shared network; authentication and additional security work are needed before network access is appropriate. CORS is not access control. Remote logo lookup is disabled by default; if enabled, the backend sends the inferred company domain to Google's favicon service. Avoid enabling it when company-search privacy matters.
 
 To report a vulnerability, contact the maintainers privately through the hosting platform's security feature when available. Do not include candidate data, credentials, attachments, or unredacted logs in public issues.
 
@@ -89,7 +93,7 @@ To report a vulnerability, contact the maintainers privately through the hosting
 
 ## Versioning
 
-`VERSION` is the release source of truth. Keep `package.json` and both image labels synchronized with it. Later releases require the exact next semantic-version bump.
+`VERSION` is the release source of truth. Keep `package.json` and both image labels synchronized with it. Later releases require the exact next semantic-version bump. The test container checks version references by default; release authors can optionally pass `BASE_VERSION` and `VERSION_BUMP` (defaults to `patch`) to validate the bump. These settings are not needed to run or deploy the app.
 
 ## License
 

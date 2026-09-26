@@ -87,14 +87,11 @@ services:
     build:
       context: .
       dockerfile: e2e/Dockerfile
-      args:
-        BASE_VERSION: ${BASE_VERSION:-0.0.1}
-        VERSION_BUMP: ${VERSION_BUMP:-patch}
     restart: "no"
     environment:
       WARROOM_E2E_BASE_URL: http://test-frontend
-      BASE_VERSION: ${BASE_VERSION:-0.0.1}
-      VERSION_BUMP: ${VERSION_BUMP:-patch}
+      BASE_VERSION:
+      VERSION_BUMP:
     depends_on:
       test-backend:
         condition: service_healthy

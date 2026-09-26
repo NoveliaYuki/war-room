@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { getBaseVersion, getReleaseVersion, parseVersion, root, validateBump } from './version-utils.mjs';
+import { getReleaseVersion, parseVersion, root, validateBump } from './version-utils.mjs';
 
 function verifySynchronization(version) {
   const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
@@ -21,10 +21,14 @@ try {
   const version = getReleaseVersion();
   parseVersion(version, 'VERSION');
   verifySynchronization(version);
-  const baseVersion = process.env.BASE_VERSION || getBaseVersion();
-  const bump = process.env.VERSION_BUMP || 'patch';
-  validateBump(baseVersion, version, bump);
-  console.log(`Version ${version} is synchronized and is the exact ${bump} bump from ${baseVersion}.`);
+  const baseVersion = process.env.BASE_VERSION;
+  if (baseVersion) {
+    const bump = process.env.VERSION_BUMP || 'patch';
+    validateBump(baseVersion, version, bump);
+    console.log(`Version ${version} is synchronized and is the exact ${bump} bump from ${baseVersion}.`);
+  } else {
+    console.log(`Version ${version} is synchronized.`);
+  }
 } catch (error) {
   console.error(`Version validation failed: ${error.message}`);
   process.exitCode = 1;
