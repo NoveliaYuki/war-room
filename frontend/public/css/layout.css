@@ -31,6 +31,12 @@
   flex-wrap: wrap;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .menu-toggle {
   display: none;
   width: 42px;
@@ -310,6 +316,7 @@
     gap: 0 12px;
   }
 
+  .header-right { display: contents; }
   .menu-toggle { display: inline-flex; grid-column: 1; grid-row: 1; }
   .brand-section { grid-column: 2; grid-row: 1; }
   #btn-new-process {
