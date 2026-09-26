@@ -182,7 +182,7 @@ func TestApplicationShellAndFilters(t *testing.T) {
 
 func TestNarrowViewportNavigation(t *testing.T) {
 	page := newPage(t)
-	if err := page.SetViewportSize(850, 850); err != nil {
+	if err := page.SetViewportSize(760, 850); err != nil {
 		t.Fatalf("set narrow viewport: %v", err)
 	}
 	assertVisible(t, page.Locator("#btn-menu-toggle"))
@@ -201,7 +201,7 @@ func TestNarrowViewportNavigation(t *testing.T) {
 
 func TestIntermediateViewportGroupsSearchAndAction(t *testing.T) {
 	page := newPage(t)
-	if err := page.SetViewportSize(1100, 850); err != nil {
+	if err := page.SetViewportSize(761, 850); err != nil {
 		t.Fatalf("set intermediate viewport: %v", err)
 	}
 	groupedLayout, err := page.Evaluate(`() => {

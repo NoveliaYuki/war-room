@@ -12,7 +12,7 @@ FROM nginx:alpine-slim AS runtime
 
 LABEL maintainer="War Room Team" \
       description="War Room Candidate Selection Process Command Center Frontend" \
-      version="0.0.4"
+      version="0.0.5"
 
 RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 
