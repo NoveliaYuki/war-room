@@ -222,9 +222,6 @@ function renderJobDescription(job) {
 
 /** Renders the general attachment chips. */
 function renderGeneralAttachments(attachments) {
-  if (document.body.dataset.demo === "true") {
-    return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">Attachments are unavailable in the static demo.</div>';
-  }
   if (!attachments.length) return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No additional files attached (e.g. job spec PDF, company research, notes).</div>';
   return attachments.map((att) => `<div class="attachment-chip">
     <div class="attachment-meta"><span>${icon("fileText", 14)}</span><div>
@@ -232,7 +229,7 @@ function renderGeneralAttachments(attachments) {
       <div class="attachment-size">${(att.file_size / 1024).toFixed(1)} KB • General File</div>
     </div></div>
     <div style="display: flex; gap: 6px;">
-      <a href="/api/attachments/${encodeURIComponent(att.id)}/download" class="stage-action-btn" title="Download" download>${icon("download", 12)}</a>
+      <a href="${escapeAttr(att.download_url || "#")}" class="stage-action-btn" title="Download" download="${escapeAttr(att.original_name)}">${icon("download", 12)}</a>
       <button class="stage-action-btn btn-del-attachment" data-id="${escapeAttr(att.id)}" title="Remove">${icon("close", 11)}</button>
     </div>
   </div>`).join("");
@@ -279,9 +276,6 @@ function renderInterviewerRoster(interviewers) {
 /** Renders attachment rows for an active stage. */
 function renderStageAttachmentRows(view) {
   const { stageAttachments, activeStageIndex } = view;
-  if (document.body.dataset.demo === "true") {
-    return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">Attachments are unavailable in the static demo.</div>';
-  }
   if (!stageAttachments.length) {
     return activeStageIndex === 0
       ? '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No screening documents attached.</div>'
@@ -291,7 +285,7 @@ function renderStageAttachmentRows(view) {
     <div class="attachment-name" title="${escapeAttr(att.original_name)}">${escapeHtml(att.original_name)}</div>
     <div class="attachment-size">${(att.file_size / 1024).toFixed(1)} KB • ${activeStageIndex === 0 ? "Screening Document" : `Step ${activeStageIndex + 1}`}</div>
   </div></div><div style="display: flex; gap: 6px;">
-    <a href="/api/attachments/${encodeURIComponent(att.id)}/download" class="stage-action-btn" title="Download" download>${icon("download", 12)}</a>
+    <a href="${escapeAttr(att.download_url || "#")}" class="stage-action-btn" title="Download" download="${escapeAttr(att.original_name)}">${icon("download", 12)}</a>
     <button class="stage-action-btn btn-del-attachment" data-id="${escapeAttr(att.id)}" title="Remove">${icon("close", 11)}</button>
   </div></div>`).join("");
 }

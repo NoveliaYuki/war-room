@@ -97,4 +97,40 @@ describe('api', () => {
       expect(res).toBeTruthy();
     });
   }
+
+  it('exports a ZIP and reports an export error', async () => {
+    const archive = new Blob(['zip'], { type: 'application/zip' });
+    global.fetch.mockResolvedValueOnce({ ok: true, blob: async () => archive });
+    expect(await api.exportBackup()).toBe(archive);
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/backup/export');
+    global.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'export failed' }) });
+    await expect(api.exportBackup()).rejects.toThrow('export failed');
+    global.fetch.mockResolvedValueOnce({ ok: false, json: async () => { throw new Error('unreadable'); } });
+    await expect(api.exportBackup()).rejects.toThrow('Failed to create backup');
+  });
+
+  it('sends the selected ZIP and surfaces empty-backup confirmation', async () => {
+    const archive = new File(['zip'], 'backup.zip', { type: 'application/zip' });
+    global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    expect(await api.importBackup(archive)).toEqual({ success: true });
+    const request = global.fetch.mock.lastCall[1];
+    expect(request.method).toBe('POST');
+    expect(request.body.get('backup')).toBe(archive);
+    expect(request.body.get('allow_empty')).toBe('false');
+    global.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'empty backup', requires_confirmation: true }) });
+    await expect(api.importBackup(archive, true)).rejects.toMatchObject({ message: 'empty backup', requiresEmptyConfirmation: true });
+    expect(global.fetch.mock.lastCall[1].body.get('allow_empty')).toBe('true');
+    global.fetch.mockResolvedValueOnce({ ok: false, json: async () => { throw new Error('unreadable'); } });
+    await expect(api.importBackup(archive)).rejects.toMatchObject({ message: 'Failed to import backup', requiresEmptyConfirmation: false });
+  });
+
+  it('uses a shared logo URL contract for the avatar component', () => {
+    expect(api.getCompanyLogoUrl('Acme & Sons', 'acme.test', 'job/1')).toBe('/api/company-logo?company=Acme%20%26%20Sons&domain=acme.test&job_id=job%2F1');
+  });
+
+  it('gives attachment rows a download URL from the selected data source', async () => {
+    mockResponse({ id: 'job', attachments: [{ id: 'file/1' }] });
+    const job = await api.getJob('job');
+    expect(job.attachments[0].download_url).toBe('/api/attachments/file%2F1/download');
+  });
 });

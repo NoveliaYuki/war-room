@@ -58,6 +58,72 @@ const filterTabs = document.querySelectorAll(".filter-tab");
 const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
+const dataManagementButton = document.querySelector("#btn-data-management");
+const filterTabsContainer = document.querySelector(".filter-tabs");
+const searchWrapper = document.querySelector(".search-wrapper");
+const desktopNewProcessButton = document.querySelector("#btn-new-process");
+
+/** Clears the search width override used to align a wrapped desktop toolbar row. */
+function clearHeaderRowAlignment() {
+  if (!searchWrapper?.dataset.rowAlignment) return;
+  searchWrapper.style.flex = "";
+  searchWrapper.style.width = "";
+  delete searchWrapper.dataset.rowAlignment;
+}
+
+/** Matches the wrapped search/actions row to the filter tabs' measured width. */
+function measureHeaderRows() {
+  const tabsRect = filterTabsContainer.getBoundingClientRect();
+  const searchRect = searchWrapper.getBoundingClientRect();
+  const dataRect = dataManagementButton.getBoundingClientRect();
+  const processRect = desktopNewProcessButton.getBoundingClientRect();
+  const gap = Number.parseFloat(getComputedStyle(headerControls).columnGap) || 0;
+  const centerY = (rect) => rect.top + rect.height / 2;
+  const sharesRow = (first, second) => Math.abs(centerY(first) - centerY(second)) < 1;
+  return {
+    alignedWidth: Math.max(0, tabsRect.width - dataRect.width - processRect.width - gap * 2),
+    actionsShareRow: sharesRow(searchRect, dataRect) && sharesRow(searchRect, processRect),
+    searchWidth: searchRect.width,
+    toolbarWraps: centerY(searchRect) > centerY(tabsRect) + 1,
+  };
+}
+
+/** Applies a measured width only when the complete actions row has wrapped. */
+function alignWrappedActions(layout) {
+  if (!layout.toolbarWraps || !layout.actionsShareRow) return false;
+  if (layout.alignedWidth > 0 && Math.abs(layout.searchWidth - layout.alignedWidth) > 0.5) {
+    searchWrapper.style.flex = `0 0 ${layout.alignedWidth}px`;
+    searchWrapper.style.width = `${layout.alignedWidth}px`;
+    searchWrapper.dataset.rowAlignment = "true";
+  }
+  return true;
+}
+
+/** Checks whether all measured header controls exist. */
+function headerAlignmentAvailable() {
+  return Boolean(headerControls && filterTabsContainer && searchWrapper && dataManagementButton && desktopNewProcessButton);
+}
+
+/** Matches the wrapped search/actions row to the filter tabs' measured width. */
+function alignHeaderRows() {
+  if (!headerAlignmentAvailable()) return;
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    clearHeaderRowAlignment();
+    return;
+  }
+  clearHeaderRowAlignment();
+  const layout = measureHeaderRows();
+  if (alignWrappedActions(layout)) return;
+}
+
+if (typeof ResizeObserver !== "undefined") {
+  const headerResizeObserver = new ResizeObserver(alignHeaderRows);
+  [headerControls, filterTabsContainer, searchWrapper, dataManagementButton, desktopNewProcessButton]
+    .filter(Boolean)
+    .forEach((element) => headerResizeObserver.observe(element));
+}
+window.addEventListener("resize", alignHeaderRows);
+alignHeaderRows();
 
 /** Closes the compact navigation menu after choosing an action. */
 function closeMobileMenu() {
@@ -196,11 +262,116 @@ function closeModal() {
   closeWithFlip(modalEl, backdropEl, () => { modalEl.innerHTML = ""; });
 }
 
+/** Closes the data transfer dialog and returns focus to its trigger. */
+function closeDataModal() {
+  backdropEl.classList.remove("active");
+  modalEl.classList.remove("data-transfer-modal");
+  modalEl.innerHTML = "";
+  modalEl.style.opacity = "";
+  modalEl.style.transform = "";
+  const compact = window.matchMedia("(max-width: 760px)").matches;
+  (compact ? menuToggle : dataManagementButton)?.focus();
+}
+
+/** Opens the data transfer dialog. */
+function openDataModal() {
+  closeMobileMenu();
+  modalEl.classList.add("data-transfer-modal");
+  modalEl.innerHTML = `
+    <div class="modal-header data-transfer-header">
+      <div><div class="modal-title">Data &amp; Backups</div><div class="modal-company">Move your War Room data between machines</div></div>
+      <button class="btn-secondary" id="btn-close-data-modal" type="button" aria-label="Close">${icon("close", 18)}</button>
+    </div>
+    <div class="data-transfer-content">
+      <section class="data-transfer-section">
+        <h3>Export backup</h3>
+        <p>Download your processes, company logos, and uploaded files in one portable ZIP archive.</p>
+        <button class="btn-primary" id="btn-export-backup" type="button">${icon("download", 15)} Export ZIP backup</button>
+      </section>
+      <section class="data-transfer-section">
+        <h3>Import backup</h3>
+        <p>Choose a War Room ZIP backup created with Export backup.</p>
+        <label class="data-transfer-file-label" for="backup-import-file">Backup ZIP file</label>
+        <div class="data-transfer-file-picker">
+          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".zip,application/zip" aria-label="Choose backup file" />
+          <button id="backup-import-choose" class="data-transfer-choose" type="button">Choose file</button>
+          <span id="backup-import-file-name" class="data-transfer-file-name">No file selected</span>
+        </div>
+        <div class="data-transfer-warning">Import replaces all processes, company logos, and uploaded files currently saved in this War Room.</div>
+        <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" /> I understand this replaces the current data</label>
+        <button class="btn-danger" id="btn-import-backup" type="button" disabled>Import and replace data</button>
+        <div class="data-transfer-status" id="backup-import-status" aria-live="polite"></div>
+      </section>
+    </div>`;
+  backdropEl.classList.add("active");
+  modalEl.querySelector("#btn-close-data-modal").addEventListener("click", closeDataModal);
+  modalEl.querySelector("#btn-export-backup").addEventListener("click", downloadBackup);
+  const fileInput = modalEl.querySelector("#backup-import-file");
+  const confirmation = modalEl.querySelector("#backup-import-confirm");
+  const importButton = modalEl.querySelector("#btn-import-backup");
+  const updateImportButton = () => { importButton.disabled = !fileInput.files.length || !confirmation.checked; };
+  modalEl.querySelector("#backup-import-choose").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    modalEl.querySelector("#backup-import-file-name").textContent = fileInput.files[0]?.name || "No file selected";
+    updateImportButton();
+  });
+  confirmation.addEventListener("change", updateImportButton);
+  importButton.addEventListener("click", () => importBackup(fileInput.files[0]));
+  modalEl.querySelector("#btn-close-data-modal").focus();
+}
+
+/** Downloads the generated ZIP archive. */
+async function downloadBackup(event) {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const blob = await api.exportBackup();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `war-room-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast("Backup downloaded", "success");
+  } catch (err) {
+    showToast(err.message || "Failed to export backup", "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** Replaces the local process data with the selected validated backup. */
+async function importBackup(file, allowEmpty = false) {
+  const button = modalEl.querySelector("#btn-import-backup");
+  const status = modalEl.querySelector("#backup-import-status");
+  button.disabled = true;
+  status.textContent = "Validating and importing backup…";
+  try {
+    await api.importBackup(file, allowEmpty);
+    closeDataModal();
+    showToast("Backup imported successfully", "success");
+    await refreshApp();
+  } catch (err) {
+    if (err.requiresEmptyConfirmation) {
+      button.disabled = false;
+      status.textContent = "";
+      const confirmed = window.confirm("This ZIP backup contains no saved processes. Importing it will replace the current data with an empty workspace. Are you sure you want to continue?");
+      if (confirmed) await importBackup(file, true);
+      return;
+    }
+    status.textContent = err.message || "Failed to import backup";
+    button.disabled = false;
+  }
+}
+
 /** Applies one global keyboard shortcut to the application. */
 function handleGlobalKeydown(event) {
   const typing = isTypingTarget();
   if (event.key === "Escape" && backdropEl.classList.contains("active")) {
-    closeModal();
+    if (modalEl.classList.contains("data-transfer-modal")) closeDataModal();
+    else closeModal();
     return;
   }
   if (requestsNewProcess(event, typing)) {
@@ -397,6 +568,7 @@ searchInput.addEventListener("input", () => {
 });
 
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
+dataManagementButton?.addEventListener("click", openDataModal);
 menuToggle?.addEventListener("click", () => {
   const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
   menuToggle.setAttribute("aria-expanded", String(!isOpen));
@@ -407,9 +579,8 @@ searchInput.addEventListener("focus", closeMobileMenu);
 
 backdropEl.addEventListener("click", (e) => {
   if (e.target === backdropEl) {
-    closeWithFlip(modalEl, backdropEl, () => {
-      modalEl.innerHTML = "";
-    });
+    if (modalEl.classList.contains("data-transfer-modal")) closeDataModal();
+    else closeWithFlip(modalEl, backdropEl, () => { modalEl.innerHTML = ""; });
   }
 });
 

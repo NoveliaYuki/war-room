@@ -48,14 +48,14 @@ beforeEach(() => {
 });
 
 describe('detail modal', () => {
-  it('explains that file attachments are unavailable in demo mode', async () => {
+  it('renders the same attachment controls in demo mode', async () => {
     document.body.dataset.demo = 'true';
     api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]));
     await openDetailModal('job-1');
 
     const attachmentSections = [...document.querySelectorAll('.attachments-grid')];
     expect(attachmentSections).toHaveLength(2);
-    expect(attachmentSections.every((section) => section.textContent.includes('Attachments are unavailable in the static demo.'))).toBe(true);
+    expect(attachmentSections.every((section) => !section.textContent.includes('Attachments are unavailable'))).toBe(true);
   });
 
   it('supports keyboard and pointer resizing and remembers the pane ratio', async () => {

@@ -1,6 +1,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateAvatarSvg, renderCompanyAvatar } from '../../public/js/avatar.js';
+import { api, useApiAdapter } from '../../public/js/api.js';
 
 describe('avatar', () => {
   it('renders normal company name', () => {
@@ -43,15 +44,17 @@ describe('avatar', () => {
     expect(renderCompanyAvatar(' unknown ', '', 48)).toContain('viewBox="0 0 48 48"');
   });
 
-  it('uses bundled demo logos and falls back for unlisted companies', () => {
-    const originalUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  it('uses the same logo markup regardless of page mode', () => {
+    const backendMarkup = renderCompanyAvatar('Google');
     document.body.dataset.demo = 'true';
-    expect(renderCompanyAvatar('Google')).toContain('/demo/assets/logos/google-g.png');
-    expect(renderCompanyAvatar('Unlisted Company')).toContain('<svg');
+    expect(renderCompanyAvatar('Google')).toBe(backendMarkup);
     delete document.body.dataset.demo;
-    window.history.replaceState({}, '', '/?demo');
-    expect(renderCompanyAvatar('Google')).toContain('/demo/assets/logos/google-g.png');
-    expect(renderCompanyAvatar('Unlisted Company')).toContain('<svg');
-    window.history.replaceState({}, '', originalUrl);
+  });
+
+  it('shows the geometric fallback when the selected data source has no logo', () => {
+    const backendLogoUrl = api.getCompanyLogoUrl;
+    useApiAdapter({ getCompanyLogoUrl: () => '' });
+    expect(renderCompanyAvatar('Unlisted Company')).toContain('avatar-svg-wrapper');
+    useApiAdapter({ getCompanyLogoUrl: backendLogoUrl });
   });
 });
