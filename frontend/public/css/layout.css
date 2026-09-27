@@ -103,6 +103,8 @@
   min-width: 0;
 }
 
+.header-search-actions { display: contents; }
+
 .filter-tabs {
   display: flex;
   align-items: center;
@@ -145,7 +147,10 @@
 
 .tab-count {
   font-size: 11px;
-  padding: 1px 6px;
+  flex: 0 0 24px;
+  width: 24px;
+  padding: 1px 0;
+  text-align: center;
   border-radius: var(--radius-full);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
@@ -161,7 +166,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1 1 220px;
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 580px;
 }
 
 .search-input {
@@ -315,6 +322,16 @@
   flex: 0 0 auto;
 }
 
+.data-management-trigger {
+  flex: 0 0 auto;
+  justify-content: center;
+  width: auto;
+  height: 36px;
+  padding: 0 12px;
+}
+
+.data-management-trigger span { display: inline; }
+
 @media (min-width: 1301px) {
   .header-inner {
     display: grid;
@@ -323,9 +340,6 @@
   }
 
   .header-controls { width: 100%; }
-}
-
-@media (min-width: 1301px) and (max-width: 1400px) {
   .search-wrapper { max-width: 580px; }
 }
 
@@ -378,12 +392,14 @@
   }
 
   .header-controls.is-open { display: flex; }
+  .header-search-actions { display: flex; flex-direction: column; align-items: stretch; gap: 12px; width: 100%; }
   .filter-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filter-tab { justify-content: flex-start; min-height: 42px; padding: 8px 10px; }
   .filter-tab.tab-schedule { grid-column: 1 / -1; }
   .search-wrapper { flex: 0 0 auto; width: 100%; }
   .search-input { width: 100%; }
   .search-input:focus { width: 100%; }
+  .data-management-trigger { width: 100%; height: auto; min-height: 40px; padding: 8px 14px; justify-content: center; }
   #btn-new-process-mobile .new-process-label { display: none; }
 }
 
@@ -391,7 +407,7 @@
   .app-container { padding-inline: 20px; }
   .app-header { padding-inline: 20px; }
   .header-inner { align-items: flex-start; }
-  .header-controls { width: 100%; justify-content: flex-start; gap: 10px; }
+  .header-controls { width: 100%; justify-content: flex-start; }
   .search-wrapper { max-width: 390px; }
   .filter-tabs { max-width: 100%; }
   .filter-tab { padding-inline: 9px; }

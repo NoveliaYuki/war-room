@@ -28,11 +28,12 @@ docker compose down
 - Searchable selection-process board with status filters.
 - Interview stages, questions, interviewers, meetings, and schedule view.
 - Notes, salary details, company information, and attachments.
+- Portable ZIP backup export and restore, including uploaded files.
 - SQLite storage, schema migrations, and a recovery snapshot in a Docker volume.
 
 ## Static browser demo
 
-The repository also includes a frontend-only demo with fictional sample processes. It uses the same UI as the self-hosted app, stores edits in the current browser's local storage, and does not include or require the Go API. File attachments are unavailable in the demo. See [`frontend/demo/README.md`](frontend/demo/README.md) for details.
+The repository also includes a frontend-only demo with fictional sample processes. It uses the same UI as the self-hosted app, stores records in the current browser's local storage and uploaded files in IndexedDB, and does not include or require the Go API. See [`frontend/demo/README.md`](frontend/demo/README.md) for details.
 
 Build the static demo from `frontend/` with `npm run build:demo`. The generated site is written to `frontend/dist-demo` and can be hosted by any static-site host; it does not deploy the backend.
 
@@ -61,6 +62,8 @@ Copy `.env.example` to `.env`. Compose uses these local settings:
 | `LOGO_LOOKUP_ENABLED` | `false` | Allow remote company-favicon lookups |
 
 Compose uses the bind address and host ports for published-port mappings. It passes backend and test settings into the appropriate containers. A fresh `warroom-data` volume starts with an empty database. The backend stores its SQLite database, generated backup, company logos, and attachments in that local Docker volume. Workspace `data/` and `backend/data/` folders are ignored by Git and excluded from Docker build contexts; they are for local state only. Protect the volume and backups as private data.
+
+Use **Data** in the app header to export a portable ZIP backup or import one on another machine. Import replaces all processes and uploaded files currently stored in that War Room. The archive includes a versioned JSON manifest and the uploaded files; keep it private because it may contain interview notes and other personal information.
 
 ## Development and tests
 

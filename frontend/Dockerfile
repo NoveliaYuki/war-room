@@ -6,13 +6,14 @@ COPY package.json ./package.json
 COPY public ./public
 COPY demo ./demo
 COPY index.html ./index.html
+COPY runtime-config.json ./runtime-config.json
 RUN find public/js demo -type f -name '*.js' -exec node --check {} +
 
 FROM nginx:alpine-slim AS runtime
 
 LABEL maintainer="War Room Team" \
       description="War Room Candidate Selection Process Command Center Frontend" \
-      version="0.0.5"
+      version="0.1.0"
 
 RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 
@@ -20,6 +21,7 @@ COPY nginx.conf /etc/nginx/conf.d/war-room.conf
 COPY security-headers.conf /etc/nginx/war-room-security-headers.conf
 
 COPY --from=assets /src/index.html /usr/share/nginx/html/index.html
+COPY --from=assets /src/runtime-config.json /usr/share/nginx/html/runtime-config.json
 COPY --from=assets /src/public /usr/share/nginx/html/public
 COPY --from=assets /src/demo /usr/share/nginx/html/demo
 

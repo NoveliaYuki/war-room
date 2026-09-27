@@ -9,6 +9,34 @@ function pathSegment(value) {
 
 /** Sends typed API requests for jobs, stages, questions, and attachments. */
 const backendApi = {
+  getCompanyLogoUrl(companyName, companyDomain, jobId) {
+    return `/api/company-logo?company=${encodeURIComponent(companyName)}&domain=${encodeURIComponent(companyDomain || "")}&job_id=${encodeURIComponent(jobId || "")}`;
+  },
+  /** Downloads a portable ZIP backup. */
+  async exportBackup() {
+    const res = await fetch("/api/backup/export");
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to create backup" }));
+      throw new Error(error.error || "Failed to create backup");
+    }
+    return res.blob();
+  },
+
+  /** Imports a portable ZIP backup, replacing the current saved processes. */
+  async importBackup(file, allowEmpty = false) {
+    const form = new FormData();
+    form.append("backup", file);
+    form.append("allow_empty", String(allowEmpty));
+    const res = await fetch("/api/backup/import", { method: "POST", body: form });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to import backup" }));
+      const exception = new Error(error.error || "Failed to import backup");
+      exception.requiresEmptyConfirmation = error.requires_confirmation === true;
+      throw exception;
+    }
+    return res.json();
+  },
+
   /**
    * Fetches job processes with optional status and search filters.
    */
@@ -37,7 +65,11 @@ const backendApi = {
   async getJob(id) {
     const res = await fetch(`/api/jobs/${pathSegment(id)}`);
     if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
-    return res.json();
+    const job = await res.json();
+    for (const attachment of job.attachments || []) {
+      attachment.download_url = `/api/attachments/${pathSegment(attachment.id)}/download`;
+    }
+    return job;
   },
 
   /**

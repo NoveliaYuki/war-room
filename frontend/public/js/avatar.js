@@ -1,16 +1,5 @@
 import { escapeAttr } from "./utils/sanitize.js";
-
-const DEMO_COMPANY_LOGOS = new Map([
-  ["google", "google-g.png"],
-  ["openai", "openai.svg"],
-  ["factorial", "factorial-mark.png"],
-  ["apple", "apple.svg"],
-  ["microsoft", "microsoft.svg"],
-  ["datadog", "datadog.svg"],
-  ["meta", "meta.svg"],
-  ["stripe", "stripe.svg"],
-  ["spotify", "spotify.svg"],
-]);
+import { api } from "./api.js";
 
 /**
  * @fileoverview Procedural Bauhaus/Geometric SVG Avatar Generator.
@@ -62,13 +51,6 @@ const ACCENT_SHAPES = [
   (color) => `<rect x="58" y="20" width="20" height="20" rx="4" fill="${color}"/>`,
   (color) => `<circle cx="70" cy="30" r="10" fill="${color}"/>`,
 ];
-
-/** Returns whether the shared UI is running with the browser-only demo adapter. */
-function isDemoMode() {
-  return document.body.dataset.demo === "true"
-    || window.location.pathname.startsWith("/demo/")
-    || new URLSearchParams(window.location.search).has("demo");
-}
 
 /** Renders a deterministic geometric primitive from a bounded set. */
 function renderShape(variants, selector, color) {
@@ -131,20 +113,14 @@ export function renderCompanyAvatar(companyName = "Unknown", seed = "default", s
     return `<div class="avatar-svg-wrapper" style="width: 100%; height: 100%; border-radius: inherit;">${fallbackSvg}</div>`;
   }
 
-  if (isDemoMode()) {
-    const logo = DEMO_COMPANY_LOGOS.get(companyName.toLowerCase().trim());
-    if (logo) {
-      return `<div class="company-avatar-box" style="width: 100%; height: 100%; position: relative; border-radius: inherit; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff;">
-        <img src="/demo/assets/logos/${logo}" alt="${escapeAttr(companyName)} logo" class="company-logo-img" style="width: 100%; height: 100%; object-fit: contain; padding: 6px; border-radius: inherit;" loading="lazy" />
-      </div>`;
-    }
+  const logoUrl = api.getCompanyLogoUrl(companyName, companyDomain, jobId) || "";
+  if (!logoUrl) {
     return `<div class="avatar-svg-wrapper" style="width: 100%; height: 100%; border-radius: inherit;">${fallbackSvg}</div>`;
   }
-  const logoUrl = `/api/company-logo?company=${encodeURIComponent(companyName)}&domain=${encodeURIComponent(companyDomain || '')}&job_id=${encodeURIComponent(jobId || '')}`;
 
   return `
     <div class="company-avatar-box" style="width: 100%; height: 100%; position: relative; border-radius: inherit; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-      <img src="${logoUrl}"
+      <img src="${escapeAttr(logoUrl)}"
            alt="${escapeAttr(companyName)}"
            class="company-logo-img"
            style="width: 100%; height: 100%; object-fit: contain; padding: 6px; border-radius: inherit; background: rgba(255, 255, 255, 0.05);"

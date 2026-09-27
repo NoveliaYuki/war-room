@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   api: {
+    getCompanyLogoUrl: vi.fn((company) => `/api/company-logo?company=${encodeURIComponent(company)}`),
     updateJob: vi.fn(),
     deleteJob: vi.fn(),
     reorderJobs: vi.fn(),

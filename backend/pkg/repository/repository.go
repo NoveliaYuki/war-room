@@ -774,6 +774,13 @@ func (r *Repository) InsertAttachment(a *models.Attachment) error {
 	return err
 }
 
+func defaultValue(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
 // DeleteAttachment removes the attachment identified by id.
 func (r *Repository) DeleteAttachment(id string) error {
 	res, err := r.db.Exec("DELETE FROM attachments WHERE id = ?", id)

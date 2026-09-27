@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), createJob: vi.fn() },
+  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn() },
   renderCardGrid: vi.fn(), renderScheduleView: vi.fn(), closeWithFlip: vi.fn((_modal, _backdrop, done) => done?.()),
   showToast: vi.fn(),
 }));
@@ -22,16 +22,19 @@ describe('application entry point', () => {
       <div id="cards-grid"></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
-      <div id="header-controls"><input id="search-input">
+      <div id="header-controls"><div class="search-wrapper"><input id="search-input"></div>
+      <button id="btn-data-management"></button><div class="filter-tabs">
       <button class="filter-tab" data-filter="ongoing"></button><button class="filter-tab" data-filter="accepted"></button>
       <button class="filter-tab" data-filter="rejected"></button><button class="filter-tab" data-filter="all"></button>
-      <button class="filter-tab" data-filter="schedule"></button><button class="filter-tab" data-filter="invalid"></button></div>
+      <button class="filter-tab" data-filter="schedule"></button><button class="filter-tab" data-filter="invalid"></button></div></div>
       <span id="count-all"></span><span id="count-ongoing"></span><span id="count-accepted"></span><span id="count-rejected"></span><span id="count-meetings"></span>`;
     mocks.api.getJobCounts.mockResolvedValue({ all: 1, ongoing: 1, accepted: 0, rejected: 0 });
     mocks.api.getMeetings.mockResolvedValue([]);
     mocks.api.getJobs.mockResolvedValue([]);
     mocks.api.createJob.mockResolvedValue({ id: 'new' });
     mocks.renderScheduleView.mockResolvedValue(undefined);
+    let resizeHeader;
+    vi.stubGlobal('ResizeObserver', class { constructor(callback) { resizeHeader = callback; } observe() {} });
     await import('../../public/js/app.js');
     localStorageGet.mockRestore();
     await flush();
@@ -198,5 +201,113 @@ describe('application entry point', () => {
     expect(mocks.api.createJob).toHaveBeenLastCalledWith(expect.objectContaining({
       salary_type: 'no_min', salary_min: null, salary_max: 100000,
     }));
+
+    // A wrapped actions row follows the actual tabs width, then clears its override when space returns.
+    const tabs = document.querySelector('.filter-tabs');
+    const search = document.querySelector('.search-wrapper');
+    const dataButton = document.querySelector('#btn-data-management');
+    const processButton = document.querySelector('#btn-new-process');
+    headerControls.style.columnGap = '16px';
+    search.style.maxWidth = '580px';
+    let searchTop = 60;
+    let actionTop = 60;
+    let searchWidth = 300;
+    let compact = false;
+    const previousMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn(() => ({ matches: compact }));
+    tabs.getBoundingClientRect = () => ({ top: 0, height: 40, width: 620 });
+    search.getBoundingClientRect = () => ({ top: searchTop, height: 40, width: searchWidth });
+    dataButton.getBoundingClientRect = () => ({ top: actionTop, height: 40, width: 100 });
+    processButton.getBoundingClientRect = () => ({ top: actionTop, height: 40, width: 160 });
+    Object.defineProperty(headerControls, 'clientWidth', { configurable: true, value: 1600 });
+    resizeHeader();
+    expect(search.style.width).toBe('328px');
+    searchWidth = 328;
+    resizeHeader();
+    expect(search.style.width).toBe('');
+    searchWidth = 300;
+    resizeHeader();
+    expect(search.style.width).toBe('328px');
+    searchTop = 0;
+    Object.defineProperty(headerControls, 'clientWidth', { configurable: true, value: 1000 });
+    window.dispatchEvent(new Event('resize'));
+    expect(search.style.width).toBe('');
+    actionTop = 0;
+    Object.defineProperty(headerControls, 'clientWidth', { configurable: true, value: 1600 });
+    window.dispatchEvent(new Event('resize'));
+    expect(search.style.width).toBe('');
+    searchTop = 60;
+    actionTop = 0;
+    window.dispatchEvent(new Event('resize'));
+    expect(search.style.width).toBe('');
+    compact = true;
+    window.dispatchEvent(new Event('resize'));
+    expect(search.style.width).toBe('');
+    window.matchMedia = previousMatchMedia;
+
+    // Export and import use the same ZIP dialog and confirmation regardless of data adapter.
+    dataButton.click();
+    expect(document.querySelector('#btn-export-backup').textContent).toContain('ZIP backup');
+    expect(document.querySelector('#btn-import-backup').disabled).toBe(true);
+    const fileInput = document.querySelector('#backup-import-file');
+    const backupFile = new File(['zip'], 'backup.zip', { type: 'application/zip' });
+    Object.defineProperty(fileInput, 'files', { configurable: true, value: [backupFile] });
+    fileInput.dispatchEvent(new Event('change'));
+    expect(document.querySelector('#btn-import-backup').disabled).toBe(true);
+    document.querySelector('#backup-import-confirm').click();
+    expect(document.querySelector('#btn-import-backup').disabled).toBe(false);
+    mocks.api.importBackup.mockResolvedValueOnce({ success: true });
+    document.querySelector('#btn-import-backup').click();
+    await flush();
+    expect(mocks.api.importBackup).toHaveBeenCalledWith(backupFile, false);
+    expect(document.querySelector('#detail-modal').innerHTML).toBe('');
+
+    dataButton.click();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:backup'), revokeObjectURL: vi.fn() }));
+    mocks.api.exportBackup.mockResolvedValueOnce(new Blob(['zip']));
+    document.querySelector('#btn-export-backup').click();
+    await flush();
+    expect(anchorClick).toHaveBeenCalled();
+    expect(mocks.showToast).toHaveBeenCalledWith('Backup downloaded', 'success');
+    anchorClick.mockRestore();
+    mocks.api.exportBackup.mockRejectedValueOnce(new Error('export failed'));
+    document.querySelector('#btn-export-backup').click();
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('export failed', 'error');
+    mocks.api.exportBackup.mockRejectedValueOnce(new Error(''));
+    document.querySelector('#btn-export-backup').click();
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('Failed to export backup', 'error');
+
+    const importFile = document.querySelector('#backup-import-file');
+    Object.defineProperty(importFile, 'files', { configurable: true, value: [backupFile] });
+    importFile.dispatchEvent(new Event('change'));
+    document.querySelector('#backup-import-confirm').click();
+    const importButton = document.querySelector('#btn-import-backup');
+    mocks.api.importBackup.mockRejectedValueOnce(new Error('broken ZIP'));
+    importButton.click();
+    await flush();
+    expect(document.querySelector('#backup-import-status').textContent).toBe('broken ZIP');
+    expect(importButton.disabled).toBe(false);
+    mocks.api.importBackup.mockRejectedValueOnce(new Error(''));
+    importButton.click();
+    await flush();
+    expect(document.querySelector('#backup-import-status').textContent).toBe('Failed to import backup');
+    const emptyBackup = Object.assign(new Error('empty'), { requiresEmptyConfirmation: true });
+    const confirmEmpty = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+    vi.stubGlobal('confirm', confirmEmpty);
+    mocks.api.importBackup.mockRejectedValueOnce(emptyBackup);
+    importButton.click();
+    await flush();
+    expect(importButton.disabled).toBe(false);
+    mocks.api.importBackup.mockRejectedValueOnce(emptyBackup).mockResolvedValueOnce({ success: true });
+    importButton.click();
+    await flush();
+    expect(confirmEmpty).toHaveBeenCalledTimes(2);
+    expect(mocks.api.importBackup).toHaveBeenLastCalledWith(backupFile, true);
+    dataButton.click();
+    document.querySelector('#btn-close-data-modal').click();
+    vi.unstubAllGlobals();
   });
 });

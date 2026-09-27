@@ -10,7 +10,9 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"war-room/backend/pkg/config"
@@ -72,6 +74,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/questions/{id}", h.handleDeleteQuestion)
 
 	mux.HandleFunc("GET /api/meetings", h.handleGetMeetings)
+	mux.HandleFunc("GET /api/backup/export", h.handleExportBackup)
+	mux.HandleFunc("POST /api/backup/import", h.handleImportBackup)
 
 	mux.HandleFunc("POST /api/attachments", h.handleUploadAttachment)
 	mux.HandleFunc("GET /api/attachments/{id}/download", h.handleDownloadAttachment)
@@ -90,6 +94,79 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 			fs.ServeHTTP(w, r)
 		})
 	}
+}
+
+func (h *Handler) handleExportBackup(w http.ResponseWriter, _ *http.Request) {
+	archive, err := os.CreateTemp(h.cfg.DataDir, ".war-room-export-*.zip")
+	if err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to prepare backup archive")
+		return
+	}
+	defer func() { _ = os.Remove(archive.Name()) }()
+	defer func() { _ = archive.Close() }()
+	if err := h.jobs.ExportArchive(archive); err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to create backup archive")
+		return
+	}
+	info, err := archive.Stat()
+	if err != nil || archive.Sync() != nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to finish backup archive")
+		return
+	}
+	if info.Size() > 500<<20 {
+		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup ZIP exceeds the 500 MiB limit")
+		return
+	}
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to read backup archive")
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="war-room-backup.zip"`)
+	w.Header().Set("Cache-Control", "no-store, must-revalidate")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	_, _ = io.Copy(w, archive)
+}
+
+func (h *Handler) handleImportBackup(w http.ResponseWriter, r *http.Request) {
+	const maxArchiveBytes = (500 << 20) + (1 << 20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxArchiveBytes)
+	// #nosec G120 -- MaxBytesReader bounds the entire multipart request above.
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Upload a valid ZIP backup no larger than 500 MiB")
+		return
+	}
+	if r.MultipartForm != nil {
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
+	}
+	file, header, err := r.FormFile("backup")
+	if err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Choose a War Room ZIP backup to import")
+		return
+	}
+	defer func() { _ = file.Close() }()
+	if header.Size > 500<<20 {
+		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup ZIP exceeds the 500 MiB limit")
+		return
+	}
+	readerAt, ok := file.(io.ReaderAt)
+	if !ok {
+		ErrorJSON(w, http.StatusBadRequest, "Could not read the uploaded backup")
+		return
+	}
+	allowEmpty := r.FormValue("allow_empty") == "true"
+	if err := h.jobs.ImportArchive(readerAt, header.Size, allowEmpty); err != nil {
+		if errors.Is(err, service.ErrEmptyBackupRequiresConfirmation) {
+			JSON(w, http.StatusConflict, map[string]interface{}{
+				"error":                 "This backup contains no saved processes.",
+				"requires_confirmation": true,
+			})
+			return
+		}
+		ErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
 // handleHealthCheck returns a 200 OK status to indicate the service is running.
