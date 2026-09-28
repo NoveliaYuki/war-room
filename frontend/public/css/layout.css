@@ -344,7 +344,6 @@
 }
 
 @media (min-width: 1601px) {
-  .header-inner { max-width: 1800px; }
   .header-controls { flex-wrap: nowrap; gap: 12px; }
   .search-wrapper { max-width: none; }
 }
