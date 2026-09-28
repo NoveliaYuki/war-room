@@ -498,6 +498,24 @@ describe('cardGrid', () => {
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
   });
 
+  it('forwards vertical movement to page scrolling until the hold becomes a drag', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+    card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 100 }]));
+    const smallMove = touchEvent('touchmove', [{ clientX: 10, clientY: 80 }]);
+    document.dispatchEvent(smallMove);
+    expect(smallMove.defaultPrevented).toBe(true);
+    expect(scrollBy).not.toHaveBeenCalled();
+
+    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 10, clientY: 50 }]));
+    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 10, clientY: 40 }]));
+    expect(scrollBy).toHaveBeenNthCalledWith(1, 0, 50);
+    expect(scrollBy).toHaveBeenNthCalledWith(2, 0, 10);
+    window.dispatchEvent(touchEvent('touchend'));
+  });
+
   it('cancels a touch hold when movement begins before the hold delay', () => {
     vi.useFakeTimers();
     const { card } = setup();
