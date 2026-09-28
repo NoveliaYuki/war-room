@@ -116,6 +116,7 @@ function renderCardRoleHighlights(job) {
 function createCardElement(job) {
   const card = document.createElement("div");
   card.className = "process-card";
+  card.style.touchAction = "none";
   card.setAttribute("data-id", job.id);
   card.addEventListener("mousemove", (event) => updateCardGlow(card, event));
   const avatarHtml = renderCompanyAvatar(job.company_name, job.avatar_seed, 64, job.company_domain, job.id);

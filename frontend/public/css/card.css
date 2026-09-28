@@ -28,6 +28,7 @@
     box-shadow var(--duration-fast);
   -webkit-user-select: none;
   user-select: none;
+  touch-action: none;
   overflow: hidden;
 }
 
@@ -461,12 +462,6 @@
   pointer-events: none !important;
   transition: none !important;
   transform: scale(1.04) rotate(1.2deg);
-}
-
-@media (hover: none) and (pointer: coarse) {
-  .process-card {
-    touch-action: none;
-  }
 }
 
 body.is-reordering-cards,

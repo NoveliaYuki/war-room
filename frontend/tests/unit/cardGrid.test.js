@@ -102,6 +102,12 @@ describe('cardGrid', () => {
     delete window.showToast;
   });
 
+  it('reserves the touch gesture for card drag and manually managed page scrolling', () => {
+    const { card } = setup();
+
+    expect(card.style.touchAction).toBe('none');
+  });
+
   it("renders employment type from each job record", () => {
     const container = document.createElement("div");
     const jobs = [
