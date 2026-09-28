@@ -15,6 +15,14 @@ docker compose up --build -d
 
 Open <http://localhost:3000>. Check app health with `docker compose ps`; view browser-test output with `docker compose logs --tail=100 test`. The test backend uses temporary storage and never reads or changes the app database. Stop containers with `docker compose down`; this preserves app data. **Do not run `docker compose down --volumes` unless the user explicitly asks to delete the local database and uploads.**
 
+After every project change, rebuild and recreate the app containers so the running app uses the current files. Run `docker compose --project-name war-room up --build --force-recreate -d frontend backend` (include any other affected app service), then wait for `docker compose --project-name war-room ps` to report healthy services. Keep the same project name, port overrides, and CORS settings used by the active local stack. The standard local stack serves the app at `http://localhost:3000`.
+
+```sh
+docker compose --project-name war-room up --build --force-recreate -d frontend backend
+```
+
+After each reload, open both `http://localhost:3000` and `http://localhost:3000/?demo` in Google Chrome. Confirm the change appears and behaves correctly in both modes. Inspect the affected UI at relevant desktop and narrow viewport sizes, checking spacing, alignment, wrapping, and overlap. Do not hand off the change until both views have been checked; report any view that could not be verified.
+
 ## Required practices
 
 - Use project Docker containers for development, formatting, linting, and tests. The default `docker compose up` starts an isolated test backend, test frontend, and Go Playwright runner; the runner waits for both test services to become healthy.

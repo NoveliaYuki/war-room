@@ -343,8 +343,22 @@
   .search-wrapper { max-width: 580px; }
 }
 
+@media (min-width: 1601px) {
+  .header-inner { max-width: 1800px; }
+  .header-controls { flex-wrap: nowrap; gap: 12px; }
+  .search-wrapper { max-width: none; }
+}
+
 @media (min-width: 901px) and (max-width: 1300px) {
   .search-wrapper { max-width: 430px; }
+}
+
+@media (min-width: 761px) and (max-width: 1300px) {
+  .header-search-actions {
+    display: contents;
+  }
+
+  .header-search-actions .search-wrapper { flex: 1 1 160px; min-width: 160px; }
 }
 
 @media (max-width: 760px) {
@@ -411,12 +425,6 @@
   .search-wrapper { max-width: 390px; }
   .filter-tabs { max-width: 100%; }
   .filter-tab { padding-inline: 9px; }
-  .cards-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
-}
-
-@media (max-width: 760px) {
-  .cards-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .process-card { min-height: 0; }
 }
 
 /* Toast Notification System */

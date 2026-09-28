@@ -29,6 +29,9 @@ const MAX_SPLIT_RATIO = 80;
 const MIN_LEFT_PANE_PX = 340;
 const MIN_RIGHT_PANE_PX = 400;
 const SPLIT_GUTTER_PX = 14;
+const JOB_STATUS_CYCLE = ["ongoing", "rejected", "accepted"];
+const JOB_STATUS_LABELS = { ongoing: "Ongoing", rejected: "Rejected", accepted: "Approved" };
+const splitResizeObservers = new WeakMap();
 
 /** Keeps both desktop panes wide enough for their contents. */
 function getSplitRatioLimits(layoutWidth) {
@@ -56,12 +59,15 @@ function readSplitRatio() {
 
 /** Adds a draggable, keyboard-accessible divider between the detail panes. */
 function bindSplitPaneResize(modalEl) {
+  splitResizeObservers.get(modalEl)?.disconnect();
   const layout = modalEl.querySelector(".modal-split-layout");
   const handle = modalEl.querySelector(".split-pane-resizer");
   if (!layout || !handle) return;
 
-  let ratio = readSplitRatio();
-  const applyRatio = (nextRatio, persist = true, limits = getSplitRatioLimits(layout.getBoundingClientRect().width)) => {
+  let preferredRatio = readSplitRatio();
+  let ratio = preferredRatio;
+  const applyRatio = (nextRatio, persist = true, limits = getSplitRatioLimits(layout.getBoundingClientRect().width), preservePreference = false) => {
+    if (!preservePreference) preferredRatio = Math.round(nextRatio);
     ratio = Math.min(limits.maximum, Math.max(limits.minimum, Math.round(nextRatio)));
     layout.style.setProperty("--split-left-fr", `${ratio}fr`);
     layout.style.setProperty("--split-right-fr", `${100 - ratio}fr`);
@@ -77,7 +83,12 @@ function bindSplitPaneResize(modalEl) {
     }
   };
 
-  applyRatio(ratio, false);
+  applyRatio(preferredRatio, false, getSplitRatioLimits(layout.getBoundingClientRect().width), true);
+  const observer = new ResizeObserver(() => {
+    applyRatio(preferredRatio, false, getSplitRatioLimits(layout.getBoundingClientRect().width), true);
+  });
+  observer.observe(layout);
+  splitResizeObservers.set(modalEl, observer);
   handle.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
       event.preventDefault();
@@ -192,9 +203,10 @@ function getSalaryRawValue(job) {
   return job.salary_max || job.salary_min || "Salary undisclosed";
 }
 
-/** Renders a job status option and marks its current value. */
-function renderStatusOption(status, value, label) {
-  return `<option value="${value}" ${status === value ? "selected" : ""}>Status: ${label}</option>`;
+/** Returns the next job status in the modal's click cycle. */
+function getNextJobStatus(status) {
+  const currentIndex = JOB_STATUS_CYCLE.indexOf(status);
+  return JOB_STATUS_CYCLE[(currentIndex + 1) % JOB_STATUS_CYCLE.length];
 }
 
 /** Escapes optional note text or returns its empty-state markup. */
@@ -345,12 +357,14 @@ function renderModalHeader(view) {
         <div class="modal-title-area">
           <div class="modal-company ${job.company_name.toLowerCase() === 'unknown' ? 'is-unknown' : ''}">
             <span class="editable-company-name" data-raw-value="${escapeAttr(job.company_name)}">${renderCompanyLabel(job.company_name)}</span>
-            <span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(job.status)}</span>
+            <button type="button" class="status-pill editable-job-status ${escapeAttr(job.status)}" aria-label="Job status: ${escapeAttr(JOB_STATUS_LABELS[job.status] || job.status)}. Click to change status." title="Click to cycle job status">${escapeHtml(JOB_STATUS_LABELS[job.status] || job.status)}</button>
+            <div class="modal-header-actions"><button class="modal-close-btn" title="Close (Esc)">${icon("close", 14)}</button></div>
           </div>
           <h2 class="modal-title editable-position-title" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h2>
-          <div class="modal-meta-pills">
+        </div>
+        <div class="modal-meta-pills">
             <button type="button" class="salary-tag editable-salary ${job.salary_type === 'unknown' ? 'undisclosed' : ''} inline-icon-text" data-raw-value="${escapeAttr(getSalaryRawValue(job))}" aria-label="Salary: ${escapeAttr(formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency))}. Click to edit." title="Click to edit salary">
-              ${icon("euro", 13)} ${escapeHtml(formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency))}
+              ${escapeHtml(formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency))}
             </button>
             <button type="button" class="referral-tag ${job.is_referral ? 'is-referral' : 'not-referral'} editable-modal-referral inline-icon-text" data-id="${escapeAttr(job.id)}" title="Click to toggle referral status" aria-label="${job.is_referral ? 'Referral' : 'No referral'}. Click to toggle.">
               ${icon("userCheck", 12)} ${job.is_referral ? 'Referral' : 'No referral'}
@@ -365,16 +379,7 @@ function renderModalHeader(view) {
               hybrid: "Hybrid",
               on_site: "On-site",
             })}
-          </div>
         </div>
-      </div>
-      <div class="modal-header-actions">
-        <select class="job-status-picker">
-          ${renderStatusOption(job.status, "ongoing", "Ongoing")}
-          ${renderStatusOption(job.status, "accepted", "Accepted")}
-          ${renderStatusOption(job.status, "rejected", "Rejected")}
-        </select>
-        <button class="modal-close-btn" title="Close (Esc)">${icon("close", 14)}</button>
       </div>
     </div>
 
@@ -577,7 +582,7 @@ function renderStageSchedule(stage) {
   const meetingType = getMeetingTypeClass(stage.meeting_type);
   return `<div class="stage-schedule-badge-row">${modeTag}<span class="inline-icon-text">${icon("calendar", 12)} ${escapeHtml(stage.meeting_date || "")} • ${escapeHtml(stage.meeting_time || "")}</span>
     <span class="meeting-format-pill pill-${meetingType} inline-icon-text">${format}</span>${join}
-    <button class="stage-action-btn btn-edit-meeting-schedule inline-icon-text" style="font-size: 11px; padding: 2px 8px; color: var(--accent-blue);">${icon("edit", 11)} Edit Schedule</button></div>`;
+    <button class="stage-action-btn btn-edit-meeting-schedule inline-icon-text" style="font-size: 11px; padding: 2px 4px; color: var(--accent-blue);">${icon("edit", 11)} Edit Schedule</button></div>`;
 }
 
 /** Maps a meeting format to an allowed style class suffix. */
@@ -591,7 +596,9 @@ function renderStageActionButtons(view) {
   const current = activeStage.status === "current";
   const moveUp = activeStageIndex > 0 ? `<button class="stage-action-btn" id="btn-move-stage-up" title="Move Up">${icon("chevronUp", 12)}</button>` : "";
   const moveDown = activeStageIndex < stages.length - 1 ? `<button class="stage-action-btn" id="btn-move-stage-down" title="Move Down">${icon("chevronDown", 12)}</button>` : "";
-  const currentLabel = current ? `${icon("pin", 12)} Current Step ${icon("check", 12)}` : `${icon("target", 12)} Set as Current Step`;
+  const currentLabel = current
+    ? `${icon("pin", 12)} <span class="stage-current-label-full">Current Step</span><span class="stage-current-label-compact">Current</span> ${icon("check", 12)}`
+    : `${icon("target", 12)} <span class="stage-current-label-full">Set as Current Step</span><span class="stage-current-label-compact">Set Current</span>`;
   return `<button class="btn-stage-current ${current ? "is-current" : ""}" id="btn-toggle-current-stage" title="Click to mark this as your current step in the process"><span class="inline-icon-text">${currentLabel}</span></button>${moveUp}${moveDown}<button class="stage-action-btn" id="btn-delete-stage" title="Delete Stage" style="color: var(--status-rejected);">${icon("close", 12)}</button>`;
 }
 
@@ -624,7 +631,7 @@ function renderActiveStageHero(view) {
   const description = renderOptionalText(activeStage.description, "No stage description");
   return `<div class="stage-hero-banner"><div class="stage-hero-left"><span class="stage-type-badge ${getStageTypeClass(activeStage.stage_type)}">${escapeHtml(activeStage.stage_type)}</span><div>
     <div class="stage-hero-title editable-stage-title" data-raw-value="${escapeAttr(title)}">${escapeHtml(title)}</div><div class="stage-hero-desc editable-stage-desc" data-raw-value="${escapeAttr(activeStage.description || "")}">${description}</div>
-    ${renderStageSchedule(activeStage)}</div></div><div class="stage-hero-actions">${renderStageActionButtons(view)}</div></div>`;
+    </div></div><div class="stage-hero-schedule">${renderStageSchedule(activeStage)}</div><div class="stage-hero-actions">${renderStageActionButtons(view)}</div></div>`;
 }
 
 /** Renders the active stage editor or the no-stages prompt. */
@@ -664,6 +671,7 @@ function attachModalHandlers(context) {
   };
 
   const closeAction = () => {
+    splitResizeObservers.get(modalEl)?.disconnect();
     closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
     });
@@ -692,12 +700,17 @@ function bindBasicModalActions(context) {
   modalEl.querySelector(".modal-close-btn")?.addEventListener("click", closeAction);
   modalEl.querySelector(".btn-close-modal")?.addEventListener("click", closeAction);
 
-  modalEl.querySelector(".job-status-picker")?.addEventListener("change", async (e) => {
+  const statusButton = modalEl.querySelector(".editable-job-status");
+  statusButton?.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    statusButton.disabled = true;
     try {
-      await api.updateJob(job.id, { status: e.target.value });
-      refreshModal();
-    } catch (err) {
-      showToast(err.message, "error");
+      await api.updateJob(job.id, { status: getNextJobStatus(job.status) });
+      await refreshModal();
+    } catch (error) {
+      statusButton.disabled = false;
+      showToast(error.message, "error");
     }
   });
 
@@ -1367,6 +1380,16 @@ ${renderActiveStageWorkspace(view)}
     </div>
   `;
 
+  const tabs = modalEl.querySelector(".stages-tab-bar");
+  const activeTab = tabs?.querySelector(".stage-tab-item.active");
+  if (tabs && activeTab) {
+    const tabsRect = tabs.getBoundingClientRect();
+    const activeRect = activeTab.getBoundingClientRect();
+    if (activeRect.left < tabsRect.left || activeRect.right > tabsRect.right) {
+      tabs.scrollLeft += activeRect.left - tabsRect.left - (tabs.clientWidth - activeRect.width) / 2;
+    }
+  }
+
   attachModalHandlers({ modalEl, backdropEl, job, onGlobalRefresh, ...view });
 }
 
@@ -1380,9 +1403,9 @@ function renderEditDetailsMarkup(job) {
       <h2 class="modal-title">Edit Selection Process Details</h2>
       <button class="modal-close-btn">&times;</button>
     </div>
-    <form class="edit-process-form" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto;">
+    <form class="edit-process-form process-form">
       <h3 class="edit-section-heading">Job details</h3>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="form-grid form-grid-two">
         <div>
           <label class="meta-label">Company Name</label>
           <input type="text" name="company_name" value="${escapeAttr(job.company_name)}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
@@ -1394,7 +1417,7 @@ function renderEditDetailsMarkup(job) {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+      <div class="form-grid form-grid-three">
         <div>
           <label class="meta-label">Salary Range Type</label>
           <select name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
@@ -1414,7 +1437,7 @@ function renderEditDetailsMarkup(job) {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+      <div class="form-grid form-grid-three">
         <div>
           <label class="meta-label">Recruiter Relationship</label>
           <select name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
@@ -1433,7 +1456,7 @@ function renderEditDetailsMarkup(job) {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="form-grid form-grid-two">
         <div>
           <label class="meta-label">Job Post URL (LinkedIn or Careers Page)</label>
           <input type="url" name="job_post_url" value="${formValue(job, "job_post_url")}" placeholder="https://linkedin.com/jobs/view/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
@@ -1482,7 +1505,7 @@ function renderEditDetailsMarkup(job) {
         <textarea name="interview_notes" rows="4" placeholder="Write anything else you want to remember about this selection process..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "interview_notes")}</textarea>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px;">
+      <div class="form-actions">
         <button type="button" class="btn-secondary btn-cancel-edit">Cancel</button>
         <button type="submit" class="btn-primary">Save Changes</button>
       </div>
@@ -1601,8 +1624,8 @@ function openScheduleStageForm(modalEl, backdropEl, job, stage, onSaved) {
       <h2 class="modal-title inline-icon-text">${icon("calendar", 16)} Schedule Interview: ${escapeHtml(stage.custom_title || stage.stage_type)}</h2>
       <button class="modal-close-btn">${icon("close", 14)}</button>
     </div>
-    <form id="schedule-stage-form" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto;">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <form id="schedule-stage-form" class="process-form">
+      <div class="form-grid form-grid-two">
         <div>
           <label class="meta-label">Interview Date</label>
           <input type="date" name="meeting_date" value="${escapeAttr(defaultDate)}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
@@ -1613,7 +1636,7 @@ function openScheduleStageForm(modalEl, backdropEl, job, stage, onSaved) {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+      <div class="form-grid">
         <div>
           <label class="meta-label">Interview format</label>
           <select name="meeting_type" id="sel-meeting-type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
@@ -1635,9 +1658,9 @@ function openScheduleStageForm(modalEl, backdropEl, job, stage, onSaved) {
         <textarea name="notes" rows="3" placeholder="Record notes from the conversation..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical;">${escapeHtml(stage.notes || '')}</textarea>
       </div>
 
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+      <div class="schedule-form-actions">
         <button type="button" class="btn-secondary btn-clear-schedule" style="color: var(--status-rejected);">Clear Schedule</button>
-        <div style="display: flex; gap: 10px;">
+        <div class="form-actions">
           <button type="button" class="btn-secondary btn-cancel-schedule">Cancel</button>
           <button type="submit" class="btn-primary">Save Schedule</button>
         </div>

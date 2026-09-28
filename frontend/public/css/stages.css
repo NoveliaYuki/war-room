@@ -239,6 +239,19 @@
   cursor: grabbing;
 }
 
+@media (max-width: 760px) {
+  .stage-hero-actions .stage-action-btn,
+  .btn-del-stage-interviewer,
+  .question-delete-btn,
+  .question-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+  }
+}
+
 .question-item.is-dragging {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--accent-blue);
   background: #131722 !important;
