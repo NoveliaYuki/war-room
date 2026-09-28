@@ -328,8 +328,8 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let offsetY = 0;
   let initialOrder = [];
 
-  const HOLD_DELAY_MS = 260;
-  const HOLD_MOVE_THRESHOLD_PX = 18;
+  const HOLD_DELAY_MS = 180;
+  const HOLD_MOVE_THRESHOLD_PX = 32;
 
   function beginHold(e) {
     startX = e.clientX;

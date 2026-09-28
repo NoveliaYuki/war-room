@@ -334,7 +334,7 @@ describe('cardGrid', () => {
     expect(mocks.openDetailModal).toHaveBeenCalledTimes(buttonCalls + 1);
     const callsBeforeDrag = mocks.openDetailModal.mock.calls.length;
     card.dispatchEvent(pointerEvent('pointerdown'));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
     window.dispatchEvent(pointerEvent('pointerup'));
     card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     vi.advanceTimersByTime(220);
@@ -376,7 +376,7 @@ describe('cardGrid', () => {
     card.querySelector('.btn-card-delete').dispatchEvent(pointerEvent('pointerdown'));
     card.dispatchEvent(pointerEvent('pointerdown'));
     window.dispatchEvent(pointerEvent('pointermove', { x: 12, y: 13 }));
-    window.dispatchEvent(pointerEvent('pointermove', { x: 30, y: 30 }));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 50, y: 50 }));
     vi.advanceTimersByTime(200);
     expect(card.classList.contains('is-holding')).toBe(false);
     expect(card.classList.contains('is-dragging')).toBe(false);
@@ -395,7 +395,7 @@ describe('cardGrid', () => {
     const third = cards[2];
     vi.spyOn(document, 'elementFromPoint').mockImplementation((x) => (x < 100 ? card : x < 220 ? second : third));
     card.dispatchEvent(pointerEvent('pointerdown', { x: 10, y: 10 }));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
     expect(card.classList.contains('is-dragging')).toBe(true);
     expect(document.body.classList.contains('is-reordering-cards')).toBe(true);
     window.dispatchEvent(pointerEvent('pointermove', { x: 150, y: 10 }));
@@ -426,7 +426,7 @@ describe('cardGrid', () => {
     expect(contextMenuBeforeHold.defaultPrevented).toBe(false);
     card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
     document.dispatchEvent(touchEvent('touchmove', [{ clientX: 20, clientY: 10 }]));
-    vi.advanceTimersByTime(259);
+    vi.advanceTimersByTime(179);
     expect(card.classList.contains('is-dragging')).toBe(false);
     vi.advanceTimersByTime(1);
     expect(card.classList.contains('is-dragging')).toBe(true);
@@ -468,7 +468,7 @@ describe('cardGrid', () => {
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(top);
 
     bottom.dispatchEvent(touchEvent('touchstart', [{ clientX: 20, clientY: 270 }]));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
     const move = touchEvent('touchmove', [{ clientX: 20, clientY: 10 }]);
     document.dispatchEvent(move);
     document.dispatchEvent(touchEvent('touchend'));
@@ -488,7 +488,7 @@ describe('cardGrid', () => {
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(bottom);
 
     top.dispatchEvent(touchEvent('touchstart', [{ clientX: 20, clientY: 10 }]));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
     const move = touchEvent('touchmove', [{ clientX: 20, clientY: 470 }]);
     document.dispatchEvent(move);
     document.dispatchEvent(touchEvent('touchend'));
@@ -504,8 +504,8 @@ describe('cardGrid', () => {
 
     card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
     document.dispatchEvent(touchEvent('touchmove'));
-    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 30, clientY: 10 }]));
-    vi.advanceTimersByTime(260);
+    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 60, clientY: 10 }]));
+    vi.advanceTimersByTime(180);
 
     expect(card.classList.contains('is-holding')).toBe(false);
     expect(card.classList.contains('is-dragging')).toBe(false);
@@ -522,7 +522,7 @@ describe('cardGrid', () => {
       { clientX: 20, clientY: 20 },
     ]));
     button.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
 
     expect(card.classList.contains('is-holding')).toBe(false);
     expect(card.classList.contains('is-dragging')).toBe(false);
@@ -534,7 +534,7 @@ describe('cardGrid', () => {
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(card);
 
     card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
     const emptyMove = touchEvent('touchmove');
     document.dispatchEvent(emptyMove);
     expect(emptyMove.defaultPrevented).toBe(true);
@@ -554,7 +554,7 @@ describe('cardGrid', () => {
     vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 80 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(card);
     card.dispatchEvent(pointerEvent('pointerdown'));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
     container.querySelector('.card-drop-placeholder').remove();
     window.dispatchEvent(pointerEvent('pointerup'));
     card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -577,7 +577,7 @@ describe('cardGrid', () => {
     vi.spyOn(other, 'getBoundingClientRect').mockReturnValue({ left: 110, top: 0, width: 100, height: 80 });
     vi.spyOn(document, 'elementFromPoint').mockImplementation(() => targets.shift());
     card.dispatchEvent(pointerEvent('pointerdown'));
-    vi.advanceTimersByTime(260);
+    vi.advanceTimersByTime(180);
     for (let i = 0; i < 5; i += 1) window.dispatchEvent(pointerEvent('pointermove', { x: 120, y: 70 }));
     window.dispatchEvent(pointerEvent('pointerup'));
     await Promise.resolve();
