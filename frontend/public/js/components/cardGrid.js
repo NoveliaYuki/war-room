@@ -325,6 +325,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let placeholder = null;
   let startX = 0;
   let startY = 0;
+  let holdStartedAt = 0;
   let offsetX = 0;
   let offsetY = 0;
   let previousTouchY = 0;
@@ -338,6 +339,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   function beginHold(e) {
     startX = e.clientX;
     startY = e.clientY;
+    holdStartedAt = Date.now();
 
     const rect = card.getBoundingClientRect();
     offsetX = e.clientX - rect.left;
@@ -440,7 +442,11 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
       if (activePointerType === "touch") {
         if (holdTimer !== null) {
           const distance = Math.hypot(e.clientX - startX, e.clientY - startY);
-          if (distance > HOLD_MOVE_THRESHOLD_PX) {
+          if (Date.now() - holdStartedAt >= HOLD_DELAY_MS) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+            startDragging(e, card.getBoundingClientRect());
+          } else if (distance > HOLD_MOVE_THRESHOLD_PX) {
             cancelHoldWhenMoved(e);
             isTouchScrolling = true;
             window.scrollBy(0, startY - e.clientY);
@@ -452,7 +458,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
       } else {
         cancelHoldWhenMoved(e);
       }
-      return;
+      if (!isDragging) return;
     }
 
     // Drag position
