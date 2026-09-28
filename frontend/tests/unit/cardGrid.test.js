@@ -450,6 +450,23 @@ describe('cardGrid', () => {
     expect(card.classList.contains('is-dragging')).toBe(false);
   });
 
+  it('starts a touch drag on the first move after the hold delay, even if the timer callback is late', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 });
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 10, y: 10 }));
+    vi.advanceTimersByTime(179);
+    vi.setSystemTime(Date.now() + 2);
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 30 }));
+
+    expect(card.classList.contains('is-dragging')).toBe(true);
+    expect(card.style.top).toBe('20px');
+    expect(scrollBy).not.toHaveBeenCalled();
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+  });
+
   it('reorders a card upward in a single-column touch layout', async () => {
     vi.useFakeTimers();
     const jobs = [makeJob({ id: 'top' }), makeJob({ id: 'bottom' })];
