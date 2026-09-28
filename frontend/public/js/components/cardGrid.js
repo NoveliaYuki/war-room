@@ -328,8 +328,8 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let offsetY = 0;
   let initialOrder = [];
 
-  const HOLD_DELAY_MS = 180;
-  const HOLD_MOVE_THRESHOLD_PX = 12;
+  const HOLD_DELAY_MS = 260;
+  const HOLD_MOVE_THRESHOLD_PX = 18;
 
   function beginHold(e) {
     startX = e.clientX;
@@ -340,7 +340,10 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     offsetY = e.clientY - rect.top;
 
     card.classList.add("is-holding");
-    holdTimer = setTimeout(() => startDragging(e, rect), HOLD_DELAY_MS);
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      startDragging(e, rect);
+    }, HOLD_DELAY_MS);
   }
 
   function onPointerDown(e) {
@@ -370,23 +373,25 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   function onTouchMove(e) {
+    if (isDragging) {
+      if (e.cancelable) e.preventDefault();
+      const touch = e.touches[0] || e.changedTouches[0];
+      if (touch) onPointerMove({ clientX: touch.clientX, clientY: touch.clientY });
+      return;
+    }
+
     const touch = e.touches[0] || e.changedTouches[0];
     if (!touch) return;
 
     const pointer = { clientX: touch.clientX, clientY: touch.clientY };
-    if (!isDragging) {
-      cancelHoldWhenMoved(pointer);
-      return;
-    }
-
-    if (e.cancelable) e.preventDefault();
-    onPointerMove(pointer);
+    cancelHoldWhenMoved(pointer);
   }
 
   function startDragging(e, rect) {
     isDragging = true;
     card.classList.remove("is-holding");
     card.classList.add("is-dragging");
+    document.documentElement.classList.add("is-reordering-cards");
     document.body.classList.add("is-reordering-cards");
 
     // Capture initial order to detect actual changes
@@ -418,6 +423,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     const distance = Math.hypot(e.clientX - startX, e.clientY - startY);
     if (distance <= HOLD_MOVE_THRESHOLD_PX) return;
     clearTimeout(holdTimer);
+    holdTimer = null;
     card.classList.remove("is-holding");
   }
 
@@ -486,6 +492,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     card.style.margin = "";
     card.style.pointerEvents = "";
     card.classList.remove("is-dragging");
+    document.documentElement.classList.remove("is-reordering-cards");
     document.body.classList.remove("is-reordering-cards");
 
     if (placeholder && placeholder.parentNode) {
@@ -512,6 +519,9 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   card.addEventListener("pointerdown", onPointerDown);
   // Firefox may ignore preventDefault on touchmove listeners registered inside passive touchstart handlers.
   card.addEventListener("touchstart", onTouchStart, { passive: false });
+  card.addEventListener("contextmenu", (event) => {
+    if (holdTimer !== null || isDragging) event.preventDefault();
+  });
 
   return () => isDragging || Date.now() < suppressClickUntil;
 }
