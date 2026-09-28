@@ -469,6 +469,12 @@ body.is-reordering-cards * {
   user-select: none !important;
 }
 
+html.is-reordering-cards,
+html.is-reordering-cards body {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
 .card-drop-placeholder {
   border: 2px dashed rgba(56, 189, 248, 0.45);
   background: rgba(56, 189, 248, 0.05);
