@@ -12,8 +12,7 @@ RUN find public/js demo -type f -name '*.js' -exec node --check {} +
 FROM nginx:alpine-slim AS runtime
 
 LABEL maintainer="War Room Team" \
-      description="War Room Candidate Selection Process Command Center Frontend" \
-      version="0.1.3"
+      description="War Room Candidate Selection Process Command Center Frontend"
 
 RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 

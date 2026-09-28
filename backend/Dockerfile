@@ -27,8 +27,7 @@ RUN mkdir -p /empty_root/data/attachments /empty_root/data/logos /empty_root/tmp
 FROM scratch
 
 LABEL maintainer="War Room Team" \
-      description="War Room Candidate Selection Process Command Center Backend" \
-      version="0.1.3"
+      description="War Room Candidate Selection Process Command Center Backend"
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 

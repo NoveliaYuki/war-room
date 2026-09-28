@@ -74,7 +74,7 @@ docker compose --project-name war-room-precommit up --build --abort-on-container
 docker compose --project-name war-room-precommit down
 ```
 
-The test container has no Git history, so ordinary runs verify version synchronization without a release baseline. When validating a release bump, pass the prior version and bump type through the shell, for example `BASE_VERSION=0.0.2 VERSION_BUMP=patch docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test`.
+The test container has no Git history, so ordinary runs verify that root `VERSION` is the only application version without a release baseline. When validating a release bump, pass the prior version and bump type through the shell, for example `BASE_VERSION=0.0.2 VERSION_BUMP=patch docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test`.
 
 Run `down` even if tests fail; never add `--volumes` to routine cleanup.
 

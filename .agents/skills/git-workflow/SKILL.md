@@ -70,7 +70,7 @@ Use Semantic Versioning only when a release bump is authorized.
 
 Keep the initial version `0.0.1` unless the user authorizes a later release.
 Bump once per PR, then reuse that version on every commit in the PR.
-Synchronize `VERSION`, package metadata, and image labels.
+Use the root `VERSION` file as the sole application release version for frontend and backend. Do not duplicate it in package metadata or image labels; only bump `VERSION` when a release is authorized.
 
 ## 6. Step 3 — Write the Commit Subject
 

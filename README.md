@@ -76,7 +76,7 @@ docker compose --project-name war-room-precommit down
 
 Run the cleanup command even when a check fails. The test-only project has temporary data and does not use the app's published ports or persistent database.
 
-The full test workflow checks version synchronization, formatting, Go and JavaScript quality rules, backend unit coverage (90% minimum), frontend unit coverage (90% minimum), backend integration tests, and Go Playwright tests. Playwright runs in Docker. Use `git diff --check` before submitting changes.
+The full test workflow checks the single version source, formatting, Go and JavaScript quality rules, backend unit coverage (90% minimum), frontend unit coverage (90% minimum), backend integration tests, and Go Playwright tests. Playwright runs in Docker. Use `git diff --check` before submitting changes.
 
 ## Contributing
 
@@ -96,7 +96,7 @@ To report a vulnerability, contact the maintainers privately through the hosting
 
 ## Versioning
 
-`VERSION` is the release source of truth. Keep `package.json` and both image labels synchronized with it. Later releases require the exact next semantic-version bump. The test container checks version references by default; release authors can optionally pass `BASE_VERSION` and `VERSION_BUMP` (defaults to `patch`) to validate the bump. These settings are not needed to run or deploy the app.
+`VERSION` is the only application release version source for the frontend and backend together. Do not add or maintain separate app versions in package metadata or image labels. Later releases require the exact next semantic-version bump. The test container validates `VERSION` by default; release authors can optionally pass `BASE_VERSION` and `VERSION_BUMP` (defaults to `patch`) to validate the bump. These settings are not needed to run or deploy the app.
 
 ## License
 

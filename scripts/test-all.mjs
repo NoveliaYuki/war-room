@@ -6,7 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const suites = [
   {
-    name: 'Version synchronization and release bump validation',
+    name: 'Single version source and release bump validation',
     command: process.execPath,
     args: ['scripts/check-version.mjs'],
     cwd: root,
