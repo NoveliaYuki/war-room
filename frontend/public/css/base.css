@@ -12,7 +12,11 @@ html {
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+
+html::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 body {
   font-family: var(--font-sans);
