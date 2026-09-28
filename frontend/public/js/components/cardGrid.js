@@ -372,6 +372,13 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
+    if (e.pointerType === "touch") {
+      window.addEventListener("touchmove", preventTouchScroll, { passive: false });
+    }
+  }
+
+  function preventTouchScroll(e) {
+    if (isDragging && e.cancelable) e.preventDefault();
   }
 
   function startDragging(e, rect) {
@@ -437,31 +444,33 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     containerEl.insertBefore(placeholder, insertionPoint);
   }
 
+  function movePendingTouch(e) {
+    if (holdTimer !== null) {
+      const distance = Math.hypot(e.clientX - startX, e.clientY - startY);
+      if (Date.now() - holdStartedAt >= HOLD_DELAY_MS) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        startDragging(e, card.getBoundingClientRect());
+      } else if (distance > HOLD_MOVE_THRESHOLD_PX) {
+        cancelHoldWhenMoved(e);
+        isTouchScrolling = true;
+        window.scrollBy(0, startY - e.clientY);
+      }
+    } else if (isTouchScrolling) {
+      window.scrollBy(0, previousTouchY - e.clientY);
+    }
+    previousTouchY = e.clientY;
+  }
+
   function onPointerMove(e) {
     if (!isDragging) {
-      if (activePointerType === "touch") {
-        if (holdTimer !== null) {
-          const distance = Math.hypot(e.clientX - startX, e.clientY - startY);
-          if (Date.now() - holdStartedAt >= HOLD_DELAY_MS) {
-            clearTimeout(holdTimer);
-            holdTimer = null;
-            startDragging(e, card.getBoundingClientRect());
-          } else if (distance > HOLD_MOVE_THRESHOLD_PX) {
-            cancelHoldWhenMoved(e);
-            isTouchScrolling = true;
-            window.scrollBy(0, startY - e.clientY);
-          }
-        } else if (isTouchScrolling) {
-          window.scrollBy(0, previousTouchY - e.clientY);
-        }
-        previousTouchY = e.clientY;
-      } else {
-        cancelHoldWhenMoved(e);
-      }
+      if (activePointerType === "touch") movePendingTouch(e);
+      else cancelHoldWhenMoved(e);
       if (!isDragging) return;
     }
 
     // Drag position
+    if (activePointerType === "touch" && e.cancelable) e.preventDefault();
     moveCardToPointer(e);
 
     // Drop target detection
@@ -479,6 +488,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
+    if (activePointerType === "touch") window.removeEventListener("touchmove", preventTouchScroll);
     isTouchScrolling = false;
 
     if (!isDragging) return;

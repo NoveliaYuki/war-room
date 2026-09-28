@@ -430,8 +430,15 @@ describe('cardGrid', () => {
 
     card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
     expect(capture).toHaveBeenCalledWith(1);
+    const touchMoveBeforeHold = new Event('touchmove', { bubbles: true, cancelable: true });
+    window.dispatchEvent(touchMoveBeforeHold);
+    expect(touchMoveBeforeHold.defaultPrevented).toBe(false);
     vi.advanceTimersByTime(180);
     expect(card.classList.contains('is-dragging')).toBe(true);
+
+    const touchMoveDuringDrag = new Event('touchmove', { bubbles: true, cancelable: true });
+    window.dispatchEvent(touchMoveDuringDrag);
+    expect(touchMoveDuringDrag.defaultPrevented).toBe(true);
 
     window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 150, y: 80 }));
     expect(card.style.top).toBe('70px');
