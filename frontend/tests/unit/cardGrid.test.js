@@ -432,6 +432,17 @@ describe('cardGrid', () => {
     expect(document.body.classList.contains('is-reordering-cards')).toBe(false);
   });
 
+  it('registers the touch start listener as non-passive for Firefox touch cancellation', () => {
+    const addEventListener = vi.spyOn(HTMLElement.prototype, 'addEventListener');
+    const { card } = setup();
+    const registrationIndex = addEventListener.mock.calls.findIndex(([type]) => type === 'touchstart');
+
+    expect(registrationIndex).not.toBe(-1);
+    expect(addEventListener.mock.contexts[registrationIndex]).toBe(card);
+    expect(addEventListener.mock.calls[registrationIndex][2]).toEqual({ passive: false });
+    addEventListener.mockRestore();
+  });
+
   it('cancels a touch hold when movement begins before the hold delay', () => {
     vi.useFakeTimers();
     const { card } = setup();
