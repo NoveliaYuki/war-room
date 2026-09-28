@@ -463,6 +463,12 @@
   transform: scale(1.04) rotate(1.2deg);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .process-card {
+    touch-action: none;
+  }
+}
+
 body.is-reordering-cards,
 body.is-reordering-cards * {
   -webkit-user-select: none !important;

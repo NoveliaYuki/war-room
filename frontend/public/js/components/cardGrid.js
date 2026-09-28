@@ -326,6 +326,8 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let startY = 0;
   let offsetX = 0;
   let offsetY = 0;
+  let previousTouchY = 0;
+  let isTouchScrolling = false;
   let initialOrder = [];
 
   const HOLD_DELAY_MS = 180;
@@ -367,14 +369,17 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
     const touch = e.touches[0];
     beginHold({ clientX: touch.clientX, clientY: touch.clientY });
+    previousTouchY = touch.clientY;
+    isTouchScrolling = false;
     document.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
     window.addEventListener("touchend", onPointerUp);
     window.addEventListener("touchcancel", onPointerUp);
   }
 
   function onTouchMove(e) {
+    if (e.cancelable) e.preventDefault();
+
     if (isDragging) {
-      if (e.cancelable) e.preventDefault();
       const touch = e.touches[0] || e.changedTouches[0];
       if (touch) onPointerMove({ clientX: touch.clientX, clientY: touch.clientY });
       return;
@@ -384,7 +389,17 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     if (!touch) return;
 
     const pointer = { clientX: touch.clientX, clientY: touch.clientY };
-    cancelHoldWhenMoved(pointer);
+    if (holdTimer !== null) {
+      const distance = Math.hypot(pointer.clientX - startX, pointer.clientY - startY);
+      if (distance > HOLD_MOVE_THRESHOLD_PX) {
+        cancelHoldWhenMoved(pointer);
+        isTouchScrolling = true;
+        window.scrollBy(0, startY - touch.clientY);
+      }
+    } else if (isTouchScrolling) {
+      window.scrollBy(0, previousTouchY - touch.clientY);
+    }
+    previousTouchY = touch.clientY;
   }
 
   function startDragging(e, rect) {
@@ -475,6 +490,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
     document.removeEventListener("touchmove", onTouchMove, true);
+    isTouchScrolling = false;
     window.removeEventListener("touchend", onPointerUp);
     window.removeEventListener("touchcancel", onPointerUp);
 
