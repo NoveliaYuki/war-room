@@ -364,7 +364,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
     const touch = e.touches[0];
     beginHold({ clientX: touch.clientX, clientY: touch.clientY });
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
     window.addEventListener("touchend", onPointerUp);
     window.addEventListener("touchcancel", onPointerUp);
   }
@@ -468,7 +468,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
-    window.removeEventListener("touchmove", onTouchMove);
+    document.removeEventListener("touchmove", onTouchMove, true);
     window.removeEventListener("touchend", onPointerUp);
     window.removeEventListener("touchcancel", onPointerUp);
 
