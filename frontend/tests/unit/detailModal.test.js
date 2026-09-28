@@ -184,7 +184,8 @@ describe('detail modal', () => {
     await openDetailModal('job-1', vi.fn());
     expect(backdrop.classList.contains('active')).toBe(true);
     expect(modal.querySelector('.modal-title').textContent).toContain('Engineer');
-    expect(modal.querySelector('.job-status-picker')).not.toBeNull();
+    expect(modal.querySelector('.job-status-picker')).toBeNull();
+    expect(modal.querySelector('.editable-job-status').textContent).toBe('Ongoing');
     expect(modal.querySelector('#work-arrangement-select')).toBeNull();
     expect(modal.querySelector('#employment-type-select')).toBeNull();
     expect(modal.querySelector('.work-arrangement-tag').textContent).toBe('Not specified');
@@ -272,18 +273,21 @@ describe('detail modal', () => {
     error.mockRestore();
   });
 
-  it('handles job status, deletion confirmation, and all general inline edits', async () => {
+  it('cycles job status, handles deletion confirmation, and all general inline edits', async () => {
     const fixture = job();
-    api.getJob.mockResolvedValue(fixture);
+    api.getJob.mockImplementation(async () => fixture);
+    api.updateJob.mockImplementation(async (_id, updates) => Object.assign(fixture, updates));
     vi.stubGlobal('confirm', vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true));
     const modal = document.querySelector('#detail-modal');
     const refreshed = vi.fn();
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id, refreshed);
 
-    const status = modal.querySelector('.job-status-picker');
-    status.value = 'accepted';
-    status.dispatchEvent(new Event('change'));
-    await tick();
+    for (const [label, value] of [['Rejected', 'rejected'], ['Approved', 'accepted'], ['Ongoing', 'ongoing']]) {
+      modal.querySelector('.editable-job-status').click();
+      await tick();
+      expect(modal.querySelector('.editable-job-status').textContent).toBe(label);
+      expect(fixture.status).toBe(value);
+    }
     expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { status: 'accepted' });
     modal.querySelector('.btn-delete-job').click();
     await tick();
@@ -315,6 +319,24 @@ describe('detail modal', () => {
     expect(modal.querySelector('#reachout-text-container').style.display).toBe('block');
     modal.querySelector('.btn-toggle-reachout').click();
     expect(modal.querySelector('#reachout-text-container').style.display).toBe('none');
+  });
+
+  it('shows unknown job statuses safely and restarts the status cycle at ongoing', async () => {
+    const fixture = job();
+    fixture.status = 'archived';
+    api.getJob.mockImplementation(async () => fixture);
+    api.updateJob.mockImplementation(async (_id, updates) => Object.assign(fixture, updates));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+
+    const statusButton = modal.querySelector('.editable-job-status');
+    expect(statusButton.textContent).toBe('archived');
+    expect(statusButton.getAttribute('aria-label')).toContain('Job status: archived');
+    statusButton.click();
+    await tick();
+
+    expect(fixture.status).toBe('ongoing');
+    expect(modal.querySelector('.editable-job-status').textContent).toBe('Ongoing');
   });
 
   it('covers active stage recruiter, interviewer, question, and stage action handlers', async () => {
@@ -616,7 +638,7 @@ describe('detail modal', () => {
     await openDetailModal('job-1');
 
     api.updateJob.mockRejectedValueOnce(new Error('status failed'));
-    modal.querySelector('.job-status-picker').dispatchEvent(new Event('change'));
+    modal.querySelector('.editable-job-status').click();
     api.deleteJob.mockRejectedValueOnce(new Error('delete job failed'));
     modal.querySelector('.btn-delete-job').click();
     api.updateJob.mockRejectedValueOnce(new Error('referral failed'));

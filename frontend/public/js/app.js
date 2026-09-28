@@ -400,8 +400,8 @@ function openNewProcessModal() {
       <h2 class="modal-title inline-icon-text">${icon("plus", 16)} Add New Selection Process</h2>
       <button class="modal-close-btn">${icon("close", 14)}</button>
     </div>
-    <form id="new-process-form" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto;">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <form id="new-process-form" class="process-form">
+      <div class="form-grid form-grid-two">
         <div>
           <label class="meta-label">Company Name</label>
           <input type="text" name="company_name" placeholder="Company Name (Leave blank if Unknown)" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
@@ -413,7 +413,7 @@ function openNewProcessModal() {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+      <div class="form-grid form-grid-three">
         <div>
           <label class="meta-label">Salary Type</label>
           <select name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
@@ -433,7 +433,7 @@ function openNewProcessModal() {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+      <div class="form-grid form-grid-three">
         <div>
           <label class="meta-label">Recruiter Source</label>
           <select name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
@@ -452,7 +452,7 @@ function openNewProcessModal() {
         </div>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="form-grid form-grid-two">
         <div>
           <label class="meta-label">Job Post Link (LinkedIn or Company Careers)</label>
           <input type="url" name="job_post_url" placeholder="https://linkedin.com/jobs/view/... or leave empty if recruiter reachout" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
@@ -512,7 +512,7 @@ function openNewProcessModal() {
         </label>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px;">
+      <div class="form-actions">
         <button type="button" class="btn-secondary btn-cancel">Cancel</button>
         <button type="submit" class="btn-primary">Create Selection Process</button>
       </div>
