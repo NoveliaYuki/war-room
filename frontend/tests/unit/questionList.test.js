@@ -108,6 +108,21 @@ describe('enableQuestionReordering', () => {
     expect(list.querySelector('.question-drop-placeholder')).toBeNull();
   });
 
+  it('starts reordering only from the drag handle, not a held question row', () => {
+    const { list, handles } = createList();
+    enableQuestionReordering(list, 'stage', vi.fn());
+    list.querySelector('.question-item').dispatchEvent(
+      new PointerEvent('pointerdown', { button: 0, clientY: 5, bubbles: true, cancelable: true }),
+    );
+    expect(list.querySelector('.question-drop-placeholder')).toBeNull();
+    expect(list.querySelector('.is-dragging')).toBeNull();
+
+    startDrag(handles[0], 5);
+    expect(list.querySelector('.question-drop-placeholder')).not.toBeNull();
+    expect(list.querySelector('.question-item.is-dragging')).toBe(handles[0].closest('.question-item'));
+    window.dispatchEvent(new PointerEvent('pointerup'));
+  });
+
   it('handles dragging the only question when there are no remaining targets', async () => {
     const { list, handles } = createList(['solo']);
     list.querySelector('.question-item').getBoundingClientRect = () => rect(10);

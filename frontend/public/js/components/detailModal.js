@@ -606,7 +606,7 @@ function renderStageActionButtons(view) {
 function renderStageQuestion(question) {
   return `<div class="question-item" data-qid="${escapeAttr(question.id)}"><div class="question-row-top">
     <div class="question-text editable-question-text" data-qid="${escapeAttr(question.id)}" data-raw-value="${escapeAttr(question.question)}" style="font-weight: 500; font-size: 14px;">${escapeHtml(question.question)}</div>
-    <div style="display: flex; align-items: center; gap: 4px;"><button class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Hold and drag to reorder questions">${icon("gripLines", 14)}</button></div>
+    <div style="display: flex; align-items: center; gap: 4px;"><button class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Drag to reorder questions" aria-label="Reorder interview question">${icon("gripLines", 14)}</button></div>
   </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" placeholder="Log interviewer's answers or your notes here...">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
 }
 

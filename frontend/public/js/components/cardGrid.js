@@ -329,6 +329,11 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let initialOrder = [];
 
   const HOLD_DELAY_MS = 180;
+  const HOLD_MOVE_THRESHOLD_PX = 12;
+
+  function preventTouchScrollDuringDrag(event) {
+    if (isDragging && event.cancelable) event.preventDefault();
+  }
 
   function onPointerDown(e) {
     if (e.button !== 0) return;
@@ -354,6 +359,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
   function startDragging(e, rect) {
     isDragging = true;
+    document.addEventListener("touchmove", preventTouchScrollDuringDrag, { passive: false });
     card.classList.remove("is-holding");
     card.classList.add("is-dragging");
     document.body.classList.add("is-reordering-cards");
@@ -385,7 +391,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
   function cancelHoldWhenMoved(e) {
     const distance = Math.hypot(e.clientX - startX, e.clientY - startY);
-    if (distance <= 8) return;
+    if (distance <= HOLD_MOVE_THRESHOLD_PX) return;
     clearTimeout(holdTimer);
     card.classList.remove("is-holding");
   }
@@ -437,6 +443,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
+    document.removeEventListener("touchmove", preventTouchScrollDuringDrag);
 
     if (!isDragging) return;
 

@@ -95,7 +95,8 @@ export function renderQuestionList(stageId, questions = [], onUpdated) {
     dragHandle.type = "button";
     dragHandle.className = "question-drag-handle q-grip";
     dragHandle.innerHTML = icon("gripLines", 14);
-    dragHandle.title = "Hold and drag to reorder questions";
+    dragHandle.title = "Drag to reorder questions";
+    dragHandle.setAttribute("aria-label", "Reorder interview question");
 
     actionsGroup.appendChild(delBtn);
     actionsGroup.appendChild(dragHandle);
@@ -169,7 +170,7 @@ export function renderQuestionList(stageId, questions = [], onUpdated) {
  */
 export function enableQuestionReordering(listEl, stageId, onReordered) {
   if (!listEl) return;
-  const handles = listEl.querySelectorAll(".question-drag-handle, .q-grip");
+  const handles = listEl.querySelectorAll(".question-drag-handle");
 
   handles.forEach((handle) => {
     handle.addEventListener("pointerdown", (e) => {
