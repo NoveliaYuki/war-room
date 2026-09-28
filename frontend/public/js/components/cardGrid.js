@@ -510,7 +510,8 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   card.addEventListener("pointerdown", onPointerDown);
-  card.addEventListener("touchstart", onTouchStart, { passive: true });
+  // Firefox may ignore preventDefault on touchmove listeners registered inside passive touchstart handlers.
+  card.addEventListener("touchstart", onTouchStart, { passive: false });
 
   return () => isDragging || Date.now() < suppressClickUntil;
 }
