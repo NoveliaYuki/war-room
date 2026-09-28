@@ -422,7 +422,7 @@ describe('cardGrid', () => {
     expect(card.classList.contains('is-dragging')).toBe(true);
 
     const move = touchEvent('touchmove', [{ clientX: 150, clientY: 80 }]);
-    window.dispatchEvent(move);
+    document.dispatchEvent(move);
     expect(move.defaultPrevented).toBe(true);
     window.dispatchEvent(touchEvent('touchend', [], [{ clientX: 150, clientY: 80 }]));
     await Promise.resolve();
@@ -443,12 +443,52 @@ describe('cardGrid', () => {
     addEventListener.mockRestore();
   });
 
+  it('reorders a card vertically in a single-column touch layout', async () => {
+    vi.useFakeTimers();
+    const jobs = [makeJob({ id: 'top' }), makeJob({ id: 'bottom' })];
+    const { container } = setup(jobs);
+    const [top, bottom] = container.querySelectorAll('.process-card');
+    vi.spyOn(top, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 320, height: 230 });
+    vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(top);
+
+    bottom.dispatchEvent(touchEvent('touchstart', [{ clientX: 20, clientY: 270 }]));
+    vi.advanceTimersByTime(180);
+    const move = touchEvent('touchmove', [{ clientX: 20, clientY: 10 }]);
+    document.dispatchEvent(move);
+    document.dispatchEvent(touchEvent('touchend'));
+    await Promise.resolve();
+
+    expect(move.defaultPrevented).toBe(true);
+    expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
+  });
+
+  it('reorders a card downward in a single-column touch layout', async () => {
+    vi.useFakeTimers();
+    const jobs = [makeJob({ id: 'top' }), makeJob({ id: 'bottom' })];
+    const { container } = setup(jobs);
+    const [top, bottom] = container.querySelectorAll('.process-card');
+    vi.spyOn(top, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 320, height: 230 });
+    vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(bottom);
+
+    top.dispatchEvent(touchEvent('touchstart', [{ clientX: 20, clientY: 10 }]));
+    vi.advanceTimersByTime(180);
+    const move = touchEvent('touchmove', [{ clientX: 20, clientY: 470 }]);
+    document.dispatchEvent(move);
+    document.dispatchEvent(touchEvent('touchend'));
+    await Promise.resolve();
+
+    expect(move.defaultPrevented).toBe(true);
+    expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
+  });
+
   it('cancels a touch hold when movement begins before the hold delay', () => {
     vi.useFakeTimers();
     const { card } = setup();
 
     card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
-    window.dispatchEvent(touchEvent('touchmove', [{ clientX: 30, clientY: 10 }]));
+    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 30, clientY: 10 }]));
     vi.advanceTimersByTime(180);
 
     expect(card.classList.contains('is-holding')).toBe(false);
@@ -479,11 +519,11 @@ describe('cardGrid', () => {
 
     card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
     vi.advanceTimersByTime(180);
-    window.dispatchEvent(touchEvent('touchmove', [], [{ clientX: 20, clientY: 20 }]));
+    document.dispatchEvent(touchEvent('touchmove', [], [{ clientX: 20, clientY: 20 }]));
     const nonCancelableMove = touchEvent('touchmove', [{ clientX: 30, clientY: 30 }]);
     Object.defineProperty(nonCancelableMove, 'cancelable', { value: false });
-    window.dispatchEvent(nonCancelableMove);
-    window.dispatchEvent(touchEvent('touchend'));
+    document.dispatchEvent(nonCancelableMove);
+    document.dispatchEvent(touchEvent('touchend'));
 
     expect(card.classList.contains('is-dragging')).toBe(false);
     expect(nonCancelableMove.defaultPrevented).toBe(false);
