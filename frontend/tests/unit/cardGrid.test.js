@@ -385,6 +385,9 @@ describe('cardGrid', () => {
     vi.advanceTimersByTime(180);
     expect(card.classList.contains('is-dragging')).toBe(true);
     expect(document.body.classList.contains('is-reordering-cards')).toBe(true);
+    const touchMoveDuringDrag = new Event('touchmove', { cancelable: true });
+    document.dispatchEvent(touchMoveDuringDrag);
+    expect(touchMoveDuringDrag.defaultPrevented).toBe(true);
     window.dispatchEvent(pointerEvent('pointermove', { x: 150, y: 10 }));
     window.dispatchEvent(pointerEvent('pointermove', { x: 190, y: 40 }));
     window.dispatchEvent(pointerEvent('pointermove', { x: 180, y: 40 }));
@@ -393,6 +396,9 @@ describe('cardGrid', () => {
     card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(mocks.openDetailModal).not.toHaveBeenCalled();
     window.dispatchEvent(pointerEvent('pointerup'));
+    const touchMoveAfterDrag = new Event('touchmove', { cancelable: true });
+    document.dispatchEvent(touchMoveAfterDrag);
+    expect(touchMoveAfterDrag.defaultPrevented).toBe(false);
     await Promise.resolve();
     expect(card.classList.contains('is-dragging')).toBe(false);
     expect(document.body.classList.contains('is-reordering-cards')).toBe(false);

@@ -247,8 +247,13 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 32px;
-    min-height: 32px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .question-drag-handle {
+    opacity: 0.85;
+    background: rgba(255, 255, 255, 0.05);
   }
 }
 
