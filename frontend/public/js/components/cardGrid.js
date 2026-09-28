@@ -329,6 +329,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let offsetY = 0;
   let previousTouchY = 0;
   let isTouchScrolling = false;
+  let activePointerType = "mouse";
   let initialOrder = [];
 
   const HOLD_DELAY_MS = 180;
@@ -350,57 +351,25 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   function onPointerDown(e) {
-    if (e.pointerType === "touch") return;
     if (e.button !== 0) return;
     if (e.target.closest("button, a, input, textarea, .btn-card-delete")) return;
 
+    activePointerType = e.pointerType;
+    previousTouchY = e.clientY;
+    isTouchScrolling = false;
     beginHold(e);
+
+    if (e.pointerType === "touch" && typeof card.setPointerCapture === "function") {
+      try {
+        card.setPointerCapture(e.pointerId);
+      } catch {
+        // The pointer may already have been canceled by the browser.
+      }
+    }
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
-  }
-
-  function onTouchStart(e) {
-    if (e.touches.length !== 1) {
-      onPointerUp();
-      return;
-    }
-    if (e.target.closest("button, a, input, textarea, .btn-card-delete")) return;
-
-    const touch = e.touches[0];
-    beginHold({ clientX: touch.clientX, clientY: touch.clientY });
-    previousTouchY = touch.clientY;
-    isTouchScrolling = false;
-    document.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
-    window.addEventListener("touchend", onPointerUp);
-    window.addEventListener("touchcancel", onPointerUp);
-  }
-
-  function onTouchMove(e) {
-    if (e.cancelable) e.preventDefault();
-
-    if (isDragging) {
-      const touch = e.touches[0] || e.changedTouches[0];
-      if (touch) onPointerMove({ clientX: touch.clientX, clientY: touch.clientY });
-      return;
-    }
-
-    const touch = e.touches[0] || e.changedTouches[0];
-    if (!touch) return;
-
-    const pointer = { clientX: touch.clientX, clientY: touch.clientY };
-    if (holdTimer !== null) {
-      const distance = Math.hypot(pointer.clientX - startX, pointer.clientY - startY);
-      if (distance > HOLD_MOVE_THRESHOLD_PX) {
-        cancelHoldWhenMoved(pointer);
-        isTouchScrolling = true;
-        window.scrollBy(0, startY - touch.clientY);
-      }
-    } else if (isTouchScrolling) {
-      window.scrollBy(0, previousTouchY - touch.clientY);
-    }
-    previousTouchY = touch.clientY;
   }
 
   function startDragging(e, rect) {
@@ -468,7 +437,21 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
   function onPointerMove(e) {
     if (!isDragging) {
-      cancelHoldWhenMoved(e);
+      if (activePointerType === "touch") {
+        if (holdTimer !== null) {
+          const distance = Math.hypot(e.clientX - startX, e.clientY - startY);
+          if (distance > HOLD_MOVE_THRESHOLD_PX) {
+            cancelHoldWhenMoved(e);
+            isTouchScrolling = true;
+            window.scrollBy(0, startY - e.clientY);
+          }
+        } else if (isTouchScrolling) {
+          window.scrollBy(0, previousTouchY - e.clientY);
+        }
+        previousTouchY = e.clientY;
+      } else {
+        cancelHoldWhenMoved(e);
+      }
       return;
     }
 
@@ -490,10 +473,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
-    document.removeEventListener("touchmove", onTouchMove, true);
     isTouchScrolling = false;
-    window.removeEventListener("touchend", onPointerUp);
-    window.removeEventListener("touchcancel", onPointerUp);
 
     if (!isDragging) return;
 
@@ -534,8 +514,6 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   card.addEventListener("pointerdown", onPointerDown);
-  // Firefox may ignore preventDefault on touchmove listeners registered inside passive touchstart handlers.
-  card.addEventListener("touchstart", onTouchStart, { passive: false });
   card.addEventListener("contextmenu", (event) => {
     if (holdTimer !== null || isDragging) event.preventDefault();
   });

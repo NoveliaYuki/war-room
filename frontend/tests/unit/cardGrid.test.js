@@ -68,17 +68,9 @@ function pointerEvent(type, { x = 10, y = 10, button = 0, pointerType = 'mouse',
     clientY: { value: y },
     button: { value: button },
     pointerType: { value: pointerType },
+    pointerId: { value: 1 },
   });
   if (target) target.dispatchEvent(event);
-  return event;
-}
-
-function touchEvent(type, touches = [], changedTouches = touches) {
-  const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.defineProperties(event, {
-    touches: { value: touches },
-    changedTouches: { value: changedTouches },
-  });
   return event;
 }
 
@@ -377,7 +369,10 @@ describe('cardGrid', () => {
     vi.useFakeTimers();
     const { card } = setup();
     card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+    expect(card.classList.contains('is-holding')).toBe(true);
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 50, y: 50 }));
     expect(card.classList.contains('is-holding')).toBe(false);
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
     card.dispatchEvent(pointerEvent('pointerdown', { button: 2 }));
     card.querySelector('.btn-card-delete').dispatchEvent(pointerEvent('pointerdown'));
     card.dispatchEvent(pointerEvent('pointerdown'));
@@ -419,52 +414,43 @@ describe('cardGrid', () => {
     expect(mocks.api.reorderJobs.mock.calls[0][0]).toHaveLength(3);
   });
 
-  it('holds and reorders cards through touch events without allowing page scroll while dragging', async () => {
+  it('captures touch pointers so held cards move in every direction without scrolling', async () => {
     vi.useFakeTimers();
     const { container, card } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b' })]);
     const second = container.querySelectorAll('.process-card')[1];
+    const capture = vi.fn();
+    card.setPointerCapture = capture;
     vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 });
     vi.spyOn(second, 'getBoundingClientRect').mockReturnValue({ left: 110, top: 0, width: 100, height: 100 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(second);
-
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
     const contextMenuBeforeHold = new Event('contextmenu', { bubbles: true, cancelable: true });
     card.dispatchEvent(contextMenuBeforeHold);
     expect(contextMenuBeforeHold.defaultPrevented).toBe(false);
-    card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
-    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 20, clientY: 10 }]));
-    vi.advanceTimersByTime(179);
-    expect(card.classList.contains('is-dragging')).toBe(false);
-    vi.advanceTimersByTime(1);
+
+    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+    expect(capture).toHaveBeenCalledWith(1);
+    vi.advanceTimersByTime(180);
     expect(card.classList.contains('is-dragging')).toBe(true);
-    expect(document.documentElement.classList.contains('is-reordering-cards')).toBe(true);
 
-    const move = touchEvent('touchmove', [{ clientX: 150, clientY: 80 }]);
-    document.dispatchEvent(move);
-    expect(move.defaultPrevented).toBe(true);
-    const contextMenu = new Event('contextmenu', { bubbles: true, cancelable: true });
-    card.dispatchEvent(contextMenu);
-    expect(contextMenu.defaultPrevented).toBe(true);
-    window.dispatchEvent(touchEvent('touchend', [], [{ clientX: 150, clientY: 80 }]));
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 150, y: 80 }));
+    expect(card.style.top).toBe('70px');
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 150, y: -20 }));
+    expect(card.style.top).toBe('-30px');
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 150, y: 120 }));
+    expect(card.style.top).toBe('110px');
+    expect(scrollBy).not.toHaveBeenCalled();
+    const contextMenuDuringDrag = new Event('contextmenu', { bubbles: true, cancelable: true });
+    card.dispatchEvent(contextMenuDuringDrag);
+    expect(contextMenuDuringDrag.defaultPrevented).toBe(true);
+
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
     await Promise.resolve();
-
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['b', 'a']);
     expect(card.classList.contains('is-dragging')).toBe(false);
-    expect(document.documentElement.classList.contains('is-reordering-cards')).toBe(false);
-    expect(document.body.classList.contains('is-reordering-cards')).toBe(false);
   });
 
-  it('registers the touch start listener as non-passive for Firefox touch cancellation', () => {
-    const addEventListener = vi.spyOn(HTMLElement.prototype, 'addEventListener');
-    const { card } = setup();
-    const registrationIndex = addEventListener.mock.calls.findIndex(([type]) => type === 'touchstart');
-
-    expect(registrationIndex).not.toBe(-1);
-    expect(addEventListener.mock.contexts[registrationIndex]).toBe(card);
-    expect(addEventListener.mock.calls[registrationIndex][2]).toEqual({ passive: false });
-    addEventListener.mockRestore();
-  });
-
-  it('reorders a card vertically in a single-column touch layout', async () => {
+  it('reorders a card upward in a single-column touch layout', async () => {
     vi.useFakeTimers();
     const jobs = [makeJob({ id: 'top' }), makeJob({ id: 'bottom' })];
     const { container } = setup(jobs);
@@ -473,14 +459,12 @@ describe('cardGrid', () => {
     vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(top);
 
-    bottom.dispatchEvent(touchEvent('touchstart', [{ clientX: 20, clientY: 270 }]));
+    bottom.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 20, y: 270 }));
     vi.advanceTimersByTime(180);
-    const move = touchEvent('touchmove', [{ clientX: 20, clientY: 10 }]);
-    document.dispatchEvent(move);
-    document.dispatchEvent(touchEvent('touchend'));
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 20, y: 10 }));
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
     await Promise.resolve();
 
-    expect(move.defaultPrevented).toBe(true);
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
   });
 
@@ -493,14 +477,12 @@ describe('cardGrid', () => {
     vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(bottom);
 
-    top.dispatchEvent(touchEvent('touchstart', [{ clientX: 20, clientY: 10 }]));
+    top.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 20, y: 10 }));
     vi.advanceTimersByTime(180);
-    const move = touchEvent('touchmove', [{ clientX: 20, clientY: 470 }]);
-    document.dispatchEvent(move);
-    document.dispatchEvent(touchEvent('touchend'));
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 20, y: 470 }));
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
     await Promise.resolve();
 
-    expect(move.defaultPrevented).toBe(true);
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
   });
 
@@ -509,67 +491,39 @@ describe('cardGrid', () => {
     const { card } = setup();
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
-    card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 100 }]));
-    const smallMove = touchEvent('touchmove', [{ clientX: 10, clientY: 80 }]);
-    document.dispatchEvent(smallMove);
-    expect(smallMove.defaultPrevented).toBe(true);
+    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 10, y: 100 }));
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 80 }));
     expect(scrollBy).not.toHaveBeenCalled();
-
-    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 10, clientY: 50 }]));
-    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 10, clientY: 40 }]));
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 50 }));
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 40 }));
     expect(scrollBy).toHaveBeenNthCalledWith(1, 0, 50);
     expect(scrollBy).toHaveBeenNthCalledWith(2, 0, 10);
-    window.dispatchEvent(touchEvent('touchend'));
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
   });
 
   it('cancels a touch hold when movement begins before the hold delay', () => {
     vi.useFakeTimers();
     const { card } = setup();
 
-    card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
-    document.dispatchEvent(touchEvent('touchmove'));
-    document.dispatchEvent(touchEvent('touchmove', [{ clientX: 60, clientY: 10 }]));
+    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 60, y: 10 }));
     vi.advanceTimersByTime(180);
 
     expect(card.classList.contains('is-holding')).toBe(false);
     expect(card.classList.contains('is-dragging')).toBe(false);
-    window.dispatchEvent(touchEvent('touchend'));
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
   });
 
-  it('ignores multi-touch and touches that start on card controls', () => {
+  it('ignores touch drags that start on card controls', () => {
     vi.useFakeTimers();
     const { card } = setup();
     const button = card.querySelector('.btn-card-delete');
 
-    card.dispatchEvent(touchEvent('touchstart', [
-      { clientX: 10, clientY: 10 },
-      { clientX: 20, clientY: 20 },
-    ]));
-    button.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
+    button.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
     vi.advanceTimersByTime(180);
 
     expect(card.classList.contains('is-holding')).toBe(false);
     expect(card.classList.contains('is-dragging')).toBe(false);
-  });
-
-  it('uses changed touches when needed and only prevents cancellable movement after dragging starts', () => {
-    vi.useFakeTimers();
-    const { card } = setup();
-    vi.spyOn(document, 'elementFromPoint').mockReturnValue(card);
-
-    card.dispatchEvent(touchEvent('touchstart', [{ clientX: 10, clientY: 10 }]));
-    vi.advanceTimersByTime(180);
-    const emptyMove = touchEvent('touchmove');
-    document.dispatchEvent(emptyMove);
-    expect(emptyMove.defaultPrevented).toBe(true);
-    document.dispatchEvent(touchEvent('touchmove', [], [{ clientX: 20, clientY: 20 }]));
-    const nonCancelableMove = touchEvent('touchmove', [{ clientX: 30, clientY: 30 }]);
-    Object.defineProperty(nonCancelableMove, 'cancelable', { value: false });
-    document.dispatchEvent(nonCancelableMove);
-    document.dispatchEvent(touchEvent('touchend'));
-
-    expect(card.classList.contains('is-dragging')).toBe(false);
-    expect(nonCancelableMove.defaultPrevented).toBe(false);
   });
 
   it('does not persist an unchanged drag and suppresses the click after a drag', async () => {
