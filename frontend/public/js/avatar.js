@@ -123,7 +123,7 @@ export function renderCompanyAvatar(companyName = "Unknown", seed = "default", s
       <img src="${escapeAttr(logoUrl)}"
            alt="${escapeAttr(companyName)}"
            class="company-logo-img"
-           style="width: 100%; height: 100%; object-fit: contain; padding: 6px; border-radius: inherit; background: rgba(255, 255, 255, 0.05);"
+           style="width: 100%; height: 100%; object-fit: contain; padding: 6px; border-radius: inherit; background: #fff;"
            loading="lazy"
            data-avatar-fallback="true" />
       <div class="company-avatar-fallback" style="display: none; width: 100%; height: 100%; border-radius: inherit;">
