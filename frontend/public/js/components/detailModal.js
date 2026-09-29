@@ -657,6 +657,7 @@ function attachModalHandlers(context) {
   bindSplitPaneResize(modalEl);
   const refreshModal = async () => {
     const listScrollTop = readScrollTop(modalEl, ".questions-list");
+    const modalScrollTop = readScrollTop(modalEl, ".modal-split-layout");
     const rightScrollTop = readScrollTop(modalEl, ".split-pane-right");
     const leftScrollTop = readScrollTop(modalEl, ".split-pane-left");
 
@@ -664,6 +665,7 @@ function attachModalHandlers(context) {
     renderModalContent(modalEl, backdropEl, updated, onGlobalRefresh);
 
     restoreScrollTop(modalEl, ".questions-list", listScrollTop);
+    restoreScrollTop(modalEl, ".modal-split-layout", modalScrollTop);
     restoreScrollTop(modalEl, ".split-pane-right", rightScrollTop);
     restoreScrollTop(modalEl, ".split-pane-left", leftScrollTop);
 

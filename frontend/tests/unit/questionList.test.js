@@ -36,6 +36,12 @@ function startDrag(handle, clientY) {
   handle.dispatchEvent(new PointerEvent('pointerdown', { button: 0, clientY, bubbles: true, cancelable: true }));
 }
 
+function touchEvent(type, points) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'touches', { value: points });
+  return event;
+}
+
 async function finishDrag(clientY) {
   window.dispatchEvent(new PointerEvent('pointermove', { clientY }));
   window.dispatchEvent(new PointerEvent('pointerup'));
@@ -148,6 +154,51 @@ describe('enableQuestionReordering', () => {
     expect(reordered).toHaveBeenCalledWith(['q2', 'q1']);
     expect(first.style.position).toBe('');
     expect(list.querySelector('.question-drop-placeholder')).toBeNull();
+  });
+
+  it('reorders questions with native touch events and prevents page scrolling during the drag', async () => {
+    const { list, handles } = createList();
+    const [first, second] = list.querySelectorAll('.question-item');
+    first.getBoundingClientRect = () => rect(0);
+    second.getBoundingClientRect = () => rect(30);
+    enableQuestionReordering(list, 'stage', vi.fn());
+
+    const start = touchEvent('touchstart', [{ clientX: 90, clientY: 5 }]);
+    handles[0].dispatchEvent(start);
+    expect(start.defaultPrevented).toBe(true);
+    expect(first.classList.contains('is-dragging')).toBe(true);
+
+    const move = touchEvent('touchmove', [{ clientX: 90, clientY: 70 }]);
+    window.dispatchEvent(move);
+    expect(move.defaultPrevented).toBe(true);
+    window.dispatchEvent(touchEvent('touchend', []));
+    await tick();
+
+    expect(Array.from(list.querySelectorAll('.question-item')).map((item) => item.dataset.qid)).toEqual(['q2', 'q1']);
+    expect(api.reorderQuestions).toHaveBeenCalledWith('stage', ['q2', 'q1']);
+    expect(list.querySelector('.question-drop-placeholder')).toBeNull();
+  });
+
+  it('handles pointer and touch events for one physical touch without starting duplicate drags', async () => {
+    const { list, handles } = createList();
+    const [first, second] = list.querySelectorAll('.question-item');
+    first.getBoundingClientRect = () => rect(0);
+    second.getBoundingClientRect = () => rect(30);
+    enableQuestionReordering(list, 'stage', vi.fn());
+
+    handles[0].dispatchEvent(new PointerEvent('pointerdown', {
+      button: 0,
+      pointerType: 'touch',
+      clientY: 5,
+      bubbles: true,
+      cancelable: true,
+    }));
+    handles[0].dispatchEvent(touchEvent('touchstart', [{ clientX: 5, clientY: 5 }]));
+    expect(list.querySelectorAll('.question-drop-placeholder')).toHaveLength(1);
+
+    await finishDrag(70);
+    expect(Array.from(list.querySelectorAll('.question-item')).map((item) => item.dataset.qid)).toEqual(['q2', 'q1']);
+    expect(api.reorderQuestions).toHaveBeenCalledWith('stage', ['q2', 'q1']);
   });
 
   it('supports moving above and between items while retaining unchanged ordering', async () => {

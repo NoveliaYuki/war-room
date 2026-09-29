@@ -1,0 +1,16 @@
+brew "xcodes"
+brew "openjdk@21"
+brew "appium"
+brew "ios-webkit-debug-proxy"
+brew "ios-deploy"
+brew "xcbeautify"
+brew "ffmpeg"
+
+cask "android-commandlinetools"
+cask "android-platform-tools"
+cask "android-studio"
+cask "firefox"
+cask "google-chrome"
+
+tap "wix/brew"
+brew "applesimutils"

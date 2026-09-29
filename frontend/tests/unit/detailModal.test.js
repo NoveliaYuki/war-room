@@ -152,6 +152,22 @@ describe('detail modal', () => {
     setItem.mockRestore();
   });
 
+  it('preserves the mobile modal scroll position when refreshing its contents', async () => {
+    const fixture = job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]);
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    modal.querySelector('.modal-split-layout').scrollTop = 2166;
+    modal.querySelector('.questions-list').scrollTop = 24;
+    modal.querySelector('.editable-job-status').click();
+    await tick();
+
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { status: 'rejected' });
+    expect(modal.querySelector('.modal-split-layout').scrollTop).toBe(2166);
+    expect(modal.querySelector('.questions-list').scrollTop).toBe(24);
+  });
+
   it('renders stages when the API returns null question and interviewer lists', async () => {
     api.getJob.mockResolvedValue(job([{
       id: 'stage-1',

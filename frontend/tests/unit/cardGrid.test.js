@@ -74,6 +74,13 @@ function pointerEvent(type, { x = 10, y = 10, button = 0, pointerType = 'mouse',
   return event;
 }
 
+function touchEvent(type, { x = 10, y = 10, touchCount = 1 } = {}) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  const touch = { clientX: x, clientY: y };
+  Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : Array.from({ length: touchCount }, () => touch) });
+  return event;
+}
+
 describe('cardGrid', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -98,6 +105,18 @@ describe('cardGrid', () => {
     const { card } = setup();
 
     expect(card.style.touchAction).toBe('none');
+  });
+
+  it('ignores synthetic touch pointer events and multi-touch card gestures', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+
+    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+    card.dispatchEvent(touchEvent('touchstart', { touchCount: 2 }));
+    vi.advanceTimersByTime(180);
+
+    expect(card.classList.contains('is-holding')).toBe(false);
+    expect(card.classList.contains('is-dragging')).toBe(false);
   });
 
   it("renders employment type from each job record", () => {
@@ -131,6 +150,20 @@ describe('cardGrid', () => {
     ]);
     expect(container.querySelector('[data-id="unknown"] .work-arrangement-tag')).toBeNull();
     expect(container.querySelector('[data-id="remote"] .card-summary .keyword-note').textContent).toBe('No role highlights added');
+  });
+
+  it('renders unknown companies and stage summaries while filtering salary highlights', () => {
+    const { card } = setup([makeJob({
+      company_name: 'Unknown',
+      current_stage_title: 'Technical interview',
+      current_stage_index: 2,
+      total_stages_count: 4,
+      keyword_note: 'Platform • €80k • 20k',
+    })]);
+
+    expect(card.querySelector('.card-company').textContent).toContain('Unknown Company');
+    expect(card.querySelector('.card-stage-indicator').textContent).toContain('Step 2/4: Technical interview');
+    expect(card.querySelector('.keyword-note').textContent).toBe('Platform');
   });
 
   describe("salary labels", () => {
@@ -368,11 +401,11 @@ describe('cardGrid', () => {
   it('cancels a pending hold when the pointer moves too far and ignores non-left or control presses', () => {
     vi.useFakeTimers();
     const { card } = setup();
-    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+    card.dispatchEvent(pointerEvent('pointerdown'));
     expect(card.classList.contains('is-holding')).toBe(true);
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 50, y: 50 }));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 50, y: 50 }));
     expect(card.classList.contains('is-holding')).toBe(false);
-    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    window.dispatchEvent(pointerEvent('pointerup'));
     card.dispatchEvent(pointerEvent('pointerdown', { button: 2 }));
     card.querySelector('.btn-card-delete').dispatchEvent(pointerEvent('pointerdown'));
     card.dispatchEvent(pointerEvent('pointerdown'));
@@ -414,12 +447,10 @@ describe('cardGrid', () => {
     expect(mocks.api.reorderJobs.mock.calls[0][0]).toHaveLength(3);
   });
 
-  it('captures touch pointers so held cards move in every direction without scrolling', async () => {
+  it('moves held touch cards in every direction without scrolling', async () => {
     vi.useFakeTimers();
     const { container, card } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b' })]);
     const second = container.querySelectorAll('.process-card')[1];
-    const capture = vi.fn();
-    card.setPointerCapture = capture;
     vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 });
     vi.spyOn(second, 'getBoundingClientRect').mockReturnValue({ left: 110, top: 0, width: 100, height: 100 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(second);
@@ -428,30 +459,28 @@ describe('cardGrid', () => {
     card.dispatchEvent(contextMenuBeforeHold);
     expect(contextMenuBeforeHold.defaultPrevented).toBe(false);
 
-    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
-    expect(capture).toHaveBeenCalledWith(1);
-    const touchMoveBeforeHold = new Event('touchmove', { bubbles: true, cancelable: true });
+    card.dispatchEvent(touchEvent('touchstart'));
+    const touchMoveBeforeHold = touchEvent('touchmove', { x: 10, y: 10 });
     window.dispatchEvent(touchMoveBeforeHold);
     expect(touchMoveBeforeHold.defaultPrevented).toBe(false);
     vi.advanceTimersByTime(180);
     expect(card.classList.contains('is-dragging')).toBe(true);
 
-    const touchMoveDuringDrag = new Event('touchmove', { bubbles: true, cancelable: true });
+    const touchMoveDuringDrag = touchEvent('touchmove', { x: 150, y: 80 });
     window.dispatchEvent(touchMoveDuringDrag);
     expect(touchMoveDuringDrag.defaultPrevented).toBe(true);
 
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 150, y: 80 }));
     expect(card.style.top).toBe('70px');
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 150, y: -20 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 150, y: -20 }));
     expect(card.style.top).toBe('-30px');
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 150, y: 120 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 150, y: 120 }));
     expect(card.style.top).toBe('110px');
     expect(scrollBy).not.toHaveBeenCalled();
     const contextMenuDuringDrag = new Event('contextmenu', { bubbles: true, cancelable: true });
     card.dispatchEvent(contextMenuDuringDrag);
     expect(contextMenuDuringDrag.defaultPrevented).toBe(true);
 
-    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    window.dispatchEvent(touchEvent('touchend'));
     await Promise.resolve();
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['b', 'a']);
     expect(card.classList.contains('is-dragging')).toBe(false);
@@ -463,15 +492,15 @@ describe('cardGrid', () => {
     vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 });
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
-    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 10, y: 10 }));
+    card.dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
     vi.advanceTimersByTime(179);
     vi.setSystemTime(Date.now() + 2);
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 30 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 30 }));
 
     expect(card.classList.contains('is-dragging')).toBe(true);
     expect(card.style.top).toBe('20px');
     expect(scrollBy).not.toHaveBeenCalled();
-    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    window.dispatchEvent(touchEvent('touchend'));
   });
 
   it('reorders a card upward in a single-column touch layout', async () => {
@@ -483,10 +512,10 @@ describe('cardGrid', () => {
     vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(top);
 
-    bottom.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 20, y: 270 }));
+    bottom.dispatchEvent(touchEvent('touchstart', { x: 20, y: 270 }));
     vi.advanceTimersByTime(180);
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 20, y: 10 }));
-    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 10 }));
+    window.dispatchEvent(touchEvent('touchend'));
     await Promise.resolve();
 
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
@@ -501,10 +530,10 @@ describe('cardGrid', () => {
     vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(bottom);
 
-    top.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 20, y: 10 }));
+    top.dispatchEvent(touchEvent('touchstart', { x: 20, y: 10 }));
     vi.advanceTimersByTime(180);
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 20, y: 470 }));
-    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 470 }));
+    window.dispatchEvent(touchEvent('touchend'));
     await Promise.resolve();
 
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
@@ -515,27 +544,27 @@ describe('cardGrid', () => {
     const { card } = setup();
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
-    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', x: 10, y: 100 }));
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 80 }));
+    card.dispatchEvent(touchEvent('touchstart', { x: 10, y: 100 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 80 }));
     expect(scrollBy).not.toHaveBeenCalled();
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 50 }));
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 10, y: 40 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 50 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 40 }));
     expect(scrollBy).toHaveBeenNthCalledWith(1, 0, 50);
     expect(scrollBy).toHaveBeenNthCalledWith(2, 0, 10);
-    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    window.dispatchEvent(touchEvent('touchend'));
   });
 
   it('cancels a touch hold when movement begins before the hold delay', () => {
     vi.useFakeTimers();
     const { card } = setup();
 
-    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
-    window.dispatchEvent(pointerEvent('pointermove', { pointerType: 'touch', x: 60, y: 10 }));
+    card.dispatchEvent(touchEvent('touchstart'));
+    window.dispatchEvent(touchEvent('touchmove', { x: 60, y: 10 }));
     vi.advanceTimersByTime(180);
 
     expect(card.classList.contains('is-holding')).toBe(false);
     expect(card.classList.contains('is-dragging')).toBe(false);
-    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    window.dispatchEvent(touchEvent('touchend'));
   });
 
   it('ignores touch drags that start on card controls', () => {
@@ -543,7 +572,7 @@ describe('cardGrid', () => {
     const { card } = setup();
     const button = card.querySelector('.btn-card-delete');
 
-    button.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
+    button.dispatchEvent(touchEvent('touchstart'));
     vi.advanceTimersByTime(180);
 
     expect(card.classList.contains('is-holding')).toBe(false);

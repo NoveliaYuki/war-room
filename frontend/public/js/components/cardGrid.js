@@ -328,6 +328,8 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let holdStartedAt = 0;
   let offsetX = 0;
   let offsetY = 0;
+  let lockedScrollY = 0;
+  let bodyScrollLockStyles = null;
   let previousTouchY = 0;
   let isTouchScrolling = false;
   let activePointerType = "mouse";
@@ -354,31 +356,28 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
   function onPointerDown(e) {
     if (e.button !== 0) return;
+    if (e.pointerType === "touch") return;
     if (e.target.closest("button, a, input, textarea, .btn-card-delete")) return;
 
     activePointerType = e.pointerType;
-    previousTouchY = e.clientY;
-    isTouchScrolling = false;
     beginHold(e);
-
-    if (e.pointerType === "touch" && typeof card.setPointerCapture === "function") {
-      try {
-        card.setPointerCapture(e.pointerId);
-      } catch {
-        // The pointer may already have been canceled by the browser.
-      }
-    }
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
-    if (e.pointerType === "touch") {
-      window.addEventListener("touchmove", preventTouchScroll, { passive: false });
-    }
   }
 
-  function preventTouchScroll(e) {
-    if (isDragging && e.cancelable) e.preventDefault();
+  function onTouchStart(e) {
+    if (e.touches.length !== 1 || e.target.closest("button, a, input, textarea, .btn-card-delete")) return;
+
+    const touch = e.touches[0];
+    activePointerType = "touch";
+    previousTouchY = touch.clientY;
+    isTouchScrolling = false;
+    beginHold({ clientX: touch.clientX, clientY: touch.clientY });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+    window.addEventListener("touchcancel", onTouchEnd);
   }
 
   function startDragging(e, rect) {
@@ -387,6 +386,25 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     card.classList.add("is-dragging");
     document.documentElement.classList.add("is-reordering-cards");
     document.body.classList.add("is-reordering-cards");
+    if (activePointerType === "touch") {
+      lockedScrollY = window.scrollY;
+      bodyScrollLockStyles = {
+        position: document.body.style.position,
+        top: document.body.style.top,
+        left: document.body.style.left,
+        right: document.body.style.right,
+        width: document.body.style.width,
+        overflow: document.body.style.overflow,
+      };
+      Object.assign(document.body.style, {
+        position: "fixed",
+        top: `-${lockedScrollY}px`,
+        left: "0",
+        right: "0",
+        width: "100%",
+        overflow: "hidden",
+      });
+    }
 
     // Capture initial order to detect actual changes
     initialOrder = Array.from(containerEl.querySelectorAll(".process-card"))
@@ -424,6 +442,13 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   function moveCardToPointer(e) {
     card.style.left = `${e.clientX - offsetX}px`;
     card.style.top = `${e.clientY - offsetY}px`;
+  }
+
+  function movePlaceholderToPoint(e) {
+    const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+    if (!elemBelow) return;
+    if (placeOverQuickAdd(elemBelow)) return;
+    placeRelativeToCard(e, elemBelow);
   }
 
   function placeOverQuickAdd(elemBelow) {
@@ -473,12 +498,26 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     if (activePointerType === "touch" && e.cancelable) e.preventDefault();
     moveCardToPointer(e);
 
-    // Drop target detection
-    const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
-    if (!elemBelow) return;
+    movePlaceholderToPoint(e);
+  }
 
-    if (placeOverQuickAdd(elemBelow)) return;
-    placeRelativeToCard(e, elemBelow);
+  function onTouchMove(e) {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const point = { clientX: touch.clientX, clientY: touch.clientY };
+    if (!isDragging) movePendingTouch(point);
+    if (!isDragging) return;
+
+    if (e.cancelable) e.preventDefault();
+    moveCardToPointer(point);
+    movePlaceholderToPoint(point);
+  }
+
+  function onTouchEnd() {
+    window.removeEventListener("touchmove", onTouchMove);
+    window.removeEventListener("touchend", onTouchEnd);
+    window.removeEventListener("touchcancel", onTouchEnd);
+    onPointerUp();
   }
 
   function onPointerUp() {
@@ -488,7 +527,6 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
-    if (activePointerType === "touch") window.removeEventListener("touchmove", preventTouchScroll);
     isTouchScrolling = false;
 
     if (!isDragging) return;
@@ -507,6 +545,11 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     card.classList.remove("is-dragging");
     document.documentElement.classList.remove("is-reordering-cards");
     document.body.classList.remove("is-reordering-cards");
+    if (bodyScrollLockStyles) {
+      Object.assign(document.body.style, bodyScrollLockStyles);
+      bodyScrollLockStyles = null;
+      window.scrollTo(0, lockedScrollY);
+    }
 
     if (placeholder && placeholder.parentNode) {
       placeholder.parentNode.insertBefore(card, placeholder);
@@ -530,6 +573,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   card.addEventListener("pointerdown", onPointerDown);
+  card.addEventListener("touchstart", onTouchStart, { passive: true });
   card.addEventListener("contextmenu", (event) => {
     if (holdTimer !== null || isDragging) event.preventDefault();
   });
