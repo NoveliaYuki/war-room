@@ -26,6 +26,7 @@ function handleAvatarImageError(event) {
 document.addEventListener("error", handleAvatarImageError, true);
 
 const FILTER_STORAGE_KEY = "war-room.active-filter";
+const THEME_STORAGE_KEY = "war-room.theme";
 const validFilters = new Set(["ongoing", "accepted", "rejected", "all", "schedule"]);
 
 /** Restores a saved filter when it is a supported page. */
@@ -59,71 +60,37 @@ const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 const dataManagementButton = document.querySelector("#btn-data-management");
-const filterTabsContainer = document.querySelector(".filter-tabs");
-const searchWrapper = document.querySelector(".search-wrapper");
-const desktopNewProcessButton = document.querySelector("#btn-new-process");
+const themeToggle = document.querySelector("#btn-theme-toggle");
 
-/** Clears the search width override used to align a wrapped desktop toolbar row. */
-function clearHeaderRowAlignment() {
-  if (!searchWrapper?.dataset.rowAlignment) return;
-  searchWrapper.style.flex = "";
-  searchWrapper.style.width = "";
-  delete searchWrapper.dataset.rowAlignment;
+/** Returns the selected theme, falling back to the current system preference. */
+function getActiveTheme() {
+  const selected = document.documentElement.dataset.theme;
+  if (selected === "dark" || selected === "light") return selected;
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
-/** Matches the wrapped search/actions row to the filter tabs' measured width. */
-function measureHeaderRows() {
-  const tabsRect = filterTabsContainer.getBoundingClientRect();
-  const searchRect = searchWrapper.getBoundingClientRect();
-  const dataRect = dataManagementButton.getBoundingClientRect();
-  const processRect = desktopNewProcessButton.getBoundingClientRect();
-  const gap = Number.parseFloat(getComputedStyle(headerControls).columnGap) || 0;
-  const centerY = (rect) => rect.top + rect.height / 2;
-  const sharesRow = (first, second) => Math.abs(centerY(first) - centerY(second)) < 1;
-  return {
-    alignedWidth: Math.max(0, tabsRect.width - dataRect.width - processRect.width - gap * 2),
-    actionsShareRow: sharesRow(searchRect, dataRect) && sharesRow(searchRect, processRect),
-    searchWidth: searchRect.width,
-    toolbarWraps: centerY(searchRect) > centerY(tabsRect) + 1,
-  };
+/** Updates the theme toggle's accessible label for the next action. */
+function updateThemeToggle() {
+  if (!themeToggle) return;
+  const nextTheme = getActiveTheme() === "dark" ? "light" : "dark";
+  const label = `Switch to ${nextTheme} theme`;
+  themeToggle.setAttribute("aria-label", label);
+  themeToggle.title = label;
 }
 
-/** Applies a measured width only when the complete actions row has wrapped. */
-function alignWrappedActions(layout) {
-  if (!layout.toolbarWraps || !layout.actionsShareRow) return false;
-  if (layout.alignedWidth > 0 && Math.abs(layout.searchWidth - layout.alignedWidth) > 0.5) {
-    searchWrapper.style.flex = `0 0 ${layout.alignedWidth}px`;
-    searchWrapper.style.width = `${layout.alignedWidth}px`;
-    searchWrapper.dataset.rowAlignment = "true";
+themeToggle?.addEventListener("click", () => {
+  const nextTheme = getActiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = nextTheme;
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  } catch {
+    // Keep the selected theme active for this page when browser storage is blocked.
   }
-  return true;
-}
+  updateThemeToggle();
+});
 
-/** Checks whether all measured header controls exist. */
-function headerAlignmentAvailable() {
-  return Boolean(headerControls && filterTabsContainer && searchWrapper && dataManagementButton && desktopNewProcessButton);
-}
-
-/** Matches the wrapped search/actions row to the filter tabs' measured width. */
-function alignHeaderRows() {
-  if (!headerAlignmentAvailable()) return;
-  if (window.matchMedia("(max-width: 760px)").matches) {
-    clearHeaderRowAlignment();
-    return;
-  }
-  clearHeaderRowAlignment();
-  const layout = measureHeaderRows();
-  if (alignWrappedActions(layout)) return;
-}
-
-if (typeof ResizeObserver !== "undefined") {
-  const headerResizeObserver = new ResizeObserver(alignHeaderRows);
-  [headerControls, filterTabsContainer, searchWrapper, dataManagementButton, desktopNewProcessButton]
-    .filter(Boolean)
-    .forEach((element) => headerResizeObserver.observe(element));
-}
-window.addEventListener("resize", alignHeaderRows);
-alignHeaderRows();
+window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", updateThemeToggle);
+updateThemeToggle();
 
 /** Closes the compact navigation menu after choosing an action. */
 function closeMobileMenu() {
@@ -269,7 +236,7 @@ function closeDataModal() {
   modalEl.innerHTML = "";
   modalEl.style.opacity = "";
   modalEl.style.transform = "";
-  const compact = window.matchMedia("(max-width: 760px)").matches;
+  const compact = window.matchMedia("(max-width: 900px)").matches;
   (compact ? menuToggle : dataManagementButton)?.focus();
 }
 

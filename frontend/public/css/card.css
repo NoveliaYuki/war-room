@@ -43,7 +43,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.04), transparent 40%);
+  background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(59, 130, 246, 0.05), transparent 40%);
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--duration-fast);
@@ -84,7 +84,7 @@
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-subtle-hover);
   border: 1px solid transparent;
   opacity: 0.4;
   transition: all var(--duration-fast);
@@ -142,7 +142,7 @@
 }
 
 .card-company.is-unknown {
-  color: #a8b2d1;
+  color: var(--text-secondary);
   font-style: italic;
 }
 
@@ -202,13 +202,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-subtle-hover);
   border: 1px solid var(--border-subtle);
   padding: 4px 10px;
   border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 600;
-  color: #38bdf8;
+  color: var(--text-info);
   letter-spacing: -0.01em;
 }
 
@@ -223,7 +223,7 @@
   gap: 4px;
   font-size: 11px;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-subtle-hover);
   padding: 3px 8px;
   border-radius: var(--radius-xs);
   margin: 0;
@@ -237,7 +237,7 @@
   border: 1px solid rgba(45, 212, 191, 0.3);
   border-radius: var(--radius-xs);
   background: rgba(45, 212, 191, 0.08);
-  color: #5eead4;
+  color: var(--text-teal);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.3;
@@ -251,7 +251,7 @@
   border: 1px solid rgba(147, 197, 253, 0.25);
   border-radius: var(--radius-xs);
   background: rgba(59, 130, 246, 0.08);
-  color: #bfdbfe;
+  color: var(--text-accent-soft);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.3;
@@ -273,7 +273,7 @@
 
 .referral-tag.is-referral {
   background: rgba(168, 85, 247, 0.14);
-  color: #c084fc;
+  color: var(--text-violet);
   border: 1px solid rgba(168, 85, 247, 0.35);
 }
 
@@ -283,13 +283,13 @@
 }
 
 .referral-tag.not-referral {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-subtle-hover);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
 }
 
 .referral-tag.not-referral:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-subtle-hover);
   color: var(--text-secondary);
 }
 
@@ -333,6 +333,15 @@
   color: var(--text-muted);
 }
 
+.card-stage-summary {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--text-accent-soft);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card-footer {
   position: absolute;
   right: 20px;
@@ -356,7 +365,7 @@
 }
 
 .btn-card-open-details:hover {
-  color: #bfdbfe;
+  color: var(--text-accent-soft);
   background: var(--accent-blue-subtle);
   border-color: rgba(59, 130, 246, 0.25);
 }
@@ -376,7 +385,7 @@
   width: 6px;
   height: 6px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--bg-subtle);
 }
 
 .stage-dot.completed {
@@ -384,15 +393,15 @@
 }
 
 .stage-dot.current {
-  background: #38bdf8;
-  box-shadow: 0 0 6px #38bdf8;
+  background: var(--text-info);
+  box-shadow: 0 0 6px var(--text-info);
 }
 
 /* Quick Add Card in Grid */
 .quick-add-card {
   border: 2px dashed var(--border-medium);
   border-radius: var(--radius-lg);
-  background: rgba(20, 23, 33, 0.4);
+  background: var(--bg-drag-placeholder);
   padding: 24px;
   min-height: 230px;
   display: flex;
@@ -417,7 +426,7 @@
   width: 48px;
   height: 48px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-subtle);
   border: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;

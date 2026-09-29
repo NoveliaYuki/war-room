@@ -84,7 +84,7 @@ function renderMeetingRecruiter(meeting) {
 /** Renders meeting notes when they exist. */
 function renderMeetingNotes(notes) {
   if (!notes) return "";
-  return `<div style="font-size: 12px; color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); padding: 8px 10px; border-radius: var(--radius-xs); font-family: var(--font-mono);">Note: ${escapeHtml(notes)}</div>`;
+  return `<div style="font-size: 12px; color: var(--text-secondary); background: var(--bg-subtle-hover); border: 1px solid var(--border-subtle); padding: 8px 10px; border-radius: var(--radius-xs); font-family: var(--font-mono);">Note: ${escapeHtml(notes)}</div>`;
 }
 
 /** Renders the obviously fictional panel assigned to a demo meeting. */

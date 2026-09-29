@@ -9,7 +9,7 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(8, 10, 15, 0.76);
+  background: var(--bg-overlay);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   opacity: 0;
@@ -113,7 +113,7 @@
   padding: 12px 13px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-subtle-hover);
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.4;
@@ -208,7 +208,7 @@
   position: relative;
   padding: 18px 26px;
   border-bottom: 1px solid var(--border-subtle);
-  background: rgba(27, 32, 46, 0.6);
+  background: var(--bg-surface-elevated);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -263,7 +263,7 @@
 }
 
 .modal-company.is-unknown {
-  color: #a8b2d1;
+  color: var(--text-secondary);
   font-style: italic;
 }
 
@@ -333,7 +333,7 @@
   height: 34px;
   flex: 0 0 34px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-subtle-hover);
   border: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
@@ -344,7 +344,7 @@
 }
 
 .modal-close-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--bg-subtle);
   color: var(--text-primary);
   transform: rotate(90deg);
 }
@@ -433,7 +433,7 @@ body.is-resizing-split * {
 
 /* --- Left Pane: Job Details & Profile --- */
 .split-pane-left {
-  background: rgba(16, 19, 28, 0.45);
+  background: var(--bg-surface);
   min-width: 0;
   box-sizing: border-box;
   padding: 22px 24px;
@@ -445,7 +445,7 @@ body.is-resizing-split * {
 
 /* --- Left Pane Section Groups (Stage-Independent vs Stage-Dependent) --- */
 .left-pane-section-group {
-  background: rgba(22, 27, 40, 0.5);
+  background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: 16px 18px;
@@ -488,9 +488,9 @@ body.is-resizing-split * {
 }
 
 .stage-focus-group {
-  background: rgba(20, 27, 44, 0.65);
+  background: var(--bg-surface-elevated);
   border-color: rgba(59, 130, 246, 0.35);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(59, 130, 246, 0.1);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(59, 130, 246, 0.1);
 }
 
 .process-subsection {
@@ -506,7 +506,7 @@ body.is-resizing-split * {
 
 .process-subsection-header {
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .group-header {
@@ -515,7 +515,7 @@ body.is-resizing-split * {
   justify-content: space-between;
   gap: 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .group-title {
@@ -527,7 +527,7 @@ body.is-resizing-split * {
 }
 
 .stage-round-subtitle {
-  color: #93c5fd;
+  color: var(--text-accent-soft);
   font-size: 12px;
   font-weight: 600;
 }
@@ -733,7 +733,7 @@ body.is-resizing-split * {
   padding: 30px 24px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
-  background: rgba(22, 27, 40, 0.36);
+  background: var(--bg-surface-elevated);
   text-align: center;
 }
 
@@ -804,13 +804,13 @@ body.is-resizing-split * {
 .stage-tab-item:hover {
   color: var(--text-primary);
   border-color: var(--border-medium);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-subtle-hover);
 }
 
 .stage-tab-item.active {
   background: rgba(59, 130, 246, 0.14);
   border-color: var(--accent-blue);
-  color: #ffffff;
+  color: var(--text-accent-soft);
   font-weight: 600;
   box-shadow: 0 0 14px rgba(59, 130, 246, 0.25);
 }
@@ -819,7 +819,7 @@ body.is-resizing-split * {
   width: 20px;
   height: 20px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-subtle);
   font-size: 11px;
   font-weight: 700;
   display: flex;
@@ -836,13 +836,13 @@ body.is-resizing-split * {
   font-size: 11px;
   padding: 1px 6px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle);
   color: var(--text-muted);
 }
 
 .stage-tab-item.active .stage-tab-qcount {
   background: rgba(59, 130, 246, 0.3);
-  color: #93c5fd;
+  color: var(--text-accent-soft);
 }
 
 .btn-tab-add-stage {
@@ -929,7 +929,7 @@ body.is-resizing-split * {
 
 .stage-schedule-badge-row {
   font-size: 12px;
-  color: #38bdf8;
+  color: var(--text-info);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -945,7 +945,7 @@ body.is-resizing-split * {
   border: 1px solid rgba(45, 212, 191, 0.25);
   border-radius: var(--radius-full);
   background: rgba(45, 212, 191, 0.08);
-  color: #5eead4;
+  color: var(--text-teal);
   cursor: pointer;
   font-family: inherit;
   font-size: 10px;
@@ -999,7 +999,7 @@ body.is-resizing-split * {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-subtle);
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -1018,14 +1018,14 @@ body.is-resizing-split * {
 .btn-stage-current:hover {
   background: rgba(59, 130, 246, 0.15);
   border-color: var(--accent-blue);
-  color: #93c5fd;
+  color: var(--text-accent-soft);
   transform: translateY(-1px);
 }
 
 .btn-stage-current.is-current {
   background: linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(59, 130, 246, 0.3));
-  border-color: #38bdf8;
-  color: #38bdf8;
+  border-color: var(--text-info);
+  color: var(--text-info);
   font-weight: 700;
   box-shadow: 0 0 16px rgba(14, 165, 233, 0.35);
 }
@@ -1040,7 +1040,7 @@ body.is-resizing-split * {
   padding: 2px 7px;
   border-radius: var(--radius-full);
   background: rgba(14, 165, 233, 0.25);
-  color: #38bdf8;
+  color: var(--text-info);
   border: 1px solid rgba(14, 165, 233, 0.4);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1054,7 +1054,7 @@ body.is-resizing-split * {
 
 /* Primary Questions Workspace in Right Pane */
 .questions-workspace {
-  background: rgba(16, 19, 28, 0.35);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: 20px;
