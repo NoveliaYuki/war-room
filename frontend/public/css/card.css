@@ -514,7 +514,7 @@ html.is-reordering-cards body {
 
   .card-avatar { grid-column: 1; grid-row: 1 / 3; }
   .card-title-group { display: contents; }
-  .card-company { grid-column: 2; grid-row: 1; }
+  .card-company { grid-column: 2; grid-row: 1; display: block; min-width: 0; }
   .card-position { grid-column: 2 / -1; grid-row: 2; margin-top: 0; }
   .card-header-actions { grid-column: 3; grid-row: 1; }
 }

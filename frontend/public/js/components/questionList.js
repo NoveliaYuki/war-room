@@ -173,13 +173,16 @@ export function enableQuestionReordering(listEl, stageId, onReordered) {
   const handles = listEl.querySelectorAll(".question-drag-handle");
 
   handles.forEach((handle) => {
-    handle.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
+    let dragActive = false;
+
+    const startDrag = (e, sourceEvent = e) => {
+      sourceEvent.preventDefault();
+      sourceEvent.stopPropagation();
+      if (dragActive) return;
 
       const item = handle.closest(".question-item");
       if (!item) return;
+      dragActive = true;
 
       const rect = item.getBoundingClientRect();
       const offsetY = e.clientY - rect.top;
@@ -298,10 +301,14 @@ export function enableQuestionReordering(listEl, stageId, onReordered) {
 
       const onPointerUp = async () => {
         stopAutoScroll();
+        dragActive = false;
 
         window.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerup", onPointerUp);
         window.removeEventListener("pointercancel", onPointerUp);
+        window.removeEventListener("touchmove", onTouchMove);
+        window.removeEventListener("touchend", onPointerUp);
+        window.removeEventListener("touchcancel", onPointerUp);
 
         // Snap item back into DOM where placeholder is
         listEl.insertBefore(item, placeholder);
@@ -335,9 +342,28 @@ export function enableQuestionReordering(listEl, stageId, onReordered) {
         }
       };
 
+      const onTouchMove = (moveEv) => {
+        if (moveEv.touches.length !== 1) return;
+        if (moveEv.cancelable) moveEv.preventDefault();
+        onPointerMove(moveEv.touches[0]);
+      };
+
       window.addEventListener("pointermove", onPointerMove);
       window.addEventListener("pointerup", onPointerUp);
       window.addEventListener("pointercancel", onPointerUp);
+      window.addEventListener("touchmove", onTouchMove, { passive: false });
+      window.addEventListener("touchend", onPointerUp);
+      window.addEventListener("touchcancel", onPointerUp);
+    };
+
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 && e.pointerType !== "touch") return;
+      startDrag(e);
     });
+
+    handle.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) return;
+      startDrag(e.touches[0], e);
+    }, { passive: false });
   });
 }

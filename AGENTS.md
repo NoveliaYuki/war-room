@@ -23,6 +23,52 @@ docker compose --project-name war-room up --build --force-recreate -d frontend b
 
 After each reload, open both `http://localhost:3000` and `http://localhost:3000/?demo` in Google Chrome. Confirm the change appears and behaves correctly in both modes. Inspect the affected UI at relevant desktop and narrow viewport sizes, checking spacing, alignment, wrapping, and overlap. Do not hand off the change until both views have been checked; report any view that could not be verified.
 
+## Mobile browser setup
+
+Use the root `Brewfile` to manage host-side browser and mobile tooling with Homebrew. On a fresh Mac, trust the optional Wix simulator utility with `brew trust --formula wix/brew/applesimutils`, then run `brew bundle`. Install the Appium extensions once with `appium driver install uiautomator2` and `appium driver install xcuitest`. Start Appium with `./scripts/start-appium.sh`; it supplies the Brew Android SDK and OpenJDK paths, selects `/Applications/Xcode.app/Contents/Developer` for that process when present, and keeps the server bound to loopback. Check Android setup with the Brew SDK and Java paths exported and iOS setup with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer appium driver doctor xcuitest`.
+
+### Android emulator
+
+Start the configured AVD and confirm it is online:
+
+```sh
+export ANDROID_HOME="$(brew --prefix)/share/android-commandlinetools"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+emulator -avd warroom-firefox-android
+adb wait-for-device
+adb shell getprop sys.boot_completed
+```
+
+The last command should print `1`. Confirm the installed browsers with `adb shell pm list packages | grep -E 'firefox|chrome'`. Open the app in Firefox or Chrome with `adb shell am start -a android.intent.action.VIEW -d 'http://10.0.2.2:3000' -p org.mozilla.firefox` or substitute `com.android.chrome`; Android emulators reach the host app through `10.0.2.2`. Use `http://10.0.2.2:3000/?demo` for demo mode. If the browser package is absent, install that browser in the AVD before claiming coverage.
+
+### iOS Simulator
+
+Do not change the machine-wide active developer directory when a per-command override works. On this setup Xcode 27 is at `/Applications/Xcode.app`, while `xcode-select` may still point to Command Line Tools. Set `DEVELOPER_DIR` on Xcode commands:
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcrun simctl list devices available
+```
+
+If no usable iPhone is booted, choose an available iPhone UDID from that list and run `xcrun simctl boot <UDID>` followed by `xcrun simctl bootstatus <UDID> -b`. Xcode 27 may manage simulator devices through DeviceHub and may not include the older `Simulator.app`; use `simctl` and the installed runtime rather than assuming `open -a Simulator` exists. Open Safari with `xcrun simctl launch booted com.apple.mobilesafari`, then navigate to `http://localhost:3000` and `http://localhost:3000/?demo` in the simulator. If Firefox for iOS or another browser build is installed, launch its installed bundle identifier (inspect with `xcrun simctl listapps booted`).
+
+Test Firefox, Google Chrome, and Chromium as separate browsers wherever builds are available. Safari is also required on iOS. On Android, check installed browser packages and test Chromium separately if a Chromium app is installed; do not count Google Chrome as Chromium coverage. On iOS, the installed Chromium source build is unbranded and uses WebKit; test it as Chromium, never as Google Chrome. The App Store version of branded Google Chrome is an iPhone/iPad app, and this Xcode simulator does not include the App Store or a Chrome simulator build. Do not ask the user to connect an iPhone when they have said they do not own one. Mark branded iOS Chrome unavailable in the simulator, continue with iOS Firefox, Chromium, and Safari, and report the limitation without claiming Chrome coverage. Do not spend time trying to install the App Store app into the simulator. Verify the engine for the exact browser build and platform and record browser version/build and engine; do not infer it from the browser name or OS.
+
+Do not sign into an Apple account or the App Store on the Mac or simulator on the user's behalf. A simulator screenshot can help inspect layout, but it does not prove touch behavior. Use Appium XCUITest native touch actions or direct simulator operation. Do not request or grant Screen & System Audio Recording permission; it is not needed for Appium touch actions.
+
+After Xcode's local license has been accepted by the user and an iOS runtime is installed, the Appium launcher detects Xcode at the default path. Set `DEVELOPER_DIR` explicitly to override that path:
+
+```sh
+DEVELOPER_DIR=/path/to/Xcode.app/Contents/Developer ./scripts/start-appium.sh
+```
+
+Use Appium's XCUITest driver against the booted iPhone simulator for native touch input; use UiAutomator2 against the Android AVD. Keep the Appium server on its loopback binding. A simulator screenshot can help inspect layout, but it does not prove touch behavior; verify gestures using native touch actions or by physically operating the simulator UI.
+
+### Mobile UI behavior check
+
+Check both `/` and `/?demo` at phone-sized viewports in Firefox, Google Chrome, and Chromium as separate browsers on Android; if no separate Chromium build is available for the AVD, report that exact limitation and do not count Chrome as Chromium. On iOS test Firefox, Chromium, Safari, and Google Chrome only when an official simulator build is available. Confirm readable text and labels, no clipped or overlapping controls, appropriate one-column card layout, and scrolling in both directions. Exercise actual touch interactions: hold and drag a job card upward and downward to reorder it, use the interview question's drag handle to reorder questions, verify ordinary page/list scrolling still works when not dragging, and tap the detail status label through Ongoing → Rejected → Approved → Ongoing. Check that dragging a card suppresses page scrolling for the duration of the drag and releases scrolling afterward. Record results per browser and OS, including version/build and engine; report each unavailable browser with the exact limitation and continue the available matrix. Never count Chrome as separate Chromium coverage or an unbranded Chromium build as Google Chrome. Do not infer results from a different browser, OS, or desktop viewport.
+
 ## Required practices
 
 - Use project Docker containers for development, formatting, linting, and tests. The default `docker compose up` starts an isolated test backend, test frontend, and Go Playwright runner; the runner waits for both test services to become healthy.

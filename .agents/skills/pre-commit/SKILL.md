@@ -18,6 +18,7 @@ Do not stage or commit unless the user explicitly authorizes it.
 | Configuration | `.env` values flow through Compose to their consuming service |
 | Code and schema | Quality, complexity, security, and data-model checks pass |
 | Tests | Unit, integration, and Go Playwright suites pass in order |
+| UI runtime | Reloaded app is visually and behaviorally verified in Chrome and mobile simulators |
 | Containers | Compose is valid; runtime images are multi-stage and healthy |
 
 ## 3. Step 1 — Inspect Data and Configuration
@@ -87,7 +88,19 @@ Run `down` even if tests fail; never add `--volumes` to routine cleanup.
 | 5 | Backend integration tests | All pass |
 | 6 | Go Playwright tests | All pass after both test services are healthy |
 
-## 6. Red Flags — Never / Always
+## 6. Step 4 — Verify the Reloaded UI in Browsers and Mobile Simulators
+
+This is a required check before every commit. Follow `AGENTS.md`'s “Start and verify” and “Mobile browser setup” instructions. Rebuild and force-recreate the affected app containers, wait until healthy, then open both `http://localhost:3000` and `http://localhost:3000/?demo` in desktop Google Chrome. Verify the current change in both modes at relevant wide and narrow viewport sizes. For a change with no rendered UI impact, still load both modes and state why no UI interaction changed.
+
+Start the `warroom-firefox-android` Android AVD, start Appium with `./scripts/start-appium.sh`, and verify the changed flow separately in Firefox, Google Chrome, and Chromium. Install a separate Chromium browser build in the AVD if a supported build is available; if none is available, report the exact limitation and do not count Chrome as Chromium coverage. For iOS, use Xcode via `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, boot an available iPhone simulator with `xcrun simctl`, and verify Firefox, Chromium, Safari, and branded Google Chrome only when an official simulator build is available. Check installed apps using `adb shell pm list packages` and `xcrun simctl listapps booted`; do not report coverage for an absent app. This Xcode simulator has no App Store or branded Chrome simulator build. Do not ask the user to connect an iPhone when they have said they do not own one, and do not try to install the App Store build into the simulator. Test the installed unbranded iOS Chromium build as Chromium, not as Google Chrome. Mark any unavailable browser/platform cell with the exact limitation and continue testing every available browser. Use Appium UiAutomator2/XCUITest native touch actions or direct simulator operation for touch behavior; screenshots and desktop emulation alone do not verify gestures. Inspect both app and demo modes and the affected layout at phone size.
+
+At minimum, inspect text readability, wrapping, spacing, control alignment, clipping/overlap, scrolling, and the changed interaction. For card/question behavior, actually hold and drag a card up and down, reorder a question using its handle, then verify scrolling works normally when no drag is active. For status behavior, tap through Ongoing → Rejected → Approved → Ongoing. For other changes, exercise the affected controls and neighboring flows. Confirm the page still scrolls after a gesture and that a drag does not turn into page scrolling.
+
+Record results for each browser separately: Android Firefox, Google Chrome, and Chromium; iOS Firefox, Chromium, Safari, and branded Google Chrome only if an official simulator build is available. Include each browser's version/build and verified engine. Safari and the available iOS Chromium source build use WebKit. Never count Google Chrome as separate Chromium coverage or call unbranded Chromium Google Chrome. Do not infer Firefox or Chrome's engine from its name or OS; verify the exact build configuration and any applicable alternative-engine entitlement. This simulator has no App Store or branded Chrome simulator build: report iOS Chrome as unavailable in this simulator and continue, without requesting a physical iPhone from a user who has said they do not own one. If no supported standalone Chromium browser build can be installed in Android, report Android Chromium as unavailable; do not count Chrome as its substitute. Do not substitute Safari or Chromium and claim Google Chrome passed. Do not sign into an Apple account or accept Xcode legal terms for the user. Never request or grant Screen & System Audio Recording permission; Appium touch actions do not require it. If a required OS, browser, or simulator runtime is unavailable, document the exact limitation and continue all available checks; do not claim coverage for a browser that was not tested.
+
+Run the mobile browser matrix even for documentation-only changes; confirm the app still loads and the mobile layouts remain usable, then note that the changed files have no rendered UI impact. Never mark the gate as passed when a required browser/platform combination was unavailable or skipped.
+
+## 7. Red Flags — Never / Always
 
 ### Never
 
@@ -106,7 +119,7 @@ Run `down` even if tests fail; never add `--volumes` to routine cleanup.
 - Always run unit, integration, and Playwright suites in the listed order.
 - Always report pass/fail, coverage, blockers, and the final file list.
 
-## 7. Worked Example — Fresh Clone
+## 8. Worked Example — Fresh Clone
 
 A fresh clone uses an empty seed and a new empty Docker volume.
 The app opens with no jobs or company-specific logos; local state remains ignored.
