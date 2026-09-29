@@ -4,6 +4,7 @@
  */
 
 :root {
+  color-scheme: dark;
   /* Color Palette - Dark Elegance */
   --bg-app: #0c0e14;
   --bg-surface: #141721;
@@ -11,6 +12,22 @@
   --bg-card: #181c28;
   --bg-card-hover: #1f2434;
   --bg-input: #10131c;
+  --bg-overlay: rgba(8, 10, 15, 0.76);
+  --bg-header: rgba(12, 14, 20, 0.82);
+  --bg-glass: rgba(20, 23, 33, 0.75);
+  --bg-subtle-hover: rgba(255, 255, 255, 0.04);
+  --bg-subtle: rgba(255, 255, 255, 0.06);
+  --bg-drag-placeholder: rgba(20, 23, 33, 0.4);
+  --text-on-accent: #ffffff;
+  --text-accent-soft: #bfdbfe;
+  --text-info: #38bdf8;
+  --text-teal: #5eead4;
+  --text-success-soft: #a7f3d0;
+  --text-warning: #fbbf24;
+  --text-violet: #c084fc;
+  --text-danger-soft: #fecdd3;
+  --shadow-header: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --header-accent: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.55) 22%, rgba(139, 92, 246, 0.55) 78%, transparent);
 
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-medium: rgba(255, 255, 255, 0.14);
@@ -68,4 +85,98 @@
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
   --font-mono: "SF Mono", "Fira Code", Menlo, Monaco, Consolas, monospace;
+}
+
+:root[data-theme="dark"] { color-scheme: dark; }
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg-app: #f3f6fb;
+    --bg-surface: #ffffff;
+    --bg-surface-elevated: #f8faff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f7faff;
+    --bg-input: #ffffff;
+    --bg-overlay: rgba(15, 23, 42, 0.24);
+    --bg-header: rgba(255, 255, 255, 0.96);
+    --bg-glass: rgba(255, 255, 255, 0.88);
+    --bg-subtle-hover: rgba(37, 99, 235, 0.045);
+    --bg-subtle: rgba(37, 99, 235, 0.07);
+    --bg-drag-placeholder: #eff6ff;
+    --border-subtle: #dce5f0;
+    --border-medium: #cbd8e8;
+    --border-bright: #9aabc0;
+    --text-primary: #172033;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --text-inverse: #ffffff;
+    --text-on-accent: #ffffff;
+    --text-accent-soft: #1d4ed8;
+    --text-info: #0369a1;
+    --text-teal: #0f766e;
+    --text-success-soft: #047857;
+    --text-warning: #92400e;
+    --text-violet: #6d28d9;
+    --text-danger-soft: #be123c;
+    --accent-blue: #2563eb;
+    --accent-blue-subtle: rgba(37, 99, 235, 0.12);
+    --status-ongoing: #087eaf;
+    --status-ongoing-bg: rgba(8, 126, 175, 0.1);
+    --status-accepted: #087c59;
+    --status-accepted-bg: rgba(8, 124, 89, 0.1);
+    --status-rejected: #d22f50;
+    --status-rejected-bg: rgba(210, 47, 80, 0.1);
+    --shadow-sm: 0 1px 2px rgba(30, 64, 110, 0.07);
+    --shadow-md: 0 4px 12px rgba(30, 64, 110, 0.09);
+    --shadow-lg: 0 12px 32px -4px rgba(30, 64, 110, 0.14);
+    --shadow-modal: 0 24px 64px -8px rgba(30, 41, 59, 0.22), 0 0 0 1px var(--border-medium);
+    --shadow-header: 0 4px 18px rgba(30, 64, 110, 0.08);
+    --header-accent: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.7) 22%, rgba(124, 58, 237, 0.62) 78%, transparent);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-app: #f3f6fb;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #f8faff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f7faff;
+  --bg-input: #ffffff;
+  --bg-overlay: rgba(15, 23, 42, 0.24);
+  --bg-header: rgba(255, 255, 255, 0.96);
+  --bg-glass: rgba(255, 255, 255, 0.88);
+  --bg-subtle-hover: rgba(37, 99, 235, 0.045);
+  --bg-subtle: rgba(37, 99, 235, 0.07);
+  --bg-drag-placeholder: #eff6ff;
+  --border-subtle: #dce5f0;
+  --border-medium: #cbd8e8;
+  --border-bright: #9aabc0;
+  --text-primary: #172033;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-inverse: #ffffff;
+  --text-on-accent: #ffffff;
+  --text-accent-soft: #1d4ed8;
+  --text-info: #0369a1;
+  --text-teal: #0f766e;
+  --text-success-soft: #047857;
+  --text-warning: #92400e;
+  --text-violet: #6d28d9;
+  --text-danger-soft: #be123c;
+  --accent-blue: #2563eb;
+  --accent-blue-subtle: rgba(37, 99, 235, 0.12);
+  --status-ongoing: #087eaf;
+  --status-ongoing-bg: rgba(8, 126, 175, 0.1);
+  --status-accepted: #087c59;
+  --status-accepted-bg: rgba(8, 124, 89, 0.1);
+  --status-rejected: #d22f50;
+  --status-rejected-bg: rgba(210, 47, 80, 0.1);
+  --shadow-sm: 0 1px 2px rgba(30, 64, 110, 0.07);
+  --shadow-md: 0 4px 12px rgba(30, 64, 110, 0.09);
+  --shadow-lg: 0 12px 32px -4px rgba(30, 64, 110, 0.14);
+  --shadow-modal: 0 24px 64px -8px rgba(30, 41, 59, 0.22), 0 0 0 1px var(--border-medium);
+  --shadow-header: 0 4px 18px rgba(30, 64, 110, 0.08);
+  --header-accent: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.7) 22%, rgba(124, 58, 237, 0.62) 78%, transparent);
 }

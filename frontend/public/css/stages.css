@@ -28,7 +28,7 @@
 /* Stage Header Bar */
 .stage-header {
   padding: 14px 18px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-subtle-hover);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -48,7 +48,7 @@
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle);
   font-size: 11px;
   font-weight: 700;
   display: flex;
@@ -134,7 +134,7 @@
 
 .stage-action-btn:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle);
 }
 
 /* Stage Body */
@@ -153,7 +153,7 @@
 
 /* Questions Section */
 .stage-questions-section {
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border-subtle);
   padding-top: 12px;
 }
 
@@ -180,7 +180,7 @@
 }
 
 .question-item {
-  background: rgba(16, 19, 28, 0.6);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
@@ -232,7 +232,7 @@
 .question-drag-handle:hover {
   opacity: 1;
   color: var(--accent-blue);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle);
 }
 
 .question-drag-handle:active {
@@ -253,13 +253,13 @@
 
   .question-drag-handle {
     opacity: 0.85;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-subtle-hover);
   }
 }
 
 .question-item.is-dragging {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--accent-blue);
-  background: #131722 !important;
+  background: var(--bg-surface-elevated) !important;
   border-color: var(--accent-blue) !important;
   opacity: 0.95;
   cursor: grabbing !important;
@@ -274,8 +274,8 @@
 }
 
 .question-answer-box {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--bg-subtle-hover);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xs);
   padding: 6px 10px;
   font-size: 12px;
@@ -290,7 +290,7 @@
 .question-answer-box:focus {
   border-color: var(--accent-blue);
   outline: none;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--bg-subtle);
 }
 
 /* Add Question Form */
@@ -316,7 +316,7 @@
 }
 
 .btn-add-question {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-subtle);
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
   border-radius: var(--radius-sm);
@@ -327,7 +327,7 @@
 }
 
 .btn-add-question:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--bg-subtle-hover);
   border-color: var(--border-medium);
 }
 
@@ -339,7 +339,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.01);
+  background: var(--bg-surface-elevated);
   transition: all var(--duration-fast);
 }
 

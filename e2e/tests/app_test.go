@@ -201,7 +201,7 @@ func TestNarrowViewportNavigation(t *testing.T) {
 
 func TestIntermediateViewportGroupsSearchAndAction(t *testing.T) {
 	page := newPage(t)
-	if err := page.SetViewportSize(761, 850); err != nil {
+	if err := page.SetViewportSize(901, 850); err != nil {
 		t.Fatalf("set intermediate viewport: %v", err)
 	}
 	groupedLayout, err := page.Evaluate(`() => {

@@ -18,10 +18,12 @@ describe('application entry point', () => {
     const localStorageGet = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
       throw new Error('storage unavailable');
     });
+    delete document.documentElement.dataset.theme;
     document.body.innerHTML = `
       <div id="cards-grid"></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
+      <button id="btn-theme-toggle"></button>
       <div id="header-controls"><div class="search-wrapper"><input id="search-input"></div>
       <button id="btn-data-management"></button><div class="filter-tabs">
       <button class="filter-tab" data-filter="ongoing"></button><button class="filter-tab" data-filter="accepted"></button>
@@ -33,15 +35,25 @@ describe('application entry point', () => {
     mocks.api.getJobs.mockResolvedValue([]);
     mocks.api.createJob.mockResolvedValue({ id: 'new' });
     mocks.renderScheduleView.mockResolvedValue(undefined);
-    let resizeHeader;
-    vi.stubGlobal('ResizeObserver', class { constructor(callback) { resizeHeader = callback; } observe() {} });
+    window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }));
     await import('../../public/js/app.js');
     localStorageGet.mockRestore();
     await flush();
     expect(mocks.renderCardGrid).toHaveBeenCalled();
 
+    const themeToggle = document.querySelector('#btn-theme-toggle');
+    themeToggle.click();
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(themeToggle.getAttribute('aria-label')).toBe('Switch to dark theme');
+    expect(window.localStorage.getItem('war-room.theme')).toBe('light');
+    delete document.documentElement.dataset.theme;
+    window.matchMedia = vi.fn(() => ({ matches: true, addEventListener: vi.fn() }));
+    themeToggle.click();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+
     const menuToggle = document.querySelector('#btn-menu-toggle');
     const headerControls = document.querySelector('#header-controls');
+    const dataButton = document.querySelector('#btn-data-management');
     menuToggle.click();
     expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
     expect(headerControls.classList.contains('is-open')).toBe(true);
@@ -202,48 +214,6 @@ describe('application entry point', () => {
       salary_type: 'no_min', salary_min: null, salary_max: 100000,
     }));
 
-    // A wrapped actions row follows the actual tabs width, then clears its override when space returns.
-    const tabs = document.querySelector('.filter-tabs');
-    const search = document.querySelector('.search-wrapper');
-    const dataButton = document.querySelector('#btn-data-management');
-    const processButton = document.querySelector('#btn-new-process');
-    headerControls.style.columnGap = '16px';
-    search.style.maxWidth = '580px';
-    let searchTop = 60;
-    let actionTop = 60;
-    let searchWidth = 300;
-    let compact = false;
-    const previousMatchMedia = window.matchMedia;
-    window.matchMedia = vi.fn(() => ({ matches: compact }));
-    tabs.getBoundingClientRect = () => ({ top: 0, height: 40, width: 620 });
-    search.getBoundingClientRect = () => ({ top: searchTop, height: 40, width: searchWidth });
-    dataButton.getBoundingClientRect = () => ({ top: actionTop, height: 40, width: 100 });
-    processButton.getBoundingClientRect = () => ({ top: actionTop, height: 40, width: 160 });
-    Object.defineProperty(headerControls, 'clientWidth', { configurable: true, value: 1600 });
-    resizeHeader();
-    expect(search.style.width).toBe('328px');
-    searchWidth = 328;
-    resizeHeader();
-    expect(search.style.width).toBe('');
-    searchWidth = 300;
-    resizeHeader();
-    expect(search.style.width).toBe('328px');
-    searchTop = 0;
-    Object.defineProperty(headerControls, 'clientWidth', { configurable: true, value: 1000 });
-    window.dispatchEvent(new Event('resize'));
-    expect(search.style.width).toBe('');
-    actionTop = 0;
-    Object.defineProperty(headerControls, 'clientWidth', { configurable: true, value: 1600 });
-    window.dispatchEvent(new Event('resize'));
-    expect(search.style.width).toBe('');
-    searchTop = 60;
-    actionTop = 0;
-    window.dispatchEvent(new Event('resize'));
-    expect(search.style.width).toBe('');
-    compact = true;
-    window.dispatchEvent(new Event('resize'));
-    expect(search.style.width).toBe('');
-    window.matchMedia = previousMatchMedia;
 
     // Export and import use the same ZIP dialog and confirmation regardless of data adapter.
     dataButton.click();

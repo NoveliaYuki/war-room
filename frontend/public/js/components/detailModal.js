@@ -404,7 +404,7 @@ function renderJobDetailsSection(view) {
             <div class="section-title">
               <span>Role Highlights</span>
             </div>
-            <div class="keyword-note-box editable-keywords" data-raw-value="${escapeAttr(job.keyword_note || '')}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; color: #7dd3fc; line-height: 1.4;">
+            <div class="keyword-note-box editable-keywords" data-raw-value="${escapeAttr(job.keyword_note || '')}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; color: var(--text-info); line-height: 1.4;">
               ${renderOptionalText(job.keyword_note, '<span style="color: var(--text-muted); font-style: italic;">No keywords added</span>')}
             </div>
           </div>

@@ -31,7 +31,7 @@
 
 .today-banner.has-meetings {
   border-color: rgba(56, 189, 248, 0.25);
-  background: linear-gradient(180deg, rgba(20, 24, 35, 0.95), rgba(15, 18, 26, 0.98));
+  background: linear-gradient(180deg, var(--bg-surface), var(--bg-surface-elevated));
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
@@ -58,7 +58,7 @@
   padding: 4px 12px;
   border-radius: var(--radius-full);
   background: rgba(59, 130, 246, 0.14);
-  color: #93c5fd;
+  color: var(--text-accent-soft);
   border: 1px solid rgba(59, 130, 246, 0.28);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -70,7 +70,7 @@
   padding: 4px 12px;
   border-radius: var(--radius-full);
   background: rgba(16, 185, 129, 0.12);
-  color: #6ee7b7;
+  color: var(--text-success-soft);
   border: 1px solid rgba(16, 185, 129, 0.25);
   white-space: nowrap;
 }
@@ -84,7 +84,7 @@
 }
 
 .today-meeting-card {
-  background: rgba(18, 22, 32, 0.7);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: 18px 20px;
@@ -97,7 +97,7 @@
 
 .today-meeting-card:hover {
   border-color: var(--border-medium);
-  background: rgba(22, 27, 40, 0.9);
+  background: var(--bg-surface-elevated);
   transform: translateY(-1px);
 }
 
@@ -105,7 +105,7 @@
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
-  color: #93c5fd;
+  color: var(--text-accent-soft);
   background: rgba(59, 130, 246, 0.12);
   border: 1px solid rgba(59, 130, 246, 0.22);
   padding: 4px 10px;
@@ -145,7 +145,7 @@
   font-family: var(--font-mono);
   padding: 1px 7px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-subtle);
 }
 
 .meetings-list {
@@ -243,19 +243,19 @@
 
 .meeting-format-pill.pill-video {
   background: rgba(14, 165, 233, 0.15);
-  color: #38bdf8;
+  color: var(--text-info);
   border: 1px solid rgba(14, 165, 233, 0.3);
 }
 
 .meeting-format-pill.pill-phone {
   background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
+  color: var(--text-warning);
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
 
 .meeting-format-pill.pill-onsite {
   background: rgba(139, 92, 246, 0.15);
-  color: #c084fc;
+  color: var(--text-violet);
   border: 1px solid rgba(139, 92, 246, 0.35);
 }
 
@@ -288,7 +288,7 @@
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: #fbbf24;
+  color: var(--text-warning);
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.3);
   padding: 6px 12px;
@@ -296,7 +296,7 @@
 }
 
 .phone-call-indicator a {
-  color: #fbbf24;
+  color: var(--text-warning);
   text-decoration: underline;
 }
 

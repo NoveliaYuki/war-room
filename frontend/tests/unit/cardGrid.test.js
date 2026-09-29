@@ -163,6 +163,7 @@ describe('cardGrid', () => {
 
     expect(card.querySelector('.card-company').textContent).toContain('Unknown Company');
     expect(card.querySelector('.card-stage-indicator').textContent).toContain('Step 2/4: Technical interview');
+    expect(card.querySelector('.card-stage-summary').getAttribute('style')).toBeNull();
     expect(card.querySelector('.keyword-note').textContent).toBe('Platform');
   });
 

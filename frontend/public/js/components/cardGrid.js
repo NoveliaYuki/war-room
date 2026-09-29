@@ -133,7 +133,7 @@ function createCardElement(job) {
     ${renderReferralTag(job)}${renderEmploymentTypeTag(job.employment_type)}${renderWorkArrangementTag(job.work_arrangement)}</div>
   <div class="card-summary"><div class="card-summary-label">Role highlights</div><div class="keyword-note editable-card-keyword" data-raw-value="${escapeAttr(job.keyword_note || "")}" title="Role highlights">${renderCardRoleHighlights(job)}</div></div></div>
   <div class="card-footer">
-    <div class="card-stage-indicator"><span style="font-weight: 500; color: #93c5fd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px;" title="${escapeAttr(stageIndicator.text)}">${stageIndicator.markup}</span>
+    <div class="card-stage-indicator"><span class="card-stage-summary" title="${escapeAttr(stageIndicator.text)}">${stageIndicator.markup}</span>
       <button class="btn-card-open-details" type="button" aria-label="Open details for ${escapeAttr(job.position_title)}" title="Open details">${icon("arrowUpRight", 14)}</button></div></div>`;
   return card;
 }
