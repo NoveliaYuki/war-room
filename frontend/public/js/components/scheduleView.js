@@ -22,6 +22,7 @@ const MEETING_FORMAT_LABELS = new Map([
   ["onsite", `${icon("building", 12)} In-Person / On-Site`],
   ["video", `${icon("video", 12)} Video Call`],
 ]);
+const MEETING_NOTE_CONTAINERS = new WeakSet();
 
 /**
  * Gets local YYYY-MM-DD string.
@@ -82,9 +83,40 @@ function renderMeetingRecruiter(meeting) {
 }
 
 /** Renders meeting notes when they exist. */
-function renderMeetingNotes(notes) {
+function renderMeetingNotes(notes, prefix = "Note: ") {
   if (!notes) return "";
-  return `<div style="font-size: 12px; color: var(--text-secondary); background: var(--bg-subtle-hover); border: 1px solid var(--border-subtle); padding: 8px 10px; border-radius: var(--radius-xs); font-family: var(--font-mono);">Note: ${escapeHtml(notes)}</div>`;
+  return `<div class="meeting-note" data-meeting-note>
+    <span class="meeting-note-content is-clamped">${escapeHtml(prefix + notes)}</span>
+    <button class="meeting-note-toggle" type="button" aria-expanded="false" hidden>Show full note</button>
+  </div>`;
+}
+
+/** Updates long-note controls after rendering or a viewport resize. */
+function updateMeetingNotePreviews(containerEl) {
+  containerEl.querySelectorAll("[data-meeting-note]").forEach((note) => {
+    const content = note.querySelector(".meeting-note-content");
+    const toggle = note.querySelector(".meeting-note-toggle");
+    const expanded = note.classList.contains("is-expanded");
+    content.classList.toggle("is-clamped", !expanded);
+    toggle.hidden = !expanded && content.scrollHeight <= content.clientHeight + 1;
+    toggle.textContent = expanded ? "Show less" : "Show full note";
+    toggle.setAttribute("aria-expanded", String(expanded));
+  });
+}
+
+/** Adds one delegated click handler for expanding full meeting notes. */
+function bindMeetingNotePreviews(containerEl) {
+  if (!MEETING_NOTE_CONTAINERS.has(containerEl)) {
+    containerEl.addEventListener("click", (event) => {
+      const toggle = event.target.closest(".meeting-note-toggle");
+      if (!toggle || !containerEl.contains(toggle)) return;
+      toggle.closest("[data-meeting-note]").classList.toggle("is-expanded");
+      updateMeetingNotePreviews(containerEl);
+    });
+    window.addEventListener("resize", () => updateMeetingNotePreviews(containerEl));
+    MEETING_NOTE_CONTAINERS.add(containerEl);
+  }
+  updateMeetingNotePreviews(containerEl);
 }
 
 /** Renders the obviously fictional panel assigned to a demo meeting. */
@@ -106,6 +138,7 @@ function renderMeetingJoinAction(meeting) {
 /** Renders a meeting scheduled for today. */
 function renderTodayMeeting(meeting) {
   const time = meeting.meeting_time || "Time TBD";
+  const joinAction = renderMeetingJoinAction(meeting);
   return `<div class="today-meeting-card" data-jobid="${escapeAttr(meeting.job_id)}">
     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;"><div style="display: flex; align-items: center; gap: 8px;">
       <span class="meeting-time-badge inline-icon-text">${icon("clock", 12)} ${escapeHtml(time)}</span>
@@ -114,7 +147,7 @@ function renderTodayMeeting(meeting) {
     <div><div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${escapeHtml(meeting.position_title)}</div>
       <div class="inline-icon-text" style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">${renderMeetingCompany(meeting.company_name)}</div></div>
     ${renderMeetingRecruiter(meeting)}${renderMeetingInterviewers(meeting.stage_interviewers)}${renderMeetingNotes(meeting.stage_notes)}
-    <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap;">${renderMeetingJoinAction(meeting)}
+    <div class="today-meeting-actions">${joinAction}
       <button class="btn-primary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(meeting.job_id)}" style="padding: 6px 12px; font-size: 12px; justify-content: center;">${icon("chat", 13)} Open Questions & Prep ${icon("arrowUpRight", 11)}</button>
     </div>
   </div>`;
@@ -263,6 +296,8 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
     </div>
   `;
 
+  bindMeetingNotePreviews(containerEl);
+
   containerEl.querySelectorAll(".btn-open-meeting").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const jobId = btn.getAttribute("data-jobid");
@@ -279,14 +314,18 @@ function renderMeetingsRows(list = []) {
   return list
     .map((m) => {
       const avatarHtml = renderCompanyAvatar(m.company_name, m.avatar_seed, 48, m.company_domain, m.job_id);
+      const meetingUrl = safeUrl(m.meeting_url);
       return `
-      <div class="meeting-row-card">
+      <div class="meeting-row-card${meetingUrl ? ' has-meeting-url' : ''}">
         <div class="meeting-row-left">
           <div class="meeting-row-avatar">${avatarHtml}</div>
           <div class="meeting-row-info">
-            <div class="meeting-row-title">
-              <span>${escapeHtml(m.position_title)}</span>
-              <span style="color: var(--text-secondary); font-weight: 400;">@ ${m.company_name.toLowerCase() === 'unknown' ? 'Unknown Company (Undisclosed)' : escapeHtml(m.company_name)}</span>
+            <div class="meeting-row-heading">
+              <div class="meeting-row-identity">
+                <span class="meeting-row-position">${escapeHtml(m.position_title)}</span>
+                <span class="meeting-row-company">@ ${m.company_name.toLowerCase() === 'unknown' ? 'Unknown Company (Undisclosed)' : escapeHtml(m.company_name)}</span>
+              </div>
+              <div class="meeting-row-badges">
               <span class="stage-type-badge ${getStageTypeClass(m.stage_type)}">${escapeHtml(m.stage_type)}</span>
               <span class="meeting-format-pill pill-${getMeetingTypeClass(m.meeting_type)} inline-icon-text">
                 ${
@@ -297,6 +336,7 @@ function renderMeetingsRows(list = []) {
                     : `${icon("video", 12)} Video Call`
                 }
               </span>
+              </div>
             </div>
             <div class="meeting-row-meta">
               <span class="meeting-time-badge inline-icon-text">
@@ -304,14 +344,14 @@ function renderMeetingsRows(list = []) {
               </span>
               ${m.recruiter_name ? `<span class="inline-icon-text">${icon("user", 12)} ${escapeHtml(m.recruiter_name)}</span>` : ''}
               ${renderMeetingInterviewers(m.stage_interviewers)}
-              ${m.stage_notes ? `<span style="color: #7dd3fc; font-family: var(--font-mono); font-size: 12px;">${escapeHtml(m.stage_notes)}</span>` : ''}
+              ${renderMeetingNotes(m.stage_notes, "")}
             </div>
           </div>
         </div>
         <div class="meeting-row-right">
           ${
-            safeUrl(m.meeting_url)
-              ? `<a href="${escapeAttr(safeUrl(m.meeting_url))}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="font-size: 12px; padding: 6px 12px; text-decoration: none;">
+            meetingUrl
+              ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="font-size: 12px; padding: 6px 12px; text-decoration: none;">
                   <span class="inline-icon-text">
                     ${icon("video", 12)} Join Call ${icon("arrowUpRight", 11)}
                   </span>
