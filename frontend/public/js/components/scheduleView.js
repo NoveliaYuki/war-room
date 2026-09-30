@@ -23,6 +23,7 @@ const MEETING_FORMAT_LABELS = new Map([
   ["video", `${icon("video", 12)} Video Call`],
 ]);
 const MEETING_NOTE_CONTAINERS = new WeakSet();
+const PAST_MEETINGS_STATE_KEY = "war-room.past-meetings-expanded";
 
 /**
  * Gets local YYYY-MM-DD string.
@@ -78,7 +79,7 @@ function renderMeetingCompany(companyName) {
 /** Renders recruiter contact details when they are available. */
 function renderMeetingRecruiter(meeting) {
   if (!meeting.recruiter_name) return "";
-  const contact = meeting.recruiter_contact ? `<span style="color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px;">(${escapeHtml(meeting.recruiter_contact)})</span>` : "";
+  const contact = meeting.recruiter_contact ? `<span class="meeting-recruiter-contact">(${escapeHtml(meeting.recruiter_contact)})</span>` : "";
   return `<div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"><span class="inline-icon-text">${icon("user", 12)} Recruiter: ${escapeHtml(meeting.recruiter_name)}</span>${contact}</div>`;
 }
 
@@ -117,6 +118,26 @@ function bindMeetingNotePreviews(containerEl) {
     MEETING_NOTE_CONTAINERS.add(containerEl);
   }
   updateMeetingNotePreviews(containerEl);
+}
+
+/** Restores and saves the past-meetings disclosure state for this tab session. */
+function bindPastMeetingsDisclosure(containerEl) {
+  const disclosure = containerEl.querySelector(".past-meetings-group");
+  if (!disclosure) return;
+
+  try {
+    disclosure.open = window.sessionStorage.getItem(PAST_MEETINGS_STATE_KEY) === "true";
+  } catch {
+    return;
+  }
+
+  disclosure.addEventListener("toggle", () => {
+    try {
+      window.sessionStorage.setItem(PAST_MEETINGS_STATE_KEY, String(disclosure.open));
+    } catch {
+      // Keep the disclosure usable for this render when session storage is unavailable.
+    }
+  });
 }
 
 /** Renders the obviously fictional panel assigned to a demo meeting. */
@@ -267,17 +288,18 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
       ${
         pastMeetings.length > 0
           ? `
-        <div class="schedule-day-group" style="opacity: 0.75;">
-          <div class="day-group-header">
+        <details class="schedule-day-group past-meetings-group">
+          <summary class="day-group-header past-meetings-summary">
             <h3 class="day-group-title">
               <span>Past Meetings</span>
             </h3>
             <span class="day-group-count">${pastMeetings.length}</span>
-          </div>
+            <span class="past-meetings-chevron" aria-hidden="true">${icon("chevronDown", 16)}</span>
+          </summary>
           <div class="meetings-list">
             ${renderMeetingsRows(pastMeetings)}
           </div>
-        </div>
+        </details>
       `
           : ''
       }
@@ -297,6 +319,7 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
   `;
 
   bindMeetingNotePreviews(containerEl);
+  bindPastMeetingsDisclosure(containerEl);
 
   containerEl.querySelectorAll(".btn-open-meeting").forEach((btn) => {
     btn.addEventListener("click", async () => {

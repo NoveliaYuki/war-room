@@ -78,12 +78,15 @@
 /* Today's Meeting Highlights inside Banner */
 .today-meetings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   margin-top: 2px;
+  width: 100%;
+  min-width: 0;
 }
 
 .today-meeting-card {
+  min-width: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
@@ -93,6 +96,12 @@
   gap: 12px;
   box-shadow: var(--shadow-sm);
   transition: all var(--duration-fast);
+}
+
+.meeting-recruiter-contact {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .today-meeting-card:hover {
@@ -145,6 +154,26 @@
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-subtle);
 }
+
+.past-meetings-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.past-meetings-summary::-webkit-details-marker { display: none; }
+.past-meetings-summary::marker { content: ""; }
+.past-meetings-summary:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; }
+
+.past-meetings-chevron {
+  display: inline-flex;
+  color: var(--text-muted);
+  margin-left: auto;
+  transform: rotate(-90deg);
+  transition: transform var(--duration-fast);
+}
+
+.past-meetings-group[open] .past-meetings-chevron { transform: rotate(0); }
 
 .day-group-title {
   font-size: 15px;

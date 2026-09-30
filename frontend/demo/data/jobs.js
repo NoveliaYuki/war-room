@@ -1,4 +1,6 @@
 /** Browser-only sample records for the interactive demo. */
+import { formatLocalDate, getDemoMeetingDayOffset } from "./meetingDates.js";
+
 const stageQuestions = {
   HR: [
     "What kind of work gives you the most energy?",
@@ -44,13 +46,6 @@ const meetingSlots = [
   ["11:00", "11:45"], ["15:30", "16:15"], ["09:30", "10:15"], ["13:30", "14:15"],
 ];
 
-function formatLocalDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function makeStage(role, jobId, stageType, index, now) {
   const id = `${jobId}-stage-${index + 1}`;
   const current = role.status === "ongoing" && index === role.currentStageIndex;
@@ -58,9 +53,11 @@ function makeStage(role, jobId, stageType, index, now) {
   const jobNumber = Number(jobId.split("-")[1]);
   const meetingScheduled = role.status !== "ongoing" || completed || current;
   const meetingDate = new Date(now);
-  const dayOffset = role.status === "ongoing"
-    ? completed ? -(jobNumber + index + 1) : (jobNumber * 2) % 9 + 1
-    : -(jobNumber + index + 2);
+  const dayOffset = jobId === "demo-1" && current
+    ? 0
+    : completed || role.status !== "ongoing"
+      ? getDemoMeetingDayOffset(id, now, "past")
+      : getDemoMeetingDayOffset(id, now, "future");
   if (meetingScheduled) meetingDate.setDate(meetingDate.getDate() + dayOffset);
   const interviewerName = demoInterviewers[(jobNumber + index) % demoInterviewers.length];
   const recruiterName = demoRecruiters[(jobNumber + index) % demoRecruiters.length];
