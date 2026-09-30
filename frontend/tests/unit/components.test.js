@@ -221,7 +221,7 @@ describe('schedule view', () => {
       meeting('today', 0, { recruiter_name: 'R', recruiter_contact: '123|abc', stage_notes: 'Bring notes', meeting_url: 'https://meet.example' }),
       meeting('phone', 0, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '<img src=x onerror=alert(1)>|x' }),
       meeting('untrusted-type', 0, { meeting_type: 'video\" onmouseover=alert(1)', stage_type: '<img src=x onerror=alert(1)>' }),
-      meeting('tomorrow', 1, { meeting_type: 'video" onmouseover=alert(1)', meeting_url: 'https://future.example', recruiter_name: 'Future recruiter', stage_notes: 'Confirm panel', company_domain: 'acme.example', avatar_seed: 'Acme' }),
+      meeting('tomorrow', 1, { meeting_type: 'video" onmouseover=alert(1)', meeting_url: 'https://future.example', recruiter_name: 'Future recruiter', stage_notes: 'Confirm panel with the interview team and review the role expectations before the conversation.', stage_interviewers: [{ name: 'Taylor' }], company_domain: 'acme.example', avatar_seed: 'Acme' }),
       meeting('future', 4, { company_name: 'Unknown' }),
       meeting('future-phone', 5, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '555-0100|mobile' }),
       meeting('undated', null),
@@ -242,6 +242,23 @@ describe('schedule view', () => {
     expect(root.querySelector('.meeting-format-pill[onmouseover]')).toBeNull();
     expect(root.querySelector('.meeting-row-card .meeting-format-pill[onmouseover]')).toBeNull();
     expect(root.querySelector('.meeting-row-card .meeting-format-pill').classList.contains('pill-video')).toBe(true);
+    expect(root.querySelector('.meeting-row-card').textContent).toContain('Interviewers: Taylor');
+    const noteRoot = root.querySelector('.meeting-row-card');
+    const noteContent = noteRoot.querySelector('.meeting-note-content');
+    const noteToggle = noteRoot.querySelector('.meeting-note-toggle');
+    Object.defineProperties(noteContent, {
+      scrollHeight: { configurable: true, value: 160 },
+      clientHeight: { configurable: true, value: 60 },
+    });
+    document.body.append(root);
+    window.dispatchEvent(new Event('resize'));
+    expect(noteToggle.hidden).toBe(false);
+    noteToggle.click();
+    expect(noteRoot.querySelector('.meeting-note').classList.contains('is-expanded')).toBe(true);
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('true');
+    noteToggle.click();
+    expect(noteRoot.querySelector('.meeting-note').classList.contains('is-expanded')).toBe(false);
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('false');
     const scheduleLogo = root.querySelector('.meeting-row-card .company-logo-img');
     const jobCardLogo = document.createElement('div');
     jobCardLogo.innerHTML = renderCompanyAvatar('Acme', 'Acme', 64, 'acme.example', 'tomorrow');
