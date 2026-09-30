@@ -469,6 +469,10 @@ func (h *Handler) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	defer func() { _ = file.Close() }()
 	att, err := h.storeUploadedAttachment(jobID, stageID, file, header)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidAttachmentOwner) {
+			ErrorJSON(w, http.StatusBadRequest, "job_id and stage_id must reference an owned selection process")
+			return
+		}
 		ErrorJSON(w, http.StatusInternalServerError, "Failed to save attachment")
 		return
 	}
