@@ -215,6 +215,7 @@ func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
 	assertCardCount(t, page, 6)
 
 	assertDemoMeetingToday(t, page)
+	assertTodayMeetingsStack(t, page)
 }
 
 func assertDemoMeetingToday(t *testing.T, page playwright.Page) {
@@ -225,6 +226,30 @@ func assertDemoMeetingToday(t *testing.T, page playwright.Page) {
 	assertVisible(t, page.Locator(".schedule-container .today-status-title"))
 	if count, err := page.Locator(".today-meeting-card").Count(); err != nil || count < 1 {
 		t.Fatalf("demo should always include a meeting today (count=%d, err=%v)", count, err)
+	}
+}
+
+func assertTodayMeetingsStack(t *testing.T, page playwright.Page) {
+	t.Helper()
+	for _, width := range []int{1440, 402, 320} {
+		if err := page.SetViewportSize(width, 950); err != nil {
+			t.Fatalf("set %dpx viewport for Today meetings: %v", width, err)
+		}
+		stacked, err := page.Evaluate(`() => {
+			const grid = document.querySelector(".today-meetings-grid");
+			const first = grid?.querySelector(".today-meeting-card");
+			if (!grid || !first) return false;
+			const clone = first.cloneNode(true);
+			clone.dataset.e2eLayoutProbe = "true";
+			grid.appendChild(clone);
+			const firstRect = first.getBoundingClientRect();
+			const secondRect = clone.getBoundingClientRect();
+			clone.remove();
+			return secondRect.top >= firstRect.bottom && Math.abs(secondRect.left - firstRect.left) < 1;
+		}`, nil)
+		if err != nil || stacked != true {
+			t.Fatalf("Today meeting cards are not stacked at %dpx (stacked=%v, err=%v)", width, stacked, err)
+		}
 	}
 }
 
