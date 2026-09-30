@@ -2,8 +2,10 @@ import { initialJobs } from "./data/jobs.js";
 import { cacheDemoLogos, DEMO_LOGOS_STORAGE_KEY, getDemoLogoAsset, getDemoLogoUrl } from "./logoStore.js";
 import { saveFile, readFile, deleteFile, replaceFiles } from "./fileStore.js";
 import { createZip } from "./zipWriter.js";
+import { formatLocalDate, getDemoMeetingDayOffset, setDemoMeetingDate } from "./data/meetingDates.js";
 
 const STORAGE_KEY = "war-room-demo-data-v13";
+const SCHEDULE_DATE_KEY = "war-room-demo-schedule-date";
 const BACKUP_FORMAT = "war-room-demo-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
@@ -12,10 +14,39 @@ const MAX_ARCHIVE_MANIFEST_BYTES = 20 * 1024 * 1024;
 const MAX_ARCHIVE_LOGO_BYTES = 1024 * 1024;
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
+function refreshDemoMeetingDates(records, today) {
+  if (!Array.isArray(records)) return;
+  const sampleJobs = records.filter((job) => /^demo-\d+$/.test(job.id));
+  const stages = sampleJobs.flatMap((job) => job.stages || []);
+  const todayStage = sampleJobs.find((job) => job.id === "demo-1")?.stages?.find((stage) => stage.id === "demo-1-stage-2")
+    || stages.find((stage) => stage.status === "current")
+    || stages.find((stage) => stage.meeting_date)
+    || stages[0];
+
+  sampleJobs.forEach((job) => {
+    (job.stages || []).forEach((stage) => {
+      if (stage === todayStage) {
+        setDemoMeetingDate(stage, today, 0);
+        return;
+      }
+      if (!stage.meeting_date) return;
+      const direction = job.status !== "ongoing" || stage.status === "completed" ? "past" : "future";
+      setDemoMeetingDate(stage, today, getDemoMeetingDayOffset(stage.id, new Date(`${today}T12:00:00`), direction));
+    });
+  });
+}
+
 function loadJobs() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : clone(initialJobs);
+    const records = stored ? JSON.parse(stored) : clone(initialJobs);
+    const today = formatLocalDate(new Date());
+    if (window.localStorage.getItem(SCHEDULE_DATE_KEY) !== today) {
+      refreshDemoMeetingDates(records, today);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+      window.localStorage.setItem(SCHEDULE_DATE_KEY, today);
+    }
+    return records;
   } catch {
     return clone(initialJobs);
   }

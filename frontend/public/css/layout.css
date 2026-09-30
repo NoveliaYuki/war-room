@@ -368,12 +368,14 @@
 
 .data-management-trigger span { display: inline; }
 
-@media (min-width: 901px) {
+@media (min-width: 851px) {
   .header-inner {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     column-gap: 20px;
     align-items: center;
+    max-width: 1304px;
+    margin: 0 auto;
   }
 
   .brand-section {
@@ -397,7 +399,7 @@
   .header-search-actions { display: contents; }
 
   .filter-tabs {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     width: auto;
     min-width: 0;
     max-width: 100%;
@@ -405,15 +407,17 @@
     scrollbar-width: none;
   }
 
+  .filter-tab { flex: 0 0 auto; white-space: nowrap; }
+
   .filter-tabs::-webkit-scrollbar { display: none; }
 
-  .header-controls .search-wrapper { flex: 1 1 160px; min-width: 120px; max-width: none; }
+  .header-controls .search-wrapper { flex: 1 1 160px; min-width: 0; max-width: none; }
   .header-search-actions #btn-new-process,
   .header-search-actions .data-management-trigger,
   .header-search-actions .theme-toggle { flex: 0 0 auto; }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 850px) {
   .app-container {
     padding: 0 14px 32px;
   }
@@ -482,18 +486,9 @@
   #btn-new-process-mobile .new-process-label { display: none; }
 }
 
-@media (min-width: 901px) and (max-width: 1200px) {
+@media (min-width: 851px) and (max-width: 1360px) {
   .header-controls { gap: 6px; }
   .filter-tabs { flex: 0 1 auto; min-width: 0; max-width: 100%; gap: 0; }
-  .filter-tab { flex: 0 0 auto; gap: 4px; padding-inline: 4px; font-size: 12px; white-space: nowrap; }
-  .filter-tab .tab-count { flex-basis: 20px; width: 20px; }
-  .header-controls .search-wrapper { min-width: 116px; }
-  .header-controls .search-input { min-width: 0; }
-  .search-input { padding-right: 12px; }
-  .search-shortcut { display: none; }
-}
-
-@media (min-width: 901px) and (max-width: 1000px) {
   .data-management-trigger,
   #btn-new-process {
     width: 42px;
@@ -505,6 +500,15 @@
 
   .data-management-trigger span,
   #btn-new-process .new-process-label { display: none; }
+  .header-controls .search-wrapper { min-width: 116px; }
+  .header-controls .search-input { min-width: 0; }
+  .search-input { padding-right: 12px; }
+  .search-shortcut { display: none; }
+}
+
+@media (min-width: 851px) and (max-width: 1150px) {
+  .filter-tab { gap: 4px; padding-inline: 4px; font-size: 12px; white-space: nowrap; }
+  .filter-tab .tab-count { flex-basis: 18px; width: 18px; }
 }
 
 /* Toast Notification System */
