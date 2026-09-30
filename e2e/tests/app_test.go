@@ -180,6 +180,101 @@ func TestApplicationShellAndFilters(t *testing.T) {
 	}
 }
 
+func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	assertCardCount(t, page, 6)
+
+	for _, filter := range []struct {
+		name  string
+		count int
+	}{{"all", 9}, {"accepted", 1}, {"rejected", 2}, {"ongoing", 6}} {
+		if err := page.Locator(`[data-filter="` + filter.name + `"]`).Click(); err != nil {
+			t.Fatalf("select %s filter: %v", filter.name, err)
+		}
+		assertCardCount(t, page, filter.count)
+	}
+
+	search := page.Locator("#search-input")
+	if err := search.Fill("openai"); err != nil {
+		t.Fatalf("search by lowercase company name: %v", err)
+	}
+	waitForCardCount(t, page, 1)
+	cardText, err := page.Locator(".process-card").First().TextContent()
+	if err != nil || !strings.Contains(cardText, "OpenAI") {
+		t.Fatalf("case-insensitive search returned wrong card %q (err=%v)", cardText, err)
+	}
+	if err := search.Fill("no-company-or-role-matches-this"); err != nil {
+		t.Fatalf("search for missing company: %v", err)
+	}
+	waitForCardCount(t, page, 0)
+	assertVisible(t, page.Locator(".empty-state"))
+	if err := search.Fill(""); err != nil {
+		t.Fatalf("clear search: %v", err)
+	}
+	assertCardCount(t, page, 6)
+
+	assertDemoMeetingToday(t, page)
+}
+
+func assertDemoMeetingToday(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if err := page.Locator(`[data-filter="schedule"]`).Click(); err != nil {
+		t.Fatalf("open demo schedule: %v", err)
+	}
+	assertVisible(t, page.Locator(".schedule-container .today-status-title"))
+	if count, err := page.Locator(".today-meeting-card").Count(); err != nil || count < 1 {
+		t.Fatalf("demo should always include a meeting today (count=%d, err=%v)", count, err)
+	}
+}
+
+func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	for _, width := range []int{402, 390, 320} {
+		if err := page.SetViewportSize(width, 850); err != nil {
+			t.Fatalf("set %dpx viewport: %v", width, err)
+		}
+		valid, err := page.Evaluate(`() => {
+			const card = document.querySelector(".process-card");
+			const menu = document.querySelector("#btn-menu-toggle");
+			return document.documentElement.scrollWidth <= window.innerWidth &&
+				card && card.getBoundingClientRect().right <= window.innerWidth &&
+				getComputedStyle(menu).display !== "none";
+		}`, nil)
+		if err != nil || valid != true {
+			t.Fatalf("phone layout clips a card or hides navigation at %dpx (valid=%v, err=%v)", width, valid, err)
+		}
+	}
+}
+
+func openDemoPage(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if _, err := page.Goto(baseURL + "/?demo"); err != nil {
+		t.Fatalf("open demo application: %v", err)
+	}
+	if _, err := page.WaitForFunction("() => document.body.dataset.appReady === 'true'", nil); err != nil {
+		t.Fatalf("wait for demo initialization: %v", err)
+	}
+}
+
+func assertCardCount(t *testing.T, page playwright.Page, count int) {
+	t.Helper()
+	waitForCardCount(t, page, count)
+	actual, err := page.Locator(".process-card").Count()
+	if err != nil || actual != count {
+		t.Fatalf("card count=%d, want %d (err=%v)", actual, count, err)
+	}
+}
+
+func waitForCardCount(t *testing.T, page playwright.Page, count int) {
+	t.Helper()
+	expression := fmt.Sprintf("() => document.querySelectorAll('.process-card').length === %d", count)
+	if _, err := page.WaitForFunction(expression, nil); err != nil {
+		t.Fatalf("wait for %d cards: %v", count, err)
+	}
+}
+
 func TestNarrowViewportNavigation(t *testing.T) {
 	page := newPage(t)
 	if err := page.SetViewportSize(760, 850); err != nil {

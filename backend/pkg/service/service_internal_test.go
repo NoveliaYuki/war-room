@@ -2,6 +2,7 @@ package service
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -131,14 +132,14 @@ func assertAttachmentOwnership(t *testing.T, fixture attachmentOwnerFixture) {
 	if err := fixture.service.validateAttachmentOwner("owner-a", &fixture.ownedStage.ID); err != nil {
 		t.Fatalf("stage attachment owner: %v", err)
 	}
-	if err := fixture.service.validateAttachmentOwner("missing", nil); err != sql.ErrNoRows {
+	if err := fixture.service.validateAttachmentOwner("missing", nil); !errors.Is(err, ErrInvalidAttachmentOwner) {
 		t.Fatalf("missing job error=%v", err)
 	}
 	missingStage := "missing-stage"
-	if err := fixture.service.validateAttachmentOwner("owner-a", &missingStage); err != sql.ErrNoRows {
+	if err := fixture.service.validateAttachmentOwner("owner-a", &missingStage); !errors.Is(err, ErrInvalidAttachmentOwner) {
 		t.Fatalf("missing stage error=%v", err)
 	}
-	if err := fixture.service.validateAttachmentOwner("owner-a", &fixture.foreignStage.ID); err == nil {
+	if err := fixture.service.validateAttachmentOwner("owner-a", &fixture.foreignStage.ID); !errors.Is(err, ErrInvalidAttachmentOwner) {
 		t.Fatal("stage owned by another job should fail")
 	}
 }

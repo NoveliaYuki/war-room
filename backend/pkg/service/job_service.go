@@ -27,6 +27,9 @@ type JobService struct {
 	mirrorLock sync.Mutex
 }
 
+// ErrInvalidAttachmentOwner indicates that an attachment references a missing or unrelated job or stage.
+var ErrInvalidAttachmentOwner = errors.New("invalid attachment owner")
+
 // NewJobService creates a job service backed by repo and cfg.
 func NewJobService(repo *repository.Repository, cfg *config.Config) *JobService {
 	return &JobService{
@@ -740,7 +743,7 @@ func (s *JobService) validateAttachmentOwner(jobID string, stageID *string) erro
 		return fmt.Errorf("load attachment job %q: %w", jobID, err)
 	}
 	if job == nil {
-		return sql.ErrNoRows
+		return fmt.Errorf("%w: job %q was not found", ErrInvalidAttachmentOwner, jobID)
 	}
 	if stageID == nil {
 		return nil
@@ -750,10 +753,10 @@ func (s *JobService) validateAttachmentOwner(jobID string, stageID *string) erro
 		return fmt.Errorf("load attachment stage %q: %w", *stageID, err)
 	}
 	if stage == nil {
-		return sql.ErrNoRows
+		return fmt.Errorf("%w: stage %q was not found", ErrInvalidAttachmentOwner, *stageID)
 	}
 	if stage.JobID != jobID {
-		return fmt.Errorf("stage %q does not belong to job %q", *stageID, jobID)
+		return fmt.Errorf("%w: stage %q does not belong to job %q", ErrInvalidAttachmentOwner, *stageID, jobID)
 	}
 	return nil
 }

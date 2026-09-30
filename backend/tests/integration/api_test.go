@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -348,5 +349,164 @@ func TestAPI_AutoRestoreFromBackup(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("Expected 1 restored job, found %d", count)
+	}
+}
+
+func TestAPI_AttachmentLifecycleEnforcesOwnershipAndSafeNames(t *testing.T) {
+	ts, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	client := ts.Client()
+	job := createLifecycleJob(t, client, ts.URL)
+	foreignJob := createLifecycleJob(t, client, ts.URL)
+	foreignStage := foreignJob.Stages[0].ID
+	assertAttachmentUploadRejected(t, client, ts.URL, "missing-job", "", "resume")
+	assertAttachmentUploadRejected(t, client, ts.URL, job.ID, foreignStage, "resume")
+
+	body, contentType := attachmentUploadBody(t, job.ID, "", "../resume.txt", []byte("resume contents"))
+	request, err := http.NewRequest(http.MethodPost, ts.URL+"/api/attachments", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", contentType)
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("upload attachment: %v", err)
+	}
+	t.Cleanup(func() { closeIntegrationResource(t, response.Body) })
+	requireStatus(t, response, http.StatusCreated)
+	var attachment models.Attachment
+	mustDecode(t, response, &attachment)
+	if attachment.ID == "" || attachment.OriginalName != "resume.txt" || attachment.JobID != job.ID {
+		t.Fatalf("uploaded attachment has unexpected metadata: %#v", attachment)
+	}
+
+	download := mustRequest(t, client, http.MethodGet, ts.URL+"/api/attachments/"+attachment.ID+"/download", "")
+	t.Cleanup(func() { closeIntegrationResource(t, download.Body) })
+	requireStatus(t, download, http.StatusOK)
+	contents, err := io.ReadAll(download.Body)
+	if err != nil || string(contents) != "resume contents" || download.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("download contents=%q nosniff=%q err=%v", contents, download.Header.Get("X-Content-Type-Options"), err)
+	}
+
+	deleted := mustRequest(t, client, http.MethodDelete, ts.URL+"/api/attachments/"+attachment.ID, "")
+	closeIntegrationResource(t, deleted.Body)
+	requireStatus(t, deleted, http.StatusOK)
+	missing := mustRequest(t, client, http.MethodGet, ts.URL+"/api/attachments/"+attachment.ID+"/download", "")
+	closeIntegrationResource(t, missing.Body)
+	requireStatus(t, missing, http.StatusNotFound)
+}
+
+func assertAttachmentUploadRejected(t *testing.T, client *http.Client, serverURL, jobID, stageID, contents string) {
+	t.Helper()
+	body, contentType := attachmentUploadBody(t, jobID, stageID, "resume.txt", []byte(contents))
+	request, err := http.NewRequest(http.MethodPost, serverURL+"/api/attachments", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", contentType)
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("post invalid attachment: %v", err)
+	}
+	closeIntegrationResource(t, response.Body)
+	requireStatus(t, response, http.StatusBadRequest)
+}
+
+func attachmentUploadBody(t *testing.T, jobID, stageID, filename string, contents []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if jobID != "" {
+		if err := writer.WriteField("job_id", jobID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if stageID != "" {
+		if err := writer.WriteField("stage_id", stageID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(contents); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &body, writer.FormDataContentType()
+}
+
+func TestAPI_BackupArchiveRoundTripAndMalformedImportRollback(t *testing.T) {
+	source, _, closeSource := setupTestServer(t)
+	defer closeSource()
+	sourceClient := source.Client()
+	job := createLifecycleJob(t, sourceClient, source.URL)
+	archiveResponse := mustRequest(t, sourceClient, http.MethodGet, source.URL+"/api/backup/export", "")
+	t.Cleanup(func() { closeIntegrationResource(t, archiveResponse.Body) })
+	requireStatus(t, archiveResponse, http.StatusOK)
+	if archiveResponse.Header.Get("Content-Type") != "application/zip" {
+		t.Fatalf("backup content type=%q", archiveResponse.Header.Get("Content-Type"))
+	}
+	archive, err := io.ReadAll(archiveResponse.Body)
+	if err != nil || len(archive) < 4 || string(archive[:2]) != "PK" {
+		t.Fatalf("exported archive length=%d signature=%q err=%v", len(archive), archive[:min(len(archive), 4)], err)
+	}
+
+	target, _, closeTarget := setupTestServer(t)
+	defer closeTarget()
+	client := target.Client()
+	importBackup(t, client, target.URL, archive)
+	assertImportedJob(t, client, target.URL, job.ID)
+	response := postBackup(t, client, target.URL, []byte("not a zip archive"))
+	closeIntegrationResource(t, response.Body)
+	requireStatus(t, response, http.StatusBadRequest)
+	assertImportedJob(t, client, target.URL, job.ID)
+}
+
+func importBackup(t *testing.T, client *http.Client, serverURL string, archive []byte) {
+	t.Helper()
+	response := postBackup(t, client, serverURL, archive)
+	t.Cleanup(func() { closeIntegrationResource(t, response.Body) })
+	requireStatus(t, response, http.StatusOK)
+}
+
+func postBackup(t *testing.T, client *http.Client, serverURL string, archive []byte) *http.Response {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	file, err := writer.CreateFormFile("backup", "backup.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(archive); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(http.MethodPost, serverURL+"/api/backup/import", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("post backup archive: %v", err)
+	}
+	return response
+}
+
+func assertImportedJob(t *testing.T, client *http.Client, serverURL, jobID string) {
+	t.Helper()
+	response := mustRequest(t, client, http.MethodGet, serverURL+"/api/jobs/"+jobID, "")
+	t.Cleanup(func() { closeIntegrationResource(t, response.Body) })
+	requireStatus(t, response, http.StatusOK)
+	var job models.Job
+	mustDecode(t, response, &job)
+	if job.ID != jobID {
+		t.Fatalf("restored job ID=%q, want %q", job.ID, jobID)
 	}
 }
