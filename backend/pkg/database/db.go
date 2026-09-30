@@ -671,14 +671,15 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 	recruiterType := defaultString(string(job.RecruiterType), string(models.RecruiterNone))
 	salaryType := defaultString(string(job.SalaryType), string(models.SalaryUnknown))
 	currency := defaultString(job.SalaryCurrency, "EUR")
-	interviewers, err := json.Marshal(job.Interviewers)
-	if err != nil {
-		return err
+	interviewers := []byte("[]")
+	if job.Interviewers != nil {
+		encoded, err := json.Marshal(job.Interviewers)
+		if err != nil {
+			return err
+		}
+		interviewers = encoded
 	}
-	if len(interviewers) == 0 {
-		interviewers = []byte("[]")
-	}
-	_, err = statement.Exec(job.ID, job.CompanyName, job.PositionTitle, job.Status, salaryType,
+	_, err := statement.Exec(job.ID, job.CompanyName, job.PositionTitle, job.Status, salaryType,
 		job.SalaryMin, job.SalaryMax, currency, recruiterType, job.RecruiterName,
 		job.RecruiterAgency, job.RecruiterContact, string(interviewers), job.JobPostURL,
 		job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
@@ -703,14 +704,15 @@ func restoreStage(statements *restoreStatements, jobID string, stage models.Stag
 func restoreStageRow(statement *sql.Stmt, jobID string, stage models.Stage) error {
 	recruiterType := defaultString(string(stage.RecruiterType), "none")
 	meetingType := defaultString(stage.MeetingType, "video")
-	interviewers, err := json.Marshal(stage.Interviewers)
-	if err != nil {
-		return err
+	interviewers := []byte("[]")
+	if stage.Interviewers != nil {
+		encoded, err := json.Marshal(stage.Interviewers)
+		if err != nil {
+			return err
+		}
+		interviewers = encoded
 	}
-	if len(interviewers) == 0 {
-		interviewers = []byte("[]")
-	}
-	_, err = statement.Exec(stage.ID, jobID, stage.OrderIndex, stage.StageType, stage.CustomTitle,
+	_, err := statement.Exec(stage.ID, jobID, stage.OrderIndex, stage.StageType, stage.CustomTitle,
 		stage.Description, stage.Status, stage.ScheduledAt, stage.MeetingDate, stage.MeetingTime,
 		stage.MeetingURL, meetingType, stage.Notes, stage.RecruiterName, recruiterType,
 		stage.RecruiterAgency, stage.RecruiterContact, string(interviewers), stage.CreatedAt)

@@ -143,8 +143,5 @@ func marshalInterviewers(interviewers []models.Interviewer) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(data) == 0 {
-		return "[]", nil
-	}
 	return string(data), nil
 }

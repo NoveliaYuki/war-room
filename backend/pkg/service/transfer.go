@@ -226,8 +226,9 @@ func addArchiveLogo(archive *zip.Writer, logo *backupLogo, logosDir string) erro
 
 func addArchiveAttachments(archive *zip.Writer, jobs []models.Job, checksums map[string]string, attachmentsDir string) error {
 	for jobIndex := range jobs {
-		for attachmentIndex := range jobs[jobIndex].Attachments {
-			if err := addArchiveAttachment(archive, &jobs[jobIndex].Attachments[attachmentIndex], checksums, attachmentsDir); err != nil {
+		attachments := jobs[jobIndex].Attachments
+		for attachmentIndex := range attachments {
+			if err := addArchiveAttachment(archive, &attachments[attachmentIndex], checksums, attachmentsDir); err != nil {
 				return err
 			}
 		}
