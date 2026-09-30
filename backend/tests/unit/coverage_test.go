@@ -77,6 +77,68 @@ func TestRepositoryCompleteLifecycle(t *testing.T) {
 	repositoryCleanup(t, repo, job.ID, stage1.ID, question.ID, attachment.ID, secondJob.ID)
 }
 
+func TestCoverageMeetingAndBackupHandlerFailures(t *testing.T) {
+	mux, jobs, repo, cfg, db := newCoverageDB(t)
+
+	missingDataDirectory := filepath.Join(t.TempDir(), "missing", "data")
+	cfg.DataDir = missingDataDirectory
+	expectRouteStatus(t, mux, http.MethodGet, "/api/backup/export", "", http.StatusInternalServerError)
+
+	cfg.DataDir = t.TempDir()
+	job := repositoryJobFixture(t, repo)
+	attachment, err := jobs.StoreAttachment(job.ID, nil, "resume.txt", strings.NewReader("resume"), 6, "text/plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_attachment_delete BEFORE DELETE ON attachments BEGIN SELECT RAISE(ABORT, 'delete denied'); END`); err != nil {
+		t.Fatal(err)
+	}
+	expectRouteStatus(t, mux, http.MethodDelete, "/api/attachments/"+attachment.ID, "", http.StatusInternalServerError)
+
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	expectRouteStatus(t, mux, http.MethodGet, "/api/meetings", "", http.StatusInternalServerError)
+	expectRouteStatus(t, mux, http.MethodGet, "/api/backup/export", "", http.StatusInternalServerError)
+}
+
+func TestCoverageAttachmentDownloadRejectsUnsafeStoredPath(t *testing.T) {
+	mux, _, repo, _, _ := newCoverageDB(t)
+	job := repositoryJobFixture(t, repo)
+	attachment := &models.Attachment{ID: "unsafe-download", JobID: job.ID, OriginalName: "resume.txt", StoredFilename: "../resume.txt", MimeType: "text/plain"}
+	if err := repo.InsertAttachment(attachment); err != nil {
+		t.Fatal(err)
+	}
+	expectRouteStatus(t, mux, http.MethodGet, "/api/attachments/"+attachment.ID+"/download", "", http.StatusNotFound)
+}
+
+func TestCoverageUploadAcceptsEmptyAttachmentFile(t *testing.T) {
+	mux, jobs, repo, _, _ := newCoverageDB(t)
+	job := repositoryJobFixture(t, repo)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("job_id", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.CreateFormFile("file", "empty.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/attachments", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	mux.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("empty upload status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	attachments, err := jobs.GetFullJobDetails(job.ID)
+	if err != nil || len(attachments.Attachments) != 1 || attachments.Attachments[0].FileSize != 0 {
+		t.Fatalf("empty attachment snapshot=%#v err=%v", attachments, err)
+	}
+}
+
 func repositoryJobFixture(t *testing.T, repo *repository.Repository) *models.Job {
 	t.Helper()
 	job := &models.Job{ID: "repo-job", CompanyName: "Acme", PositionTitle: "Engineer", Status: models.StatusOngoing,

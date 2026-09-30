@@ -87,3 +87,15 @@ func TestCORSWildcardDoesNotEnableCredentials(t *testing.T) {
 		t.Fatalf("wildcard CORS must not allow credentials")
 	}
 }
+
+func TestCORSPreflightWithoutOrigin(t *testing.T) {
+	handler := middleware.CORS("http://localhost:3000")(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("preflight should not reach the application handler")
+	}))
+	req := httptest.NewRequest(http.MethodOptions, "/api/jobs", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Allow-Methods") == "" {
+		t.Fatalf("preflight response status=%d headers=%v", rec.Code, rec.Header())
+	}
+}

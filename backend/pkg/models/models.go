@@ -2,6 +2,7 @@
 package models
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -227,6 +228,9 @@ func (question *Question) UnmarshalJSON(data []byte) error {
 func decodeStoredBoolean(value json.RawMessage) (bool, error) {
 	if len(value) == 0 {
 		return false, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		return false, fmt.Errorf("expected true, false, 0, or 1; got %s", value)
 	}
 	var boolean bool
 	if err := json.Unmarshal(value, &boolean); err == nil {
