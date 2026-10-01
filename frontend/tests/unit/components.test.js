@@ -224,6 +224,7 @@ describe('schedule view', () => {
       meeting('today', 0, { recruiter_name: 'R', recruiter_contact: '123|abc', stage_notes: 'Bring notes', meeting_url: 'https://meet.example' }),
       meeting('unknown-today', 0, { company_name: 'Unknown', recruiter_name: 'No Contact Details', recruiter_contact: '' }),
       meeting('phone', 0, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '<img src=x onerror=alert(1)>|x' }),
+      meeting('phone-no-contact', 0, { meeting_type: 'phone', meeting_time: '', recruiter_contact: '' }),
       meeting('untrusted-type', 0, { meeting_type: 'video\" onmouseover=alert(1)', stage_type: '<img src=x onerror=alert(1)>' }),
       meeting('tomorrow', 1, { meeting_type: 'video" onmouseover=alert(1)', meeting_url: 'https://future.example', recruiter_name: 'Future recruiter', stage_notes: 'Confirm panel with the interview team and review the role expectations before the conversation.', stage_interviewers: [{ name: 'Taylor' }], company_domain: 'acme.example', avatar_seed: 'Acme' }),
       meeting('onsite-tbd', 2, { company_name: 'Unknown', meeting_type: 'onsite', meeting_time: '', recruiter_name: 'Recruiter without contact', recruiter_contact: '' }),
@@ -244,6 +245,8 @@ describe('schedule view', () => {
     expect(root.querySelector('a[href^="javascript:"]')).toBeNull();
     expect(root.querySelector('.meeting-row-right .phone-call-indicator').textContent).toContain('Phone');
     expect(root.querySelector('.today-meeting-card[data-jobid="phone"] .phone-call-indicator').textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(root.querySelector('.today-meeting-card[data-jobid="phone-no-contact"] .phone-call-indicator').textContent).toContain('Phone Call');
+    expect(root.querySelector('.today-meeting-card[data-jobid="phone-no-contact"] .meeting-time-badge').textContent).toContain('Time TBD');
     expect(root.querySelector('.meeting-format-pill[onmouseover]')).toBeNull();
     expect(root.querySelector('.meeting-row-card .meeting-format-pill[onmouseover]')).toBeNull();
     expect(root.querySelector('.meeting-row-card .meeting-format-pill').classList.contains('pill-video')).toBe(true);

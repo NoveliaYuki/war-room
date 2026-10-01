@@ -51,6 +51,7 @@ describe("parseSalaryInput", () => {
       const input = element.parentElement.querySelector('input');
       input.value = 'new';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      input.dispatchEvent(new Event('blur'));
       expect(onSave).not.toHaveBeenCalled();
       expect(element.parentElement.querySelector('input')).toBeNull();
     });
