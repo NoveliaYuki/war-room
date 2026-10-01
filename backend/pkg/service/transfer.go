@@ -394,7 +394,23 @@ func decodeBackupManifest(manifestFile *zip.File) (backupManifest, error) {
 	if manifest.Jobs == nil {
 		return backupManifest{}, errors.New("backup manifest has no process list")
 	}
+	if err := validateImportedMeetingDates(manifest.Jobs); err != nil {
+		return backupManifest{}, err
+	}
 	return manifest, nil
+}
+
+func validateImportedMeetingDates(jobs []models.Job) error {
+	for _, job := range jobs {
+		for _, stage := range job.Stages {
+			if stage.MeetingDate != nil && *stage.MeetingDate != "" {
+				if err := validateMeetingDate(*stage.MeetingDate); err != nil {
+					return fmt.Errorf("invalid meeting date in backup: %w", err)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (s *JobService) stageImportedAttachments(manifest *backupManifest, files map[string]*zip.File, stagingDir string, createdFiles *[]string, usedEntries map[string]bool) error {

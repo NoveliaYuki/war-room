@@ -464,6 +464,12 @@ func createLifecycleStagesForService(t *testing.T, jobs *service.JobService, job
 
 func exerciseLifecycleMeetingsAndBackup(t *testing.T, jobs *service.JobService, cfg *config.Config, jobID, stageID, secondID string) {
 	t.Helper()
+	if _, err := jobs.UpdateStage(secondID, models.UpdateStageInput{MeetingDate: ptr("2031-02-30")}); !errors.Is(err, service.ErrInvalidMeetingDate) {
+		t.Fatalf("invalid meeting date update error = %v", err)
+	}
+	if err := jobs.ScheduleMeeting(secondID, models.ScheduleMeetingInput{MeetingDate: "not-a-date"}); !errors.Is(err, service.ErrInvalidMeetingDate) {
+		t.Fatalf("invalid meeting schedule error = %v", err)
+	}
 	if err := jobs.ScheduleMeeting(secondID, models.ScheduleMeetingInput{MeetingDate: "2031-04-06", MeetingTime: "11:00", MeetingURL: ptr("https://meet.invalid/2"), MeetingType: ptr("phone"), Notes: ptr("Preparation notes")}); err != nil {
 		t.Fatal(err)
 	}
@@ -710,8 +716,10 @@ func checkStageRoutes(t *testing.T, mux *http.ServeMux, jobID, stageID string) {
 	reorder := `{"job_id":"` + jobID + `","stage_ids":["` + stageID + `"]}`
 	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/reorder", reorder, http.StatusOK)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/"+stageID+"/schedule", `{"meeting_date":"2032-01-01","meeting_time":"12:00"}`, http.StatusOK)
+	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/"+stageID+"/schedule", `{"meeting_date":"2032-02-30"}`, http.StatusBadRequest)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/"+stageID+"/set-current", "", http.StatusOK)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/"+stageID, `{"notes":"updated"}`, http.StatusOK)
+	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/"+stageID, `{"meeting_date":"bad"}`, http.StatusBadRequest)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/missing", `{"notes":"missing"}`, http.StatusNotFound)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/stages/missing/schedule", `{}`, http.StatusNotFound)
 }

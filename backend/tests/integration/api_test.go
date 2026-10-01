@@ -109,6 +109,29 @@ func TestAPI_ClearMeetingScheduleClearsJoinURLAndKeepsNotes(t *testing.T) {
 	assertNoScheduledMeetings(t, client, ts.URL)
 }
 
+func TestAPI_RejectsInvalidMeetingDates(t *testing.T) {
+	ts, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	client := ts.Client()
+	job := createLifecycleJob(t, client, ts.URL)
+	stageID := job.Stages[0].ID
+	scheduleLifecycleStage(t, client, ts.URL, stageID)
+
+	for _, testCase := range []struct {
+		name, path, body string
+	}{
+		{"schedule endpoint", "/api/stages/" + stageID + "/schedule", `{"meeting_date":"2031-02-30","meeting_time":"14:00"}`},
+		{"stage update endpoint", "/api/stages/" + stageID, `{"meeting_date":"not-a-date"}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := mustRequest(t, client, http.MethodPut, ts.URL+testCase.path, testCase.body)
+			closeIntegrationResource(t, response.Body)
+			requireStatus(t, response, http.StatusBadRequest)
+		})
+	}
+	assertLifecycleMeeting(t, client, ts.URL)
+}
+
 func assertClearedMeetingDetails(t *testing.T, client *http.Client, serverURL, jobID, stageID string) {
 	t.Helper()
 	details := mustRequest(t, client, http.MethodGet, serverURL+"/api/jobs/"+jobID, "")

@@ -30,6 +30,9 @@ type JobService struct {
 // ErrInvalidAttachmentOwner indicates that an attachment references a missing or unrelated job or stage.
 var ErrInvalidAttachmentOwner = errors.New("invalid attachment owner")
 
+// ErrInvalidMeetingDate indicates a meeting date is not a real YYYY-MM-DD date.
+var ErrInvalidMeetingDate = errors.New("meeting_date must be a valid YYYY-MM-DD date")
+
 // ErrPositionTitleRequired indicates an attempted update with a blank title.
 var ErrPositionTitleRequired = errors.New("position_title is required")
 
@@ -510,6 +513,9 @@ func (s *JobService) CreateStage(input models.CreateStageInput) (*models.Stage, 
 
 // UpdateStage applies the supplied fields to an existing stage.
 func (s *JobService) UpdateStage(id string, input models.UpdateStageInput) (*models.Stage, error) {
+	if err := validateOptionalMeetingDate(input.MeetingDate); err != nil {
+		return nil, err
+	}
 	if input.MeetingType != nil {
 		if err := validateMeetingType(*input.MeetingType); err != nil {
 			return nil, err
@@ -605,6 +611,9 @@ func (s *JobService) SetCurrentStage(stageID string) ([]models.Stage, error) {
 
 // ScheduleMeeting assigns meeting details to a stage.
 func (s *JobService) ScheduleMeeting(stageID string, input models.ScheduleMeetingInput) error {
+	if err := validateOptionalMeetingDate(&input.MeetingDate); err != nil {
+		return err
+	}
 	if input.MeetingType != nil {
 		if err := validateMeetingType(*input.MeetingType); err != nil {
 			return err
@@ -630,6 +639,20 @@ func (s *JobService) ScheduleMeeting(stageID string, input models.ScheduleMeetin
 	}
 	s.mirrorAfterMutation()
 	return nil
+}
+
+func validateMeetingDate(value string) error {
+	if _, err := time.Parse(time.DateOnly, value); err != nil {
+		return ErrInvalidMeetingDate
+	}
+	return nil
+}
+
+func validateOptionalMeetingDate(value *string) error {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return validateMeetingDate(*value)
 }
 
 func validateMeetingType(meetingType string) error {
