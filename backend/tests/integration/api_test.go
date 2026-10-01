@@ -94,6 +94,78 @@ func TestAPI_JobLifecycle(t *testing.T) {
 	deleteLifecycleJob(t, client, ts.URL, job.ID)
 }
 
+func TestAPI_JSONMutationEndpointsRejectTrailingValues(t *testing.T) {
+	ts, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	client := ts.Client()
+	job := createLifecycleJob(t, client, ts.URL)
+	stageID := job.Stages[0].ID
+
+	questionResponse := mustRequest(t, client, http.MethodPost, ts.URL+"/api/questions", encodeJSON(t, models.CreateQuestionInput{
+		StageID:  stageID,
+		Question: "Existing question",
+	}))
+	t.Cleanup(func() { closeIntegrationResource(t, questionResponse.Body) })
+	requireStatus(t, questionResponse, http.StatusCreated)
+	var question struct {
+		ID string `json:"id"`
+	}
+	mustDecode(t, questionResponse, &question)
+	if question.ID == "" {
+		t.Fatal("create question response has no ID")
+	}
+
+	requests := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{"create job", http.MethodPost, "/api/jobs", `{"company_name":"Trailing","position_title":"Payload"}`},
+		{"update job", http.MethodPut, "/api/jobs/" + job.ID, `{"position_title":"Changed"}`},
+		{"reorder jobs", http.MethodPut, "/api/jobs/reorder", `{"job_ids":["` + job.ID + `"]}`},
+		{"create stage", http.MethodPost, "/api/stages", `{"job_id":"` + job.ID + `","stage_type":"Technical"}`},
+		{"reorder stages", http.MethodPut, "/api/stages/reorder", `{"job_id":"` + job.ID + `","stage_ids":["` + stageID + `"]}`},
+		{"schedule stage", http.MethodPut, "/api/stages/" + stageID + "/schedule", `{}`},
+		{"update stage", http.MethodPut, "/api/stages/" + stageID, `{"meeting_type":"video"}`},
+		{"create question", http.MethodPost, "/api/questions", `{"stage_id":"` + stageID + `","question":"Trailing"}`},
+		{"reorder questions", http.MethodPut, "/api/questions/reorder", `{"stage_id":"` + stageID + `","question_ids":["` + question.ID + `"]}`},
+		{"update question", http.MethodPut, "/api/questions/" + question.ID, `{"question":"Changed"}`},
+	}
+
+	for _, testCase := range requests {
+		for _, trailing := range []struct {
+			name string
+			data string
+		}{{"second value", ` {}`}, {"invalid data", ` trailing`}} {
+			t.Run(testCase.name+"/"+trailing.name, func(t *testing.T) {
+				response := mustRequest(t, client, testCase.method, ts.URL+testCase.path, testCase.body+trailing.data)
+				closeIntegrationResource(t, response.Body)
+				requireStatus(t, response, http.StatusBadRequest)
+			})
+		}
+	}
+
+	unchanged := mustRequest(t, client, http.MethodGet, ts.URL+"/api/jobs/"+job.ID, "")
+	t.Cleanup(func() { closeIntegrationResource(t, unchanged.Body) })
+	var unchangedJob models.Job
+	mustDecode(t, unchanged, &unchangedJob)
+	if unchangedJob.PositionTitle != job.PositionTitle {
+		t.Fatalf("trailing JSON changed the job title to %q", unchangedJob.PositionTitle)
+	}
+	jobs := mustRequest(t, client, http.MethodGet, ts.URL+"/api/jobs", "")
+	t.Cleanup(func() { closeIntegrationResource(t, jobs.Body) })
+	var allJobs []models.Job
+	mustDecode(t, jobs, &allJobs)
+	if len(allJobs) != 1 {
+		t.Fatalf("trailing JSON created a job; count=%d", len(allJobs))
+	}
+
+	whitespace := mustRequest(t, client, http.MethodPost, ts.URL+"/api/jobs", "{\"company_name\":\"Whitespace\",\"position_title\":\"Accepted\"} \n\t")
+	t.Cleanup(func() { closeIntegrationResource(t, whitespace.Body) })
+	requireStatus(t, whitespace, http.StatusCreated)
+}
+
 func assertEmptyJobCounts(t *testing.T, client *http.Client, serverURL string) {
 	t.Helper()
 	response := mustRequest(t, client, http.MethodGet, serverURL+"/api/jobs/counts", "")

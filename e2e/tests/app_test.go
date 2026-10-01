@@ -470,6 +470,15 @@ func TestCardHoldDragPersistsOrderAndReleasesDragState(t *testing.T) {
 	}
 	waitForApplicationReady(t, page)
 	waitForCardOrder(t, page, titleA, titleB, expectedOrder, "card order did not survive reload")
+	dragCardAfter(t, page, target, source)
+	waitForCardOrder(t, page, titleA, titleB, initialOrder, "reverse drag did not restore the original order")
+	assertCardDragReleased(t, page)
+	waitForPersistedCardOrder(t, page, titleA, titleB, initialOrder)
+	if _, err := page.Reload(); err != nil {
+		t.Fatalf("reload after restoring card order: %v", err)
+	}
+	waitForApplicationReady(t, page)
+	waitForCardOrder(t, page, titleA, titleB, initialOrder, "restored card order did not survive reload")
 }
 
 func TestInterviewQuestionsCanBeAddedReorderedAndDeleted(t *testing.T) {
@@ -737,6 +746,7 @@ func waitForPersistedQuestionOrder(t *testing.T, page playwright.Page, jobID, qu
 
 func dragCardAfter(t *testing.T, page playwright.Page, source, target playwright.Locator) {
 	t.Helper()
+	scrollCardIntoView(t, source)
 	sourceBox, err := source.BoundingBox()
 	if err != nil || sourceBox == nil {
 		t.Fatalf("read source card bounds: box=%v err=%v", sourceBox, err)
@@ -761,6 +771,13 @@ func dragCardAfter(t *testing.T, page playwright.Page, source, target playwright
 	}
 	if err := mouse.Up(); err != nil {
 		t.Fatalf("release dragged card: %v", err)
+	}
+}
+
+func scrollCardIntoView(t *testing.T, card playwright.Locator) {
+	t.Helper()
+	if err := card.ScrollIntoViewIfNeeded(); err != nil {
+		t.Fatalf("scroll source card into view: %v", err)
 	}
 }
 

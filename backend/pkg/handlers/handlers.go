@@ -49,6 +49,22 @@ func ErrorJSON(w http.ResponseWriter, status int, message string) {
 	JSON(w, status, map[string]string{"error": message})
 }
 
+// decodeJSONBody accepts exactly one JSON value followed only by whitespace.
+func decodeJSONBody(body io.Reader, target interface{}) error {
+	decoder := json.NewDecoder(body)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing interface{}
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("request body must contain one JSON value")
+		}
+		return err
+	}
+	return nil
+}
+
 // RegisterRoutes registers all API routes using Go 1.22+ ServeMux pattern routing.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.handleHealthCheck)
@@ -200,7 +216,7 @@ func (h *Handler) handleListJobs(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var input models.CreateJobInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(r.Body, &input); err != nil {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
 		return
 	}
@@ -218,7 +234,7 @@ func (h *Handler) handleReorderJobs(w http.ResponseWriter, r *http.Request) {
 		JobIDs []string `json:"job_ids"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || len(payload.JobIDs) == 0 {
+	if err := decodeJSONBody(r.Body, &payload); err != nil || len(payload.JobIDs) == 0 {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: job_ids array required")
 		return
 	}
@@ -248,7 +264,7 @@ func (h *Handler) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var input models.UpdateJobInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(r.Body, &input); err != nil {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
 		return
 	}
@@ -281,7 +297,7 @@ func (h *Handler) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleCreateStage(w http.ResponseWriter, r *http.Request) {
 	var input models.CreateStageInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(r.Body, &input); err != nil {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
 		return
 	}
@@ -300,7 +316,7 @@ func (h *Handler) handleReorderStages(w http.ResponseWriter, r *http.Request) {
 		StageIDs []string `json:"stage_ids"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.JobID == "" || len(payload.StageIDs) == 0 {
+	if err := decodeJSONBody(r.Body, &payload); err != nil || payload.JobID == "" || len(payload.StageIDs) == 0 {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: job_id and stage_ids array required")
 		return
 	}
@@ -316,7 +332,7 @@ func (h *Handler) handleScheduleStage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var input models.ScheduleMeetingInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(r.Body, &input); err != nil {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
 		return
 	}
@@ -350,7 +366,7 @@ func (h *Handler) handleUpdateStage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var input models.UpdateStageInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(r.Body, &input); err != nil {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
 		return
 	}
@@ -383,7 +399,7 @@ func (h *Handler) handleDeleteStage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleCreateQuestion(w http.ResponseWriter, r *http.Request) {
 	var input models.CreateQuestionInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(r.Body, &input); err != nil {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
 		return
 	}
@@ -402,7 +418,7 @@ func (h *Handler) handleReorderQuestions(w http.ResponseWriter, r *http.Request)
 		QuestionIDs []string `json:"question_ids"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.StageID == "" || len(payload.QuestionIDs) == 0 {
+	if err := decodeJSONBody(r.Body, &payload); err != nil || payload.StageID == "" || len(payload.QuestionIDs) == 0 {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: stage_id and question_ids array required")
 		return
 	}
@@ -418,7 +434,7 @@ func (h *Handler) handleUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var input models.UpdateQuestionInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(r.Body, &input); err != nil {
 		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
 		return
 	}
