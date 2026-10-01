@@ -5,6 +5,33 @@ import (
 	"testing"
 )
 
+func TestCustomBooleanJSONUnmarshalRejectsInvalidValues(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data string
+		job  bool
+	}{
+		{"job field type", `{"id":2}`, true},
+		{"job boolean value", `{"is_referral":"yes"}`, true},
+		{"question field type", `{"order_index":"wrong"}`, false},
+		{"question boolean value", `{"is_asked":"yes"}`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var err error
+			if test.job {
+				var value Job
+				err = json.Unmarshal([]byte(test.data), &value)
+			} else {
+				var value Question
+				err = json.Unmarshal([]byte(test.data), &value)
+			}
+			if err == nil {
+				t.Fatal("invalid JSON field was accepted")
+			}
+		})
+	}
+}
+
 func TestJobAndQuestionDecodeStoredBooleanFormats(t *testing.T) {
 	for _, value := range []struct {
 		json  string

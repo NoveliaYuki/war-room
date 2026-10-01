@@ -464,7 +464,7 @@ describe('cardGrid', () => {
     const touchMoveBeforeHold = touchEvent('touchmove', { x: 10, y: 10 });
     window.dispatchEvent(touchMoveBeforeHold);
     expect(touchMoveBeforeHold.defaultPrevented).toBe(false);
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(500);
     expect(card.classList.contains('is-dragging')).toBe(true);
 
     const touchMoveDuringDrag = touchEvent('touchmove', { x: 150, y: 80 });
@@ -494,7 +494,7 @@ describe('cardGrid', () => {
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
     card.dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
-    vi.advanceTimersByTime(179);
+    vi.advanceTimersByTime(499);
     vi.setSystemTime(Date.now() + 2);
     window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 30 }));
 
@@ -502,6 +502,23 @@ describe('cardGrid', () => {
     expect(card.style.top).toBe('20px');
     expect(scrollBy).not.toHaveBeenCalled();
     window.dispatchEvent(touchEvent('touchend'));
+  });
+
+  it('treats a slow initial touch movement as page scrolling before the long-press delay', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+    card.dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
+    vi.advanceTimersByTime(50);
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 18 }));
+    vi.advanceTimersByTime(180);
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 130 }));
+
+    expect(card.classList.contains('is-dragging')).toBe(false);
+    expect(scrollBy).toHaveBeenCalledWith(0, -120);
+    window.dispatchEvent(touchEvent('touchend'));
+    expect(card.classList.contains('is-holding')).toBe(false);
   });
 
   it('reorders a card upward in a single-column touch layout', async () => {
@@ -514,7 +531,7 @@ describe('cardGrid', () => {
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(top);
 
     bottom.dispatchEvent(touchEvent('touchstart', { x: 20, y: 270 }));
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(500);
     window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 10 }));
     window.dispatchEvent(touchEvent('touchend'));
     await Promise.resolve();
@@ -532,7 +549,7 @@ describe('cardGrid', () => {
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(bottom);
 
     top.dispatchEvent(touchEvent('touchstart', { x: 20, y: 10 }));
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(500);
     window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 470 }));
     window.dispatchEvent(touchEvent('touchend'));
     await Promise.resolve();

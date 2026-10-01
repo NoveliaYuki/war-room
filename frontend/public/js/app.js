@@ -55,6 +55,7 @@ const cardGridEl = document.querySelector("#cards-grid");
 const modalEl = document.querySelector("#detail-modal");
 const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
+const searchFocusButton = document.querySelector(".search-focus");
 const filterTabs = document.querySelectorAll(".filter-tab");
 const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
@@ -546,6 +547,8 @@ searchInput.addEventListener("input", () => {
   }, 200);
 });
 
+searchFocusButton?.addEventListener("click", () => searchInput.focus());
+
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
 dataManagementButton?.addEventListener("click", openDataModal);
 menuToggle?.addEventListener("click", () => {
@@ -554,8 +557,6 @@ menuToggle?.addEventListener("click", () => {
   menuToggle.setAttribute("aria-label", isOpen ? "Open navigation menu" : "Close navigation menu");
   headerControls?.classList.toggle("is-open", !isOpen);
 });
-searchInput.addEventListener("focus", closeMobileMenu);
-
 backdropEl.addEventListener("click", (e) => {
   if (e.target === backdropEl) {
     if (modalEl.classList.contains("data-transfer-modal")) closeDataModal();
