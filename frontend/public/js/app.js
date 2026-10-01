@@ -81,7 +81,11 @@ function updateThemeToggle() {
 
 themeToggle?.addEventListener("click", () => {
   const nextTheme = getActiveTheme() === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = nextTheme;
+  const root = document.documentElement;
+  root.classList.add("theme-switching");
+  root.dataset.theme = nextTheme;
+  const scheduleFrame = window.requestAnimationFrame?.bind(window) ?? ((callback) => window.setTimeout(callback, 0));
+  scheduleFrame(() => scheduleFrame(() => root.classList.remove("theme-switching")));
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
   } catch {
