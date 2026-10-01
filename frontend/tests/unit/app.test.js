@@ -42,14 +42,27 @@ describe('application entry point', () => {
     expect(mocks.renderCardGrid).toHaveBeenCalled();
 
     const themeToggle = document.querySelector('#btn-theme-toggle');
+    const animationFrames = [];
+    const requestAnimationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
     themeToggle.click();
     expect(document.documentElement.dataset.theme).toBe('light');
+    expect(document.documentElement.classList.contains('theme-switching')).toBe(true);
     expect(themeToggle.getAttribute('aria-label')).toBe('Switch to dark theme');
     expect(window.localStorage.getItem('war-room.theme')).toBe('light');
+    animationFrames.shift()();
+    expect(document.documentElement.classList.contains('theme-switching')).toBe(true);
+    animationFrames.shift()();
+    expect(document.documentElement.classList.contains('theme-switching')).toBe(false);
     delete document.documentElement.dataset.theme;
     window.matchMedia = vi.fn(() => ({ matches: true, addEventListener: vi.fn() }));
     themeToggle.click();
     expect(document.documentElement.dataset.theme).toBe('dark');
+    animationFrames.shift()();
+    animationFrames.shift()();
+    requestAnimationFrame.mockRestore();
 
     const menuToggle = document.querySelector('#btn-menu-toggle');
     const headerControls = document.querySelector('#header-controls');
