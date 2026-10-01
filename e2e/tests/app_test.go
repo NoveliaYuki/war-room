@@ -416,6 +416,465 @@ func TestCreateJobAndScheduleView(t *testing.T) {
 	}
 }
 
+func TestJobStatusCyclesThroughEveryValue(t *testing.T) {
+	page := newPage(t)
+	uniqueTitle := fmt.Sprintf("E2E Status Cycle %d", time.Now().UnixNano())
+	card := createStatusCycleProcess(t, page, uniqueTitle)
+	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open created process details: %v", err)
+	}
+	status := page.Locator("#detail-modal .editable-job-status")
+	if err := status.WaitFor(); err != nil {
+		t.Fatalf("wait for editable status: %v", err)
+	}
+	cycleStatusAndVerifyFilter(t, page, card, status, "Ongoing", "Rejected", "rejected")
+	cycleStatusAndVerifyFilter(t, page, card, status, "Rejected", "Approved", "accepted")
+	cycleStatusAndVerifyFilter(t, page, card, status, "Approved", "Ongoing", "ongoing")
+	if err := page.Locator("#detail-modal .modal-close-btn").Click(); err != nil {
+		t.Fatalf("close process details: %v", err)
+	}
+	if _, err := page.Reload(); err != nil {
+		t.Fatalf("reload after status changes: %v", err)
+	}
+	if _, err := page.WaitForFunction("() => document.body.dataset.appReady === 'true'", nil); err != nil {
+		t.Fatalf("wait for application after reload: %v", err)
+	}
+	expression := fmt.Sprintf(`() => {
+		const card = Array.from(document.querySelectorAll(".process-card"))
+			.find((item) => item.textContent.includes(%q));
+		return card?.querySelector(".status-pill")?.textContent.trim() === "ongoing";
+	}`, uniqueTitle)
+	if _, err := page.WaitForFunction(expression, nil); err != nil {
+		t.Fatalf("card did not reflect the persisted Ongoing status: %v", err)
+	}
+}
+
+func TestCardHoldDragPersistsOrderAndReleasesDragState(t *testing.T) {
+	page := newPage(t)
+	titleA := fmt.Sprintf("E2E Drag Alpha %d", time.Now().UnixNano())
+	titleB := fmt.Sprintf("E2E Drag Beta %d", time.Now().UnixNano())
+	cardA := createStatusCycleProcess(t, page, titleA)
+	cardB := createStatusCycleProcess(t, page, titleB)
+	initialOrder := cardOrder(t, page, titleA, titleB)
+	source, target := cardA, cardB
+	if !initialOrder {
+		source, target = cardB, cardA
+	}
+	dragCardAfter(t, page, source, target)
+	expectedOrder := !initialOrder
+	waitForCardOrder(t, page, titleA, titleB, expectedOrder, "drag did not reorder cards")
+	assertCardDragReleased(t, page)
+	waitForPersistedCardOrder(t, page, titleA, titleB, expectedOrder)
+	if _, err := page.Reload(); err != nil {
+		t.Fatalf("reload after card reorder: %v", err)
+	}
+	waitForApplicationReady(t, page)
+	waitForCardOrder(t, page, titleA, titleB, expectedOrder, "card order did not survive reload")
+}
+
+func TestInterviewQuestionsCanBeAddedReorderedAndDeleted(t *testing.T) {
+	page := newPage(t)
+	title := fmt.Sprintf("E2E Question Process %d", time.Now().UnixNano())
+	card, jobID := openQuestionProcess(t, page, title)
+	questions := page.Locator("#detail-modal .questions-workspace .questions-list")
+	questionA := fmt.Sprintf("E2E Question Alpha %d", time.Now().UnixNano())
+	questionB := fmt.Sprintf("E2E Question Beta %d", time.Now().UnixNano())
+	addInterviewQuestion(t, page, questionA)
+	addInterviewQuestion(t, page, questionB)
+	itemA := questions.Locator(fmt.Sprintf(`.question-item:has-text("%s")`, questionA))
+	itemB := questions.Locator(fmt.Sprintf(`.question-item:has-text("%s")`, questionB))
+	initialOrder := questionIsBefore(t, page, questionA, questionB)
+	source, target := itemA, itemB
+	if !initialOrder {
+		source, target = itemB, itemA
+	}
+	dragQuestionAfter(t, page, source, target)
+	expectedOrder := !initialOrder
+	waitForQuestionOrder(t, page, questionA, questionB, expectedOrder, "question drag did not reorder the list")
+	assertQuestionDragReleased(t, page)
+	waitForPersistedQuestionOrder(t, page, jobID, questionA, questionB, expectedOrder)
+	reopenQuestionProcess(t, page, card)
+	waitForQuestionOrder(t, page, questionA, questionB, expectedOrder, "question order did not survive reload")
+	deleteQuestionAndVerify(t, page, itemA, itemB, questionA)
+}
+
+func TestInvalidBackupImportPreservesExistingProcesses(t *testing.T) {
+	page := newPage(t)
+	title := fmt.Sprintf("E2E Backup Preservation %d", time.Now().UnixNano())
+	card := createStatusCycleProcess(t, page, title)
+	if _, err := page.WaitForFunction(`() => !document.querySelector("#modal-backdrop")?.classList.contains("active")`, nil); err != nil {
+		t.Fatalf("wait for process creation modal to close: %v", err)
+	}
+	importButton := openBackupDialog(t, page)
+	assertBackupImportDisabled(t, importButton, "before closing and reopening the dialog")
+	importButton = reopenBackupDuringDetailClose(t, page, card)
+	assertBackupImportDisabled(t, importButton, "without a file and confirmation")
+	invalidBackup := createInvalidBackupFixture(t)
+	if err := page.Locator("#backup-import-file").SetInputFiles(invalidBackup); err != nil {
+		t.Fatalf("select invalid backup: %v", err)
+	}
+	assertBackupImportDisabled(t, importButton, "until replacement is confirmed")
+	if err := page.Locator("#backup-import-confirm").Check(); err != nil {
+		t.Fatalf("confirm replacement: %v", err)
+	}
+	assertImportEnabled(t, importButton)
+	if err := importButton.Click(); err != nil {
+		t.Fatalf("submit invalid backup: %v", err)
+	}
+	status := page.Locator("#backup-import-status")
+	if _, err := page.WaitForFunction(`() => {
+		const status = document.querySelector("#backup-import-status")?.textContent.trim();
+		return status && status !== "Validating and importing backup…";
+	}`, nil); err != nil {
+		t.Fatalf("wait for invalid backup error: %v", err)
+	}
+	message, err := status.TextContent()
+	if err != nil || strings.TrimSpace(message) == "" {
+		t.Fatalf("expected an invalid backup error message, got %q (err=%v)", message, err)
+	}
+	if visible, err := card.IsVisible(); err != nil || !visible {
+		t.Fatalf("invalid import removed existing process (visible=%t, err=%v)", visible, err)
+	}
+	assertImportEnabled(t, importButton)
+}
+
+func reopenBackupDuringDetailClose(t *testing.T, page playwright.Page, card playwright.Locator) playwright.Locator {
+	t.Helper()
+	if err := page.Locator("#btn-close-data-modal").Click(); err != nil {
+		t.Fatalf("close initial backup dialog: %v", err)
+	}
+	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open process details: %v", err)
+	}
+	closeButton := page.Locator("#detail-modal .modal-close-btn")
+	if err := closeButton.WaitFor(); err != nil {
+		t.Fatalf("wait for detail close button: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => !document.querySelector("#detail-modal")?.classList.contains("modal-animating")`, nil); err != nil {
+		t.Fatalf("wait for detail opening animation: %v", err)
+	}
+	if err := closeButton.Click(); err != nil {
+		t.Fatalf("close process details: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => !document.querySelector("#modal-backdrop")?.classList.contains("active")`, nil); err != nil {
+		t.Fatalf("wait for details backdrop to close: %v", err)
+	}
+	return openBackupDialog(t, page)
+}
+
+func openBackupDialog(t *testing.T, page playwright.Page) playwright.Locator {
+	t.Helper()
+	if err := page.Locator("#btn-data-management").Click(); err != nil {
+		t.Fatalf("open data and backups: %v", err)
+	}
+	importButton := page.Locator("#btn-import-backup")
+	if err := importButton.WaitFor(); err != nil {
+		t.Fatalf("wait for import button: %v", err)
+	}
+	return importButton
+}
+
+func createInvalidBackupFixture(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "invalid-backup.zip")
+	if err := os.WriteFile(path, []byte("not a ZIP archive"), 0o600); err != nil {
+		t.Fatalf("write invalid backup fixture: %v", err)
+	}
+	return path
+}
+
+func assertBackupImportDisabled(t *testing.T, button playwright.Locator, reason string) {
+	t.Helper()
+	if enabled, err := button.IsEnabled(); err != nil || enabled {
+		t.Fatalf("import must stay disabled %s (enabled=%t, err=%v)", reason, enabled, err)
+	}
+}
+
+func assertImportEnabled(t *testing.T, button playwright.Locator) {
+	t.Helper()
+	if enabled, err := button.IsEnabled(); err != nil || !enabled {
+		t.Fatalf("import should be enabled (enabled=%t, err=%v)", enabled, err)
+	}
+}
+
+func openQuestionProcess(t *testing.T, page playwright.Page, title string) (playwright.Locator, string) {
+	t.Helper()
+	card := createStatusCycleProcess(t, page, title)
+	jobID, err := card.GetAttribute("data-id")
+	if err != nil || jobID == "" {
+		t.Fatalf("read created process ID: id=%q err=%v", jobID, err)
+	}
+	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open process details: %v", err)
+	}
+	if err := page.Locator("#detail-modal .questions-workspace .questions-list").WaitFor(); err != nil {
+		t.Fatalf("wait for active stage questions: %v", err)
+	}
+	return card, jobID
+}
+
+func reopenQuestionProcess(t *testing.T, page playwright.Page, card playwright.Locator) {
+	t.Helper()
+	if err := page.Locator("#detail-modal .modal-close-btn").Click(); err != nil {
+		t.Fatalf("close process details: %v", err)
+	}
+	if _, err := page.Reload(); err != nil {
+		t.Fatalf("reload after question changes: %v", err)
+	}
+	waitForApplicationReady(t, page)
+	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("reopen process details: %v", err)
+	}
+	if err := page.Locator("#detail-modal .questions-workspace .questions-list").WaitFor(); err != nil {
+		t.Fatalf("wait for questions after reload: %v", err)
+	}
+}
+
+func deleteQuestionAndVerify(t *testing.T, page playwright.Page, itemA, itemB playwright.Locator, questionA string) {
+	t.Helper()
+	if err := itemA.Locator(".q-del").Click(); err != nil {
+		t.Fatalf("delete the reordered question: %v", err)
+	}
+	expression := fmt.Sprintf(`() => !Array.from(document.querySelectorAll(".questions-workspace .question-item")).some((item) => item.textContent.includes(%q))`, questionA)
+	if _, err := page.WaitForFunction(expression, nil); err != nil {
+		t.Fatalf("deleted question remained in the list: %v", err)
+	}
+	if err := itemB.WaitFor(); err != nil {
+		t.Fatalf("remaining question disappeared after deletion: %v", err)
+	}
+}
+
+func addInterviewQuestion(t *testing.T, page playwright.Page, question string) {
+	t.Helper()
+	input := page.Locator("#active-add-question-form .add-question-input")
+	if err := input.Fill(question); err != nil {
+		t.Fatalf("fill question: %v", err)
+	}
+	if err := page.Locator("#active-add-question-form button[type=submit]").Click(); err != nil {
+		t.Fatalf("add question: %v", err)
+	}
+	if err := page.Locator(fmt.Sprintf(`.questions-workspace .question-item:has-text("%s")`, question)).WaitFor(); err != nil {
+		t.Fatalf("wait for added question: %v", err)
+	}
+}
+
+func questionIsBefore(t *testing.T, page playwright.Page, questionA, questionB string) bool {
+	t.Helper()
+	result, err := page.Evaluate(questionOrderExpression(questionA, questionB, true), nil)
+	if err != nil {
+		t.Fatalf("read question order: %v", err)
+	}
+	ordered, ok := result.(bool)
+	if !ok {
+		t.Fatalf("question order check returned %T, want bool", result)
+	}
+	return ordered
+}
+
+func dragQuestionAfter(t *testing.T, page playwright.Page, source, target playwright.Locator) {
+	t.Helper()
+	sourceHandle := source.Locator(".question-drag-handle")
+	sourceBox, err := sourceHandle.BoundingBox()
+	if err != nil || sourceBox == nil {
+		t.Fatalf("read question handle bounds: box=%v err=%v", sourceBox, err)
+	}
+	targetBox, err := target.BoundingBox()
+	if err != nil || targetBox == nil {
+		t.Fatalf("read target question bounds: box=%v err=%v", targetBox, err)
+	}
+	mouse := page.Mouse()
+	if err := mouse.Move(sourceBox.X+sourceBox.Width/2, sourceBox.Y+sourceBox.Height/2); err != nil {
+		t.Fatalf("move pointer to question handle: %v", err)
+	}
+	if err := mouse.Down(); err != nil {
+		t.Fatalf("press question handle: %v", err)
+	}
+	steps := 10
+	if err := mouse.Move(targetBox.X+targetBox.Width/2, targetBox.Y+targetBox.Height*0.8, playwright.MouseMoveOptions{Steps: &steps}); err != nil {
+		t.Fatalf("move question after target: %v", err)
+	}
+	if err := mouse.Up(); err != nil {
+		t.Fatalf("release question handle: %v", err)
+	}
+}
+
+func questionOrderExpression(questionA, questionB string, aBeforeB bool) string {
+	return fmt.Sprintf(`() => {
+		const items = Array.from(document.querySelectorAll(".questions-workspace .question-item"));
+		const a = items.find((item) => item.textContent.includes(%q));
+		const b = items.find((item) => item.textContent.includes(%q));
+		return Boolean(a && b) && (items.indexOf(a) < items.indexOf(b)) === %t;
+	}`, questionA, questionB, aBeforeB)
+}
+
+func waitForQuestionOrder(t *testing.T, page playwright.Page, questionA, questionB string, aBeforeB bool, message string) {
+	t.Helper()
+	if _, err := page.WaitForFunction(questionOrderExpression(questionA, questionB, aBeforeB), nil); err != nil {
+		t.Fatalf("%s: %v", message, err)
+	}
+}
+
+func assertQuestionDragReleased(t *testing.T, page playwright.Page) {
+	t.Helper()
+	state, err := page.Evaluate(`() => !document.querySelector(".questions-workspace .question-item.is-dragging") && !document.querySelector(".question-drop-placeholder")`, nil)
+	if err != nil || state != true {
+		t.Fatalf("question drag state was not released (state=%v err=%v)", state, err)
+	}
+}
+
+func waitForPersistedQuestionOrder(t *testing.T, page playwright.Page, jobID, questionA, questionB string, aBeforeB bool) {
+	t.Helper()
+	expression := fmt.Sprintf(`() => fetch("/api/jobs/%s").then((response) => response.json()).then((job) => {
+		const questions = (job.stages || []).flatMap((stage) => stage.questions || []);
+		const a = questions.findIndex((question) => question.question === %q);
+		const b = questions.findIndex((question) => question.question === %q);
+		return a >= 0 && b >= 0 && (a < b) === %t;
+	})`, jobID, questionA, questionB, aBeforeB)
+	if _, err := page.WaitForFunction(expression, nil); err != nil {
+		t.Fatalf("reordered question order was not persisted: %v", err)
+	}
+}
+
+func dragCardAfter(t *testing.T, page playwright.Page, source, target playwright.Locator) {
+	t.Helper()
+	sourceBox, err := source.BoundingBox()
+	if err != nil || sourceBox == nil {
+		t.Fatalf("read source card bounds: box=%v err=%v", sourceBox, err)
+	}
+	targetBox, err := target.BoundingBox()
+	if err != nil || targetBox == nil {
+		t.Fatalf("read target card bounds: box=%v err=%v", targetBox, err)
+	}
+	mouse := page.Mouse()
+	if err := mouse.Move(sourceBox.X+30, sourceBox.Y+90); err != nil {
+		t.Fatalf("move pointer to source card: %v", err)
+	}
+	if err := mouse.Down(); err != nil {
+		t.Fatalf("hold source card: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => Boolean(document.querySelector(".process-card.is-dragging"))`, nil); err != nil {
+		t.Fatalf("wait for hold-to-drag activation: %v", err)
+	}
+	steps := 10
+	if err := mouse.Move(targetBox.X+targetBox.Width/2, targetBox.Y+targetBox.Height*0.75, playwright.MouseMoveOptions{Steps: &steps}); err != nil {
+		t.Fatalf("move source card after target: %v", err)
+	}
+	if err := mouse.Up(); err != nil {
+		t.Fatalf("release dragged card: %v", err)
+	}
+}
+
+func waitForCardOrder(t *testing.T, page playwright.Page, titleA, titleB string, aBeforeB bool, message string) {
+	t.Helper()
+	if _, err := page.WaitForFunction(cardOrderExpression(titleA, titleB, aBeforeB), nil); err != nil {
+		t.Fatalf("%s: %v", message, err)
+	}
+}
+
+func assertCardDragReleased(t *testing.T, page playwright.Page) {
+	t.Helper()
+	state, err := page.Evaluate(`() => !document.body.classList.contains("is-reordering-cards") && !document.querySelector(".process-card.is-dragging")`, nil)
+	if err != nil || state != true {
+		t.Fatalf("drag state was not released (state=%v err=%v)", state, err)
+	}
+}
+
+func waitForPersistedCardOrder(t *testing.T, page playwright.Page, titleA, titleB string, aBeforeB bool) {
+	t.Helper()
+	if _, err := page.WaitForFunction(cardOrderPersistenceExpression(titleA, titleB, aBeforeB), nil); err != nil {
+		t.Fatalf("reordered card order was not persisted: %v", err)
+	}
+}
+
+func waitForApplicationReady(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if _, err := page.WaitForFunction("() => document.body.dataset.appReady === 'true'", nil); err != nil {
+		t.Fatalf("wait for application after reload: %v", err)
+	}
+}
+
+func cardOrder(t *testing.T, page playwright.Page, titleA, titleB string) bool {
+	t.Helper()
+	result, err := page.Evaluate(cardOrderExpression(titleA, titleB, true), nil)
+	if err != nil {
+		t.Fatalf("read current card order: %v", err)
+	}
+	ordered, ok := result.(bool)
+	if !ok {
+		t.Fatalf("card order check returned %T, want bool", result)
+	}
+	return ordered
+}
+
+func cardOrderExpression(titleA, titleB string, aBeforeB bool) string {
+	return fmt.Sprintf(`() => {
+		const cards = Array.from(document.querySelectorAll(".process-card"));
+		const a = cards.find((card) => card.textContent.includes(%q));
+		const b = cards.find((card) => card.textContent.includes(%q));
+		return Boolean(a && b) && (cards.indexOf(a) < cards.indexOf(b)) === %t;
+	}`, titleA, titleB, aBeforeB)
+}
+
+func cardOrderPersistenceExpression(titleA, titleB string, aBeforeB bool) string {
+	return fmt.Sprintf(`() => fetch("/api/jobs?status=ongoing").then((response) => response.json()).then((jobs) => {
+		const a = jobs.findIndex((job) => job.position_title === %q);
+		const b = jobs.findIndex((job) => job.position_title === %q);
+		return a >= 0 && b >= 0 && (a < b) === %t;
+	})`, titleA, titleB, aBeforeB)
+}
+
+func cycleStatusAndVerifyFilter(t *testing.T, page playwright.Page, card, status playwright.Locator, current, next, filter string) {
+	t.Helper()
+	cycleJobStatus(t, page, status, current, next)
+	if err := page.Locator("#detail-modal .modal-close-btn").Click(); err != nil {
+		t.Fatalf("close details after changing status to %s: %v", next, err)
+	}
+	if err := page.Locator(`[data-filter="` + filter + `"]`).Click(); err != nil {
+		t.Fatalf("select %s filter: %v", filter, err)
+	}
+	if err := card.WaitFor(); err != nil {
+		t.Fatalf("process did not appear in %s filter: %v", filter, err)
+	}
+	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("reopen process in %s filter: %v", filter, err)
+	}
+	if err := status.WaitFor(); err != nil {
+		t.Fatalf("wait for process status in %s filter: %v", filter, err)
+	}
+}
+
+func createStatusCycleProcess(t *testing.T, page playwright.Page, uniqueTitle string) playwright.Locator {
+	t.Helper()
+	if err := page.Locator("#btn-new-process").Click(); err != nil {
+		t.Fatalf("open create form: %v", err)
+	}
+	fill(t, page.Locator(`input[name="company_name"]`), "E2E Status Company")
+	fill(t, page.Locator(`input[name="position_title"]`), uniqueTitle)
+	if err := page.Locator(`button[type="submit"]`).Click(); err != nil {
+		t.Fatalf("create process for status cycle: %v", err)
+	}
+	card := page.Locator(fmt.Sprintf(`.process-card:has-text("%s")`, uniqueTitle))
+	if err := card.WaitFor(); err != nil {
+		t.Fatalf("wait for created process: %v", err)
+	}
+	return card
+}
+
+func cycleJobStatus(t *testing.T, page playwright.Page, status playwright.Locator, current, next string) {
+	t.Helper()
+	text, err := status.TextContent()
+	if err != nil || strings.TrimSpace(text) != current {
+		t.Fatalf("status=%q before click, want %q (err=%v)", text, current, err)
+	}
+	if err := status.Click(); err != nil {
+		t.Fatalf("cycle status from %s: %v", current, err)
+	}
+	expression := fmt.Sprintf(`() => document.querySelector("#detail-modal .editable-job-status")?.textContent.trim() === %q`, next)
+	if _, err := page.WaitForFunction(expression, nil); err != nil {
+		t.Fatalf("status did not advance from %s to %s: %v", current, next, err)
+	}
+}
+
 func assertVisible(t *testing.T, locator playwright.Locator) {
 	t.Helper()
 	visible, err := locator.IsVisible()

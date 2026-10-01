@@ -234,15 +234,26 @@ function closeDataModal() {
   backdropEl.classList.remove("active");
   modalEl.classList.remove("data-transfer-modal");
   modalEl.innerHTML = "";
-  modalEl.style.opacity = "";
-  modalEl.style.transform = "";
+  resetModalAnimation();
   const compact = window.matchMedia("(max-width: 900px)").matches;
   (compact ? menuToggle : dataManagementButton)?.focus();
+}
+
+/** Clears FLIP styles before reusing the modal while a close animation is pending. */
+function resetModalAnimation() {
+  modalEl.classList.remove("modal-animating");
+  modalEl.style.transition = "";
+  modalEl.style.transform = "";
+  modalEl.style.transformOrigin = "";
+  modalEl.style.borderRadius = "";
+  modalEl.style.opacity = "";
 }
 
 /** Opens the data transfer dialog. */
 function openDataModal() {
   closeMobileMenu();
+  cancelPendingFlipClose(true);
+  resetModalAnimation();
   modalEl.classList.add("data-transfer-modal");
   modalEl.innerHTML = `
     <div class="modal-header data-transfer-header">
@@ -360,7 +371,8 @@ function handleGlobalKeydown(event) {
  * Opens modal with the New Selection Process creation form.
  */
 function openNewProcessModal() {
-  cancelPendingFlipClose();
+  cancelPendingFlipClose(true);
+  resetModalAnimation();
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
     <div class="modal-header">

@@ -8,12 +8,14 @@ let closeTimeoutId = null;
 
 /**
  * Cancels any pending close transitions to prevent race conditions when rapidly opening modals.
+ * @param {boolean} clearOrigin - Whether to discard the card used for the previous modal transition.
  */
-export function cancelPendingFlipClose() {
+export function cancelPendingFlipClose(clearOrigin = false) {
   if (closeTimeoutId) {
     clearTimeout(closeTimeoutId);
     closeTimeoutId = null;
   }
+  if (clearOrigin) activeOriginCard = null;
 }
 
 /**
