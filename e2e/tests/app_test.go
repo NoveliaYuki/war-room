@@ -271,6 +271,25 @@ func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
 			t.Fatalf("phone layout clips a card or hides navigation at %dpx (valid=%v, err=%v)", width, valid, err)
 		}
 	}
+	if err := page.SetViewportSize(402, 850); err != nil {
+		t.Fatalf("restore phone viewport for search check: %v", err)
+	}
+	if err := page.Locator("#btn-menu-toggle").Click(); err != nil {
+		t.Fatalf("open phone navigation menu: %v", err)
+	}
+	if err := page.Locator(".search-focus").Click(); err != nil {
+		t.Fatalf("focus search in phone navigation menu: %v", err)
+	}
+	validSearch, err := page.Evaluate(`() => {
+		const input = document.querySelector("#search-input");
+		return document.activeElement === input &&
+			getComputedStyle(input).fontSize === "16px" &&
+			document.querySelector("#btn-menu-toggle").getAttribute("aria-expanded") === "true" &&
+			document.documentElement.scrollWidth <= window.innerWidth;
+	}`, nil)
+	if err != nil || validSearch != true {
+		t.Fatalf("phone search should stay focused without zooming or clipping (valid=%v, err=%v)", validSearch, err)
+	}
 }
 
 func openDemoPage(t *testing.T, page playwright.Page) {
@@ -319,20 +338,64 @@ func TestNarrowViewportNavigation(t *testing.T) {
 	}
 }
 
-func TestIntermediateViewportGroupsSearchAndAction(t *testing.T) {
+func TestIntermediateViewportUsesOpenSearchMenu(t *testing.T) {
 	page := newPage(t)
 	if err := page.SetViewportSize(901, 850); err != nil {
 		t.Fatalf("set intermediate viewport: %v", err)
 	}
-	groupedLayout, err := page.Evaluate(`() => {
+	menu := page.Locator("#btn-menu-toggle")
+	if err := menu.Click(); err != nil {
+		t.Fatalf("open intermediate navigation menu: %v", err)
+	}
+	searchWrapper := page.Locator(".search-focus")
+	if err := searchWrapper.Click(); err != nil {
+		t.Fatalf("focus search in intermediate navigation menu: %v", err)
+	}
+	search := page.Locator("#search-input")
+	if err := search.Fill("platform"); err != nil {
+		t.Fatalf("type in search while intermediate navigation menu is open: %v", err)
+	}
+	validMenu, err := page.Evaluate(`() => {
 		const menu = document.querySelector("#btn-menu-toggle");
-		const search = document.querySelector("#search-input").getBoundingClientRect();
-		const action = document.querySelector("#btn-new-process").getBoundingClientRect();
-		return getComputedStyle(menu).display === "none" &&
-			search.top < action.bottom && search.bottom > action.top && search.left < action.left;
+		return getComputedStyle(menu).display !== "none" &&
+			menu.getAttribute("aria-expanded") === "true" &&
+			document.querySelector("#header-controls").classList.contains("is-open") &&
+			document.activeElement === document.querySelector("#search-input") &&
+			document.querySelector("#search-input").value === "platform" &&
+			document.documentElement.scrollWidth <= window.innerWidth;
 	}`, nil)
-	if err != nil || groupedLayout != true {
-		t.Fatalf("intermediate header should keep search left of action without hamburger (valid=%v, err=%v)", groupedLayout, err)
+	if err != nil || validMenu != true {
+		t.Fatalf("intermediate search menu should stay open and fit the viewport (valid=%v, err=%v)", validMenu, err)
+	}
+}
+
+func TestCompactDesktopKeepsDailyScheduleTabVisible(t *testing.T) {
+	page := newPage(t)
+	for _, width := range []int{1001, 1024, 1080, 1136, 1150, 1151, 1280, 1360, 1361} {
+		if err := page.SetViewportSize(width, 850); err != nil {
+			t.Fatalf("set %dpx desktop viewport: %v", width, err)
+		}
+		visibleTab, err := page.Evaluate(`() => {
+			const tabs = document.querySelector(".filter-tabs");
+			const schedule = document.querySelector("#tab-schedule");
+			const search = document.querySelector(".search-wrapper");
+			const data = document.querySelector(".data-management-trigger");
+			const create = document.querySelector("#btn-new-process");
+			const theme = document.querySelector("#btn-theme-toggle");
+			const bounds = schedule.getBoundingClientRect();
+			return getComputedStyle(document.querySelector("#btn-menu-toggle")).display === "none" &&
+				tabs.scrollWidth <= tabs.clientWidth && bounds.right <= window.innerWidth &&
+				bounds.left >= tabs.getBoundingClientRect().left &&
+				tabs.getBoundingClientRect().right <= search.getBoundingClientRect().left &&
+				search.getBoundingClientRect().right <= data.getBoundingClientRect().left &&
+				data.getBoundingClientRect().right <= create.getBoundingClientRect().left &&
+				create.getBoundingClientRect().right <= theme.getBoundingClientRect().left &&
+				theme.getBoundingClientRect().right <= window.innerWidth &&
+				schedule.innerText.includes("Daily Schedule");
+		}`, nil)
+		if err != nil || visibleTab != true {
+			t.Fatalf("compact desktop controls overlap or clip the Daily Schedule tab at %dpx (visible=%v, err=%v)", width, visibleTab, err)
+		}
 	}
 }
 

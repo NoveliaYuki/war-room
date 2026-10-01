@@ -225,12 +225,30 @@
 }
 
 .search-icon {
-  position: absolute;
-  left: 11px;
   width: 15px;
   height: 15px;
   color: var(--text-muted);
   pointer-events: none;
+}
+
+.search-focus {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  border: 0;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.search-focus:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
 }
 
 .search-shortcut {
@@ -368,7 +386,7 @@
 
 .data-management-trigger span { display: inline; }
 
-@media (min-width: 851px) {
+@media (min-width: 1001px) {
   .header-inner {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -399,17 +417,14 @@
   .header-search-actions { display: contents; }
 
   .filter-tabs {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     width: auto;
-    min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    scrollbar-width: none;
+    min-width: max-content;
+    max-width: none;
+    overflow: visible;
   }
 
   .filter-tab { flex: 0 0 auto; white-space: nowrap; }
-
-  .filter-tabs::-webkit-scrollbar { display: none; }
 
   .header-controls .search-wrapper { flex: 1 1 160px; min-width: 0; max-width: none; }
   .header-search-actions #btn-new-process,
@@ -417,7 +432,7 @@
   .header-search-actions .theme-toggle { flex: 0 0 auto; }
 }
 
-@media (max-width: 850px) {
+@media (max-width: 1000px) {
   .app-container {
     padding: 0 14px 32px;
   }
@@ -480,15 +495,15 @@
   }
   .filter-tab { flex: 0 0 auto; justify-content: flex-start; min-height: 42px; padding: 8px 10px; white-space: nowrap; }
   .search-wrapper { flex: 0 0 auto; width: 100%; max-width: none; }
-  .search-input { width: 100%; }
+  .search-input { width: 100%; font-size: 16px; }
   .search-input:focus { width: 100%; }
   .data-management-trigger { width: 100%; height: auto; min-height: 40px; padding: 8px 14px; justify-content: center; }
   #btn-new-process-mobile .new-process-label { display: none; }
 }
 
-@media (min-width: 851px) and (max-width: 1360px) {
+@media (min-width: 1001px) and (max-width: 1360px) {
   .header-controls { gap: 6px; }
-  .filter-tabs { flex: 0 1 auto; min-width: 0; max-width: 100%; gap: 0; }
+  .filter-tabs { flex: 0 0 auto; min-width: max-content; max-width: none; gap: 0; }
   .data-management-trigger,
   #btn-new-process {
     width: 42px;
@@ -506,7 +521,7 @@
   .search-shortcut { display: none; }
 }
 
-@media (min-width: 851px) and (max-width: 1150px) {
+@media (min-width: 1001px) and (max-width: 1150px) {
   .filter-tab { gap: 4px; padding-inline: 4px; font-size: 12px; white-space: nowrap; }
   .filter-tab .tab-count { flex-basis: 18px; width: 18px; }
 }

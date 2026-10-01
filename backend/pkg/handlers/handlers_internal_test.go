@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"archive/zip"
 	"bytes"
 	"errors"
 	"io"
@@ -9,7 +10,32 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"war-room/backend/pkg/service"
 )
+
+func TestUpdateHandlersReturnBadRequestForInvalidEnums(t *testing.T) {
+	handler := &Handler{jobs: service.NewJobService(nil, nil)}
+	tests := []struct {
+		name, method, path, body string
+		handle                   func(http.ResponseWriter, *http.Request)
+	}{
+		{"job", http.MethodPut, "/api/jobs/job", `{"status":"invalid"}`, handler.handleUpdateJob},
+		{"stage", http.MethodPut, "/api/stages/stage", `{"status":"invalid"}`, handler.handleUpdateStage},
+		{"meeting", http.MethodPut, "/api/stages/stage/schedule", `{"meeting_date":"2030-01-01","meeting_type":"invalid"}`, handler.handleScheduleStage},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
+			request.SetPathValue("id", "fixture")
+			recorder := httptest.NewRecorder()
+			test.handle(recorder, request)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d, want %d: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+			}
+		})
+	}
+}
 
 func TestParseAttachmentUploadValidation(t *testing.T) {
 	tests := []struct {
@@ -97,6 +123,70 @@ func TestStoreUploadedAttachmentReturnsReadErrors(t *testing.T) {
 		t.Fatalf("upload read error=%v", err)
 	}
 }
+
+func TestBoundedWriterStopsAtConfiguredLimit(t *testing.T) {
+	var output bytes.Buffer
+	writer := &boundedWriter{writer: &output, limit: 5}
+	if n, err := writer.Write([]byte("1234")); n != 4 || err != nil {
+		t.Fatalf("write before limit=(%d, %v), want (4, nil)", n, err)
+	}
+	if n, err := writer.Write([]byte("5678")); n != 1 || !errors.Is(err, errBackupExportTooLarge) {
+		t.Fatalf("write beyond limit=(%d, %v), want (1, limit error)", n, err)
+	}
+	if output.String() != "12345" {
+		t.Fatalf("bounded output=%q, want exactly five bytes", output.String())
+	}
+	if n, err := writer.Write([]byte("9")); n != 0 || !errors.Is(err, errBackupExportTooLarge) {
+		t.Fatalf("write after limit=(%d, %v), want (0, limit error)", n, err)
+	}
+}
+
+func TestBoundedWriterLimitErrorSurvivesZIPFinalization(t *testing.T) {
+	writer := &boundedWriter{writer: io.Discard, limit: 1}
+	archive := zip.NewWriter(writer)
+	entry, err := archive.Create("payload.txt")
+	if err != nil {
+		t.Fatalf("create ZIP entry: %v", err)
+	}
+	if _, err := entry.Write([]byte("payload")); err != nil {
+		t.Fatalf("buffer ZIP entry: %v", err)
+	}
+	if err := archive.Close(); !errors.Is(err, errBackupExportTooLarge) {
+		t.Fatalf("ZIP close error=%v, want bounded-writer error", err)
+	}
+}
+
+func TestBoundedWriterPropagatesUnderlyingWriteFailures(t *testing.T) {
+	writeErr := errors.New("disk full")
+	tests := []struct {
+		name   string
+		writer io.Writer
+		data   string
+		limit  int64
+		want   error
+	}{
+		{name: "underlying error before limit", writer: alwaysFailWriter{err: writeErr}, data: "x", limit: 5, want: writeErr},
+		{name: "underlying error while enforcing limit", writer: alwaysFailWriter{err: writeErr}, data: "123456", limit: 5, want: writeErr},
+		{name: "short write before limit", writer: shortWriter{}, data: "xy", limit: 5, want: io.ErrShortWrite},
+		{name: "short write while enforcing limit", writer: shortWriter{}, data: "123456", limit: 5, want: io.ErrShortWrite},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			writer := &boundedWriter{writer: test.writer, limit: test.limit}
+			if _, err := writer.Write([]byte(test.data)); !errors.Is(err, test.want) {
+				t.Fatalf("write error=%v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+type alwaysFailWriter struct{ err error }
+
+func (writer alwaysFailWriter) Write([]byte) (int, error) { return 0, writer.err }
+
+type shortWriter struct{}
+
+func (shortWriter) Write(data []byte) (int, error) { return len(data) - 1, nil }
 
 func uploadRequest(t *testing.T, jobID, stageID string, withFile bool, invalid string) (*http.Request, func()) {
 	t.Helper()

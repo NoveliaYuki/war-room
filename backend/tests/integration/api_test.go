@@ -132,6 +132,39 @@ func TestAPI_RejectsInvalidMeetingDates(t *testing.T) {
 	assertLifecycleMeeting(t, client, ts.URL)
 }
 
+func TestAPI_RejectsInvalidEnumValues(t *testing.T) {
+	ts, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	client := ts.Client()
+	job := createLifecycleJob(t, client, ts.URL)
+	stageID := job.Stages[0].ID
+	cases := []struct{ name, method, path, body string }{
+		{"create job status", http.MethodPost, "/api/jobs", `{"company_name":"Example","position_title":"Engineer","status":"invalid"}`},
+		{"create job recruiter", http.MethodPost, "/api/jobs", `{"company_name":"Example","position_title":"Engineer","recruiter_type":"invalid"}`},
+		{"create job salary", http.MethodPost, "/api/jobs", `{"company_name":"Example","position_title":"Engineer","salary_type":"invalid"}`},
+		{"create job work arrangement", http.MethodPost, "/api/jobs", `{"company_name":"Example","position_title":"Engineer","work_arrangement":"invalid"}`},
+		{"create job employment", http.MethodPost, "/api/jobs", `{"company_name":"Example","position_title":"Engineer","employment_type":"invalid"}`},
+		{"create stage type", http.MethodPost, "/api/stages", `{"job_id":"` + job.ID + `","stage_type":"invalid"}`},
+		{"create stage recruiter", http.MethodPost, "/api/stages", `{"job_id":"` + job.ID + `","stage_type":"HR","recruiter_type":"invalid"}`},
+		{"update job status", http.MethodPut, "/api/jobs/" + job.ID, `{"status":"invalid"}`},
+		{"update job recruiter", http.MethodPut, "/api/jobs/" + job.ID, `{"recruiter_type":"invalid"}`},
+		{"update job salary", http.MethodPut, "/api/jobs/" + job.ID, `{"salary_type":"invalid"}`},
+		{"update job work arrangement", http.MethodPut, "/api/jobs/" + job.ID, `{"work_arrangement":"invalid"}`},
+		{"update job employment", http.MethodPut, "/api/jobs/" + job.ID, `{"employment_type":"invalid"}`},
+		{"update stage status", http.MethodPut, "/api/stages/" + stageID, `{"status":"invalid"}`},
+		{"update stage recruiter", http.MethodPut, "/api/stages/" + stageID, `{"recruiter_type":"invalid"}`},
+		{"update stage meeting", http.MethodPut, "/api/stages/" + stageID, `{"meeting_type":"invalid"}`},
+		{"schedule meeting type", http.MethodPut, "/api/stages/" + stageID + "/schedule", `{"meeting_date":"2031-01-01","meeting_time":"09:00","meeting_type":"invalid"}`},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := mustRequest(t, client, testCase.method, ts.URL+testCase.path, testCase.body)
+			closeIntegrationResource(t, response.Body)
+			requireStatus(t, response, http.StatusBadRequest)
+		})
+	}
+}
+
 func assertClearedMeetingDetails(t *testing.T, client *http.Client, serverURL, jobID, stageID string) {
 	t.Helper()
 	details := mustRequest(t, client, http.MethodGet, serverURL+"/api/jobs/"+jobID, "")

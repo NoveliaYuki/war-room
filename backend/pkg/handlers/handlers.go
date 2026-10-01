@@ -27,6 +27,39 @@ type Handler struct {
 	cfg   *config.Config
 }
 
+var errBackupExportTooLarge = errors.New("backup ZIP exceeds the 500 MiB limit")
+
+type boundedWriter struct {
+	writer  io.Writer
+	limit   int64
+	written int64
+}
+
+func (writer *boundedWriter) Write(data []byte) (int, error) {
+	remaining := writer.limit - writer.written
+	if int64(len(data)) > remaining {
+		if remaining <= 0 {
+			return 0, errBackupExportTooLarge
+		}
+		length := int(remaining)
+		written, err := writer.writer.Write(data[:length])
+		writer.written += int64(written)
+		if err != nil {
+			return written, err
+		}
+		if written < length {
+			return written, io.ErrShortWrite
+		}
+		return written, errBackupExportTooLarge
+	}
+	written, err := writer.writer.Write(data)
+	writer.written += int64(written)
+	if err == nil && written < len(data) {
+		err = io.ErrShortWrite
+	}
+	return written, err
+}
+
 // NewHandler constructs an HTTP handler backed by the supplied services.
 func NewHandler(jobs *service.JobService, logos *service.LogoService, cfg *config.Config) *Handler {
 	return &Handler{
@@ -120,7 +153,11 @@ func (h *Handler) handleExportBackup(w http.ResponseWriter, _ *http.Request) {
 	}
 	defer func() { _ = os.Remove(archive.Name()) }()
 	defer func() { _ = archive.Close() }()
-	if err := h.jobs.ExportArchive(archive); err != nil {
+	if err := h.jobs.ExportArchive(&boundedWriter{writer: archive, limit: 500 << 20}); err != nil {
+		if errors.Is(err, errBackupExportTooLarge) {
+			ErrorJSON(w, http.StatusRequestEntityTooLarge, errBackupExportTooLarge.Error())
+			return
+		}
 		ErrorJSON(w, http.StatusInternalServerError, "Failed to create backup archive")
 		return
 	}
@@ -279,6 +316,10 @@ func (h *Handler) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
 			ErrorJSON(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, service.ErrInvalidField) {
+			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		ErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -342,7 +383,7 @@ func (h *Handler) handleScheduleStage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.jobs.ScheduleMeeting(id, input); err != nil {
-		if errors.Is(err, service.ErrInvalidMeetingDate) {
+		if errors.Is(err, service.ErrInvalidMeetingDate) || errors.Is(err, service.ErrInvalidField) {
 			ErrorJSON(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -381,7 +422,7 @@ func (h *Handler) handleUpdateStage(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.jobs.UpdateStage(id, input)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidMeetingDate) {
+		if errors.Is(err, service.ErrInvalidMeetingDate) || errors.Is(err, service.ErrInvalidField) {
 			ErrorJSON(w, http.StatusBadRequest, err.Error())
 			return
 		}

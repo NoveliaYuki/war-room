@@ -33,6 +33,9 @@ var ErrInvalidAttachmentOwner = errors.New("invalid attachment owner")
 // ErrInvalidMeetingDate indicates a meeting date is not a real YYYY-MM-DD date.
 var ErrInvalidMeetingDate = errors.New("meeting_date must be a valid YYYY-MM-DD date")
 
+// ErrInvalidField indicates a request contains a value outside the supported model.
+var ErrInvalidField = errors.New("request contains an invalid field value")
+
 // ErrPositionTitleRequired indicates an attempted update with a blank title.
 var ErrPositionTitleRequired = errors.New("position_title is required")
 
@@ -121,6 +124,9 @@ func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error)
 }
 
 func buildJob(input models.CreateJobInput) (*models.Job, error) {
+	if err := validateCreateJobEnums(input); err != nil {
+		return nil, err
+	}
 	workArrangement, employmentType, err := normalizeJobWorkDetails(input)
 	if err != nil {
 		return nil, err
@@ -163,6 +169,32 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 		EmploymentType:  employmentType,
 		IsReferral:      referral,
 	}, nil
+}
+
+func validateCreateJobEnums(input models.CreateJobInput) error {
+	return firstValidationError(
+		validateOptionalEnum(input.Status, validateJobStatus),
+		validateOptionalEnum(input.RecruiterType, validateRecruiterType),
+		validateOptionalEnum(input.SalaryType, validateSalaryType),
+		validateOptionalEnum(input.WorkArrangement, validateWorkArrangement),
+		validateOptionalEnum(input.EmploymentType, validateEmploymentType),
+	)
+}
+
+func validateOptionalEnum[T ~string](value *T, validate func(T) error) error {
+	if value == nil {
+		return nil
+	}
+	return validate(*value)
+}
+
+func firstValidationError(validationErrors ...error) error {
+	for _, err := range validationErrors {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func normalizeJobWorkDetails(input models.CreateJobInput) (models.WorkArrangement, models.EmploymentType, error) {
@@ -265,15 +297,8 @@ func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.
 	if input.PositionTitle != nil && strings.TrimSpace(*input.PositionTitle) == "" {
 		return nil, ErrPositionTitleRequired
 	}
-	if input.WorkArrangement != nil {
-		if err := validateWorkArrangement(*input.WorkArrangement); err != nil {
-			return nil, err
-		}
-	}
-	if input.EmploymentType != nil {
-		if err := validateEmploymentType(*input.EmploymentType); err != nil {
-			return nil, err
-		}
+	if err := validateUpdateJobEnums(input); err != nil {
+		return nil, err
 	}
 	current, err := s.repo.GetJobByID(id)
 	if err != nil {
@@ -291,6 +316,16 @@ func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.
 
 	s.mirrorAfterMutation()
 	return s.GetFullJobDetails(id)
+}
+
+func validateUpdateJobEnums(input models.UpdateJobInput) error {
+	return firstValidationError(
+		validateOptionalEnum(input.Status, validateJobStatus),
+		validateOptionalEnum(input.RecruiterType, validateRecruiterType),
+		validateOptionalEnum(input.SalaryType, validateSalaryType),
+		validateOptionalEnum(input.WorkArrangement, validateWorkArrangement),
+		validateOptionalEnum(input.EmploymentType, validateEmploymentType),
+	)
 }
 
 func jobUpdateFields(current *models.Job, input models.UpdateJobInput) map[string]interface{} {
@@ -332,7 +367,7 @@ func validateEmploymentType(employmentType models.EmploymentType) error {
 	case models.EmploymentTypeUnknown, models.EmploymentTypePermanent, models.EmploymentTypeB2B, models.EmploymentTypePermanentB2B:
 		return nil
 	default:
-		return fmt.Errorf("invalid employment_type %q", employmentType)
+		return fmt.Errorf("%w: invalid employment_type %q", ErrInvalidField, employmentType)
 	}
 }
 
@@ -341,8 +376,48 @@ func validateWorkArrangement(arrangement models.WorkArrangement) error {
 	case models.WorkArrangementUnknown, models.WorkArrangementRemote, models.WorkArrangementHybrid, models.WorkArrangementOnSite:
 		return nil
 	default:
-		return fmt.Errorf("invalid work_arrangement %q", arrangement)
+		return fmt.Errorf("%w: invalid work_arrangement %q", ErrInvalidField, arrangement)
 	}
+}
+
+func validateJobStatus(status models.JobStatus) error {
+	switch status {
+	case models.StatusOngoing, models.StatusAccepted, models.StatusRejected:
+		return nil
+	}
+	return fmt.Errorf("%w: invalid status %q", ErrInvalidField, status)
+}
+
+func validateRecruiterType(value models.RecruiterType) error {
+	switch value {
+	case models.RecruiterInternal, models.RecruiterExternal, models.RecruiterNone:
+		return nil
+	}
+	return fmt.Errorf("%w: invalid recruiter_type %q", ErrInvalidField, value)
+}
+
+func validateSalaryType(value models.SalaryType) error {
+	switch value {
+	case models.SalaryLimited, models.SalaryNoMin, models.SalaryNoMax, models.SalaryUnknown:
+		return nil
+	}
+	return fmt.Errorf("%w: invalid salary_type %q", ErrInvalidField, value)
+}
+
+func validateStageType(value models.StageType) error {
+	switch value {
+	case models.StageHR, models.StageTechnical, models.StageCultural, models.StageOfferDecision:
+		return nil
+	}
+	return fmt.Errorf("%w: invalid stage_type %q", ErrInvalidField, value)
+}
+
+func validateStageStatus(value models.StageStatus) error {
+	switch value {
+	case models.StageStatusPending, models.StageStatusCurrent, models.StageStatusCompleted, models.StageStatusSkipped:
+		return nil
+	}
+	return fmt.Errorf("%w: invalid stage status %q", ErrInvalidField, value)
 }
 
 func addJobSalaryFields(fields map[string]interface{}, current *models.Job, input models.UpdateJobInput) {
@@ -478,6 +553,14 @@ func (s *JobService) ReorderJobs(jobIDs []string) error {
 
 // CreateStage validates and persists a stage.
 func (s *JobService) CreateStage(input models.CreateStageInput) (*models.Stage, error) {
+	if err := validateStageType(input.StageType); err != nil {
+		return nil, err
+	}
+	if input.RecruiterType != nil {
+		if err := validateRecruiterType(*input.RecruiterType); err != nil {
+			return nil, err
+		}
+	}
 	existing, err := s.repo.GetStagesByJobID(input.JobID)
 	if err != nil {
 		return nil, fmt.Errorf("load existing stages for job %q: %w", input.JobID, err)
@@ -513,6 +596,16 @@ func (s *JobService) CreateStage(input models.CreateStageInput) (*models.Stage, 
 
 // UpdateStage applies the supplied fields to an existing stage.
 func (s *JobService) UpdateStage(id string, input models.UpdateStageInput) (*models.Stage, error) {
+	if input.Status != nil {
+		if err := validateStageStatus(*input.Status); err != nil {
+			return nil, err
+		}
+	}
+	if input.RecruiterType != nil {
+		if err := validateRecruiterType(*input.RecruiterType); err != nil {
+			return nil, err
+		}
+	}
 	if err := validateOptionalMeetingDate(input.MeetingDate); err != nil {
 		return nil, err
 	}
@@ -660,7 +753,7 @@ func validateMeetingType(meetingType string) error {
 	case "video", "phone", "onsite":
 		return nil
 	default:
-		return fmt.Errorf("invalid meeting_type %q: expected video, phone, or onsite", meetingType)
+		return fmt.Errorf("%w: invalid meeting_type %q: expected video, phone, or onsite", ErrInvalidField, meetingType)
 	}
 }
 

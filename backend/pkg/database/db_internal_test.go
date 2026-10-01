@@ -261,6 +261,26 @@ func TestBackupLoadingRejectsMissingAndMalformedFiles(t *testing.T) {
 	if _, err := loadBackup(backupPath); err == nil {
 		t.Fatal("malformed backup should fail to parse")
 	}
+	if err := os.Truncate(backupPath, maxBackupBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadBackup(backupPath); err == nil || !strings.Contains(err.Error(), "backup exceeds") {
+		t.Fatalf("oversized backup error=%v", err)
+	}
+}
+
+func TestBackupLoadingAcceptsEmptyJobList(t *testing.T) {
+	backupPath := filepath.Join(t.TempDir(), "backup.json")
+	if err := os.WriteFile(backupPath, []byte("[]"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := loadBackup(backupPath)
+	if err != nil {
+		t.Fatalf("load valid empty backup: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("jobs=%d, want 0", len(jobs))
+	}
 }
 
 func TestBackupSourceSelection(t *testing.T) {

@@ -59,6 +59,83 @@ func TestSetSalaryRangeNormalizesRangesAndTypes(t *testing.T) {
 	}
 }
 
+func TestValidateModelEnums(t *testing.T) {
+	tests := []struct {
+		name    string
+		valid   func() error
+		invalid func() error
+	}{
+		{"job status", func() error { return validateJobStatus(models.StatusOngoing) }, func() error { return validateJobStatus("unknown") }},
+		{"recruiter type", func() error { return validateRecruiterType(models.RecruiterExternal) }, func() error { return validateRecruiterType("unknown") }},
+		{"salary type", func() error { return validateSalaryType(models.SalaryUnknown) }, func() error { return validateSalaryType("bogus") }},
+		{"stage type", func() error { return validateStageType(models.StageTechnical) }, func() error { return validateStageType("unknown") }},
+		{"stage status", func() error { return validateStageStatus(models.StageStatusSkipped) }, func() error { return validateStageStatus("unknown") }},
+		{"meeting type", func() error { return validateMeetingType("onsite") }, func() error { return validateMeetingType("unknown") }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.valid(); err != nil {
+				t.Fatalf("valid enum rejected: %v", err)
+			}
+			if err := test.invalid(); !errors.Is(err, ErrInvalidField) {
+				t.Fatalf("invalid enum error=%v, want ErrInvalidField", err)
+			}
+		})
+	}
+}
+
+func TestValidateJobInputEnums(t *testing.T) {
+	if err := validateCreateJobEnums(models.CreateJobInput{}); err != nil {
+		t.Fatalf("empty create input rejected: %v", err)
+	}
+	badStatus := models.JobStatus("invalid")
+	if err := validateCreateJobEnums(models.CreateJobInput{Status: &badStatus}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("invalid create status error=%v", err)
+	}
+	badRecruiter := models.RecruiterType("invalid")
+	badSalary := models.SalaryType("invalid")
+	badArrangement := models.WorkArrangement("invalid")
+	badEmployment := models.EmploymentType("invalid")
+	for _, input := range []models.CreateJobInput{
+		{RecruiterType: &badRecruiter}, {SalaryType: &badSalary},
+		{WorkArrangement: &badArrangement}, {EmploymentType: &badEmployment},
+	} {
+		if err := validateCreateJobEnums(input); !errors.Is(err, ErrInvalidField) {
+			t.Errorf("invalid create enum accepted: %+v, error=%v", input, err)
+		}
+	}
+	if err := validateUpdateJobEnums(models.UpdateJobInput{}); err != nil {
+		t.Fatalf("empty update input rejected: %v", err)
+	}
+	for _, input := range []models.UpdateJobInput{
+		{Status: &badStatus}, {RecruiterType: &badRecruiter}, {SalaryType: &badSalary},
+		{WorkArrangement: &badArrangement}, {EmploymentType: &badEmployment},
+	} {
+		if err := validateUpdateJobEnums(input); !errors.Is(err, ErrInvalidField) {
+			t.Errorf("invalid update enum accepted: %+v, error=%v", input, err)
+		}
+	}
+}
+
+func TestJobServiceRejectsInvalidEnumsBeforePersistence(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	badStatus := models.JobStatus("invalid")
+	if _, err := fixture.service.CreateJob(models.CreateJobInput{PositionTitle: "Engineer", Status: &badStatus}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("invalid job status error=%v", err)
+	}
+	if _, err := fixture.service.CreateStage(models.CreateStageInput{JobID: "owner-a", StageType: "invalid"}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("invalid stage type error=%v", err)
+	}
+	badStageStatus := models.StageStatus("invalid")
+	if _, err := fixture.service.UpdateStage(fixture.ownedStage.ID, models.UpdateStageInput{Status: &badStageStatus}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("invalid stage status error=%v", err)
+	}
+	badMeetingType := "invalid"
+	if err := fixture.service.ScheduleMeeting(fixture.ownedStage.ID, models.ScheduleMeetingInput{MeetingType: &badMeetingType}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("invalid meeting type error=%v", err)
+	}
+}
+
 func TestJobAvatarUsesSeedOrCreatesFallback(t *testing.T) {
 	seed := "  fixed-avatar  "
 	if got := jobAvatar("Example", "Engineer", &seed); got != "fixed-avatar" {

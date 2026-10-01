@@ -319,6 +319,10 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
  * @returns {Function} Function returning true if drag or suppression is currently active.
  */
 function enableHoldToDrag(card, containerEl, onReorderFinished) {
+  const MOUSE_HOLD_DELAY_MS = 180;
+  const TOUCH_HOLD_DELAY_MS = 500;
+  const HOLD_MOVE_THRESHOLD_PX = 32;
+
   let holdTimer = null;
   let isDragging = false;
   let suppressClickUntil = 0;
@@ -326,6 +330,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let startX = 0;
   let startY = 0;
   let holdStartedAt = 0;
+  let activeHoldDelay = MOUSE_HOLD_DELAY_MS;
   let offsetX = 0;
   let offsetY = 0;
   let lockedScrollY = 0;
@@ -335,13 +340,11 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let activePointerType = "mouse";
   let initialOrder = [];
 
-  const HOLD_DELAY_MS = 180;
-  const HOLD_MOVE_THRESHOLD_PX = 32;
-
-  function beginHold(e) {
+  function beginHold(e, holdDelay) {
     startX = e.clientX;
     startY = e.clientY;
     holdStartedAt = Date.now();
+    activeHoldDelay = holdDelay;
 
     const rect = card.getBoundingClientRect();
     offsetX = e.clientX - rect.left;
@@ -351,7 +354,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     holdTimer = setTimeout(() => {
       holdTimer = null;
       startDragging(e, rect);
-    }, HOLD_DELAY_MS);
+    }, holdDelay);
   }
 
   function onPointerDown(e) {
@@ -360,7 +363,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     if (e.target.closest("button, a, input, textarea, .btn-card-delete")) return;
 
     activePointerType = e.pointerType;
-    beginHold(e);
+    beginHold(e, MOUSE_HOLD_DELAY_MS);
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -374,7 +377,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     activePointerType = "touch";
     previousTouchY = touch.clientY;
     isTouchScrolling = false;
-    beginHold({ clientX: touch.clientX, clientY: touch.clientY });
+    beginHold({ clientX: touch.clientX, clientY: touch.clientY }, TOUCH_HOLD_DELAY_MS);
     window.addEventListener("touchmove", onTouchMove, { passive: false });
     window.addEventListener("touchend", onTouchEnd);
     window.addEventListener("touchcancel", onTouchEnd);
@@ -472,7 +475,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   function movePendingTouch(e) {
     if (holdTimer !== null) {
       const distance = Math.hypot(e.clientX - startX, e.clientY - startY);
-      if (Date.now() - holdStartedAt >= HOLD_DELAY_MS) {
+      if (Date.now() - holdStartedAt >= activeHoldDelay) {
         clearTimeout(holdTimer);
         holdTimer = null;
         startDragging(e, card.getBoundingClientRect());

@@ -24,7 +24,7 @@ describe('application entry point', () => {
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
       <button id="btn-theme-toggle"></button>
-      <div id="header-controls"><div class="search-wrapper"><input id="search-input"></div>
+      <div id="header-controls"><div class="search-wrapper"><button class="search-focus"></button><input id="search-input"></div>
       <button id="btn-data-management"></button><div class="filter-tabs">
       <button class="filter-tab" data-filter="ongoing"></button><button class="filter-tab" data-filter="accepted"></button>
       <button class="filter-tab" data-filter="rejected"></button><button class="filter-tab" data-filter="all"></button>
@@ -57,6 +57,11 @@ describe('application entry point', () => {
     menuToggle.click();
     expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
     expect(headerControls.classList.contains('is-open')).toBe(true);
+    document.querySelector('.search-focus').click();
+    expect(document.activeElement).toBe(document.querySelector('#search-input'));
+    expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(headerControls.classList.contains('is-open')).toBe(true);
+    document.querySelector('#search-input').blur();
     menuToggle.click();
     expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     menuToggle.click();
@@ -103,7 +108,8 @@ describe('application entry point', () => {
     document.querySelector('#search-input').blur();
     menuToggle.click();
     document.querySelector('#search-input').focus();
-    expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(headerControls.classList.contains('is-open')).toBe(true);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
     expect(document.querySelector('#new-process-form')).toBeNull();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }));
