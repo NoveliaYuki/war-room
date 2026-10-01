@@ -275,6 +275,10 @@ func (h *Handler) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
 			ErrorJSON(w, http.StatusNotFound, "Job process not found")
 			return
 		}
+		if errors.Is(err, service.ErrPositionTitleRequired) {
+			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		ErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -443,6 +447,10 @@ func (h *Handler) handleUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			ErrorJSON(w, http.StatusNotFound, "Question not found")
+			return
+		}
+		if errors.Is(err, service.ErrQuestionTextRequired) {
+			ErrorJSON(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		ErrorJSON(w, http.StatusInternalServerError, err.Error())

@@ -94,6 +94,53 @@ func TestAPI_JobLifecycle(t *testing.T) {
 	deleteLifecycleJob(t, client, ts.URL, job.ID)
 }
 
+func TestAPI_UpdatesRejectBlankRequiredTextWithoutChangingRecords(t *testing.T) {
+	ts, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	client := ts.Client()
+	job := createLifecycleJob(t, client, ts.URL)
+	stageID := job.Stages[0].ID
+	questionResponse := mustRequest(t, client, http.MethodPost, ts.URL+"/api/questions", encodeJSON(t, models.CreateQuestionInput{
+		StageID: stageID, Question: "Existing question",
+	}))
+	t.Cleanup(func() { closeIntegrationResource(t, questionResponse.Body) })
+	requireStatus(t, questionResponse, http.StatusCreated)
+
+	for _, testCase := range []struct {
+		name, path, body string
+	}{
+		{"job title", "/api/jobs/" + job.ID, `{"position_title":" \t "}`},
+		{"question text", "/api/questions/" + readQuestionID(t, questionResponse), `{"question":" \t "}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := mustRequest(t, client, http.MethodPut, ts.URL+testCase.path, testCase.body)
+			closeIntegrationResource(t, response.Body)
+			requireStatus(t, response, http.StatusBadRequest)
+		})
+	}
+
+	details := mustRequest(t, client, http.MethodGet, ts.URL+"/api/jobs/"+job.ID, "")
+	t.Cleanup(func() { closeIntegrationResource(t, details.Body) })
+	var unchanged models.Job
+	mustDecode(t, details, &unchanged)
+	if unchanged.PositionTitle != job.PositionTitle {
+		t.Fatalf("blank update changed position title to %q", unchanged.PositionTitle)
+	}
+	if got := unchanged.Stages[0].Questions; len(got) != 1 || got[0].Question != "Existing question" {
+		t.Fatalf("blank update changed questions: %+v", got)
+	}
+}
+
+func readQuestionID(t *testing.T, response *http.Response) string {
+	t.Helper()
+	var question models.Question
+	mustDecode(t, response, &question)
+	if question.ID == "" {
+		t.Fatal("create question response has no ID")
+	}
+	return question.ID
+}
+
 func TestAPI_JSONMutationEndpointsRejectTrailingValues(t *testing.T) {
 	ts, _, cleanup := setupTestServer(t)
 	defer cleanup()
