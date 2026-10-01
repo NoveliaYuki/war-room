@@ -129,6 +129,12 @@ describe('detail modal', () => {
     window.dispatchEvent(new Event('pointerup'));
     expect(handle.getAttribute('aria-valuenow')).toBe('35');
     expect(window.localStorage.getItem('war-room-detail-split-ratio')).toBe('35');
+
+    const stationaryPointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(stationaryPointerDown, 'button', { value: 0 });
+    handle.dispatchEvent(stationaryPointerDown);
+    window.dispatchEvent(new Event('pointerup'));
+    expect(document.body.classList.contains('is-resizing-split')).toBe(false);
     requestFrame.mockRestore();
     cancelFrame.mockRestore();
 
@@ -457,6 +463,9 @@ describe('detail modal', () => {
 
     await editInline(modal, '.editable-stage-interviewer-name', 'Taylor');
     expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Taylor', role: 'Engineer', notes: 'Staff' }] });
+    const updatesBeforeEmptyName = api.updateStage.mock.calls.length;
+    await editInline(modal, '.editable-stage-interviewer-name', '   ');
+    expect(api.updateStage).toHaveBeenCalledTimes(updatesBeforeEmptyName);
     await editInline(modal, '.editable-stage-interviewer-role', 'Director');
     expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Alex', role: 'Director', notes: 'Staff' }] });
     await editInline(modal, '.editable-stage-interviewer-note', 'Hiring manager');
@@ -480,12 +489,19 @@ describe('detail modal', () => {
 
     await editInline(modal, '.editable-stage-title', 'System Design');
     expect(api.updateStage).toHaveBeenCalledWith('s2', { custom_title: 'System Design' });
+    const updatesBeforeEmptyTitle = api.updateStage.mock.calls.length;
+    await editInline(modal, '.editable-stage-title', '   ');
+    expect(api.updateStage).toHaveBeenCalledTimes(updatesBeforeEmptyTitle);
     await editInline(modal, '.editable-stage-notes', 'Discuss architecture and team expectations');
     expect(api.updateStage).toHaveBeenCalledWith('s2', { notes: 'Discuss architecture and team expectations' });
     await editInline(modal, '.editable-stage-desc', 'Architecture round');
     expect(api.updateStage).toHaveBeenCalledWith('s2', { description: 'Architecture round' });
     await editInline(modal, '.editable-question-text', 'How do you scale?');
     expect(api.updateQuestion).toHaveBeenCalledWith('q1', { question: 'How do you scale?' });
+    const questionUpdatesBeforeEmptyText = api.updateQuestion.mock.calls.length;
+    await editInline(modal, '.editable-question-text', '   ');
+    expect(api.updateQuestion).toHaveBeenCalledTimes(questionUpdatesBeforeEmptyText);
+    modal.querySelector('#file-upload-stage-input').dispatchEvent(new Event('change'));
 
     modal.querySelector('#btn-toggle-current-stage').click();
     modal.querySelector('#btn-move-stage-up').click();
@@ -535,6 +551,15 @@ describe('detail modal', () => {
     modal.querySelector('.btn-clear-schedule').click();
     await tick();
     expect(api.scheduleMeeting).toHaveBeenCalledWith('s1', { meeting_date: null, meeting_time: null, meeting_url: null, meeting_type: 'video' });
+
+  });
+
+  it('preserves the phone meeting format default in the schedule form', async () => {
+    const modal = document.querySelector('#detail-modal');
+    api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', meeting_type: 'phone', questions: [] }]));
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-meeting-schedule').click();
+    expect(modal.querySelector('#schedule-stage-form [name="meeting_type"]').value).toBe('phone');
   });
 
   it('renders stage-level data, inherited interviewer data, and safe meeting fallbacks', async () => {
@@ -728,6 +753,55 @@ describe('detail modal', () => {
     else window.showToast = previousToast;
   });
 
+  it('handles custom stage fallbacks, onsite mode changes, optional links, and canceled destructive actions', async () => {
+    const fixture = {
+      ...job([{
+        id: 'custom-stage', stage_type: 'Custom Round', custom_title: '', status: 'current',
+        meeting_type: 'onsite', meeting_date: '', meeting_time: '',
+        recruiter_type: 'external', recruiter_name: 'Panel contact', recruiter_agency: '',
+        recruiter_contact: 'https://www.linkedin.com/in/panel-contact', questions: [], interviewers: [],
+      }]),
+      attachments: [{ id: 'screening', original_name: 'screening.pdf', file_size: 1024, stage_id: 'custom-stage' }],
+    };
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    expect(modal.querySelector('.stage-type-badge').classList.contains('HR')).toBe(true);
+    expect(modal.querySelector('.stage-schedule-badge-row .btn-edit-meeting-schedule')).not.toBeNull();
+    expect(modal.querySelector('.editable-stage-recruiter-contact a').textContent).toContain('LinkedIn Profile');
+    expect(modal.querySelector('.attachment-size').textContent).toContain('Screening Document');
+
+    modal.querySelector('.interview-mode-tag').click();
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('custom-stage', { meeting_type: 'video' });
+
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    modal.querySelector('.btn-delete-job').click();
+    modal.querySelector('#btn-delete-stage').click();
+    await tick();
+    expect(api.deleteJob).not.toHaveBeenCalled();
+    expect(api.deleteStage).not.toHaveBeenCalled();
+
+    vi.stubGlobal('prompt', vi.fn().mockReturnValueOnce('Reference Check').mockReturnValueOnce('').mockReturnValueOnce(''));
+    modal.querySelector('#btn-add-stage-tab').click();
+    await tick();
+    expect(api.createStage).toHaveBeenCalledWith({
+      job_id: 'job-1', stage_type: 'Technical', custom_title: 'Reference Check', description: '', status: 'pending',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('deletes a process without an optional refresh callback', async () => {
+    api.getJob.mockResolvedValue(job());
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    await openDetailModal('job-1');
+    document.querySelector('#detail-modal .btn-delete-job').click();
+    await tick();
+    expect(api.deleteJob).toHaveBeenCalledWith('job-1');
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
   it('reports failures from stage, question, meeting, and job actions', async () => {
     const stages = [
       { id: 's1', stage_type: 'HR', status: 'completed', questions: [] },
@@ -804,6 +878,58 @@ describe('detail modal', () => {
     expect(api.updateJob).toHaveBeenCalledWith('job-1', expect.objectContaining({
       position_title: 'Staff Engineer', salary_type: 'limited', salary_min: 70000, salary_max: 90000,
       experience_notes: 'Distributed systems', expected_salary: '€95k depending on scope', is_referral: false,
+    }));
+  });
+
+  it('derives salary bounds for maximum-only and undisclosed ranges in the edit form', async () => {
+    const original = job();
+    api.getJob.mockResolvedValue(original);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    const form = modal.querySelector('.edit-process-form');
+    form.querySelector('[name="salary_min"]').value = '';
+    form.querySelector('[name="salary_max"]').value = '90000';
+    form.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    expect(form.querySelector('[name="salary_type"]').value).toBe('no_min');
+    form.querySelector('[name="position_title"]').value = 'Maximum-only role';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', expect.objectContaining({
+      salary_type: 'no_min', salary_min: null, salary_max: 90000,
+    }));
+
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    const minimumOnlyForm = modal.querySelector('.edit-process-form');
+    minimumOnlyForm.querySelector('[name="salary_min"]').value = '70000';
+    minimumOnlyForm.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
+    minimumOnlyForm.querySelector('[name="salary_max"]').value = '';
+    minimumOnlyForm.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    expect(minimumOnlyForm.querySelector('[name="salary_type"]').value).toBe('no_max');
+    minimumOnlyForm.querySelector('[name="position_title"]').value = 'Minimum-only role';
+    minimumOnlyForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', expect.objectContaining({
+      salary_type: 'no_max', salary_min: 70000, salary_max: null,
+    }));
+
+    api.getJob.mockResolvedValue({ ...original, salary_min: null, salary_max: null, is_referral: true,
+      company_domain: '', job_post_url: '', recruiter_name: '', recruiter_agency: '',
+      keyword_note: '', company_overview: '', reasons_to_change: '', experience_notes: '',
+      expected_salary: '', interview_notes: '' });
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    expect(modal.querySelector('[name="is_referral"]')).toHaveProperty('checked', true);
+    expect(modal.querySelector('[name="company_domain"]').value).toBe('');
+    const emptyRangeForm = modal.querySelector('.edit-process-form');
+    emptyRangeForm.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
+    emptyRangeForm.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    emptyRangeForm.querySelector('[name="position_title"]').value = 'Undisclosed role';
+    emptyRangeForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', expect.objectContaining({
+      salary_type: 'limited', salary_min: null, salary_max: null, is_referral: true,
     }));
   });
 });

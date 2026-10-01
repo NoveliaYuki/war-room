@@ -107,6 +107,8 @@ describe('api', () => {
     await expect(api.exportBackup()).rejects.toThrow('export failed');
     global.fetch.mockResolvedValueOnce({ ok: false, json: async () => { throw new Error('unreadable'); } });
     await expect(api.exportBackup()).rejects.toThrow('Failed to create backup');
+    global.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
+    await expect(api.exportBackup()).rejects.toThrow('Failed to create backup');
   });
 
   it('sends the selected ZIP and surfaces empty-backup confirmation', async () => {
@@ -121,6 +123,8 @@ describe('api', () => {
     await expect(api.importBackup(archive, true)).rejects.toMatchObject({ message: 'empty backup', requiresEmptyConfirmation: true });
     expect(global.fetch.mock.lastCall[1].body.get('allow_empty')).toBe('true');
     global.fetch.mockResolvedValueOnce({ ok: false, json: async () => { throw new Error('unreadable'); } });
+    await expect(api.importBackup(archive)).rejects.toMatchObject({ message: 'Failed to import backup', requiresEmptyConfirmation: false });
+    global.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });
     await expect(api.importBackup(archive)).rejects.toMatchObject({ message: 'Failed to import backup', requiresEmptyConfirmation: false });
   });
 
