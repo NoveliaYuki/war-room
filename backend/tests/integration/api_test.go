@@ -94,6 +94,65 @@ func TestAPI_JobLifecycle(t *testing.T) {
 	deleteLifecycleJob(t, client, ts.URL, job.ID)
 }
 
+func TestAPI_ClearMeetingScheduleClearsJoinURLAndKeepsNotes(t *testing.T) {
+	ts, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	client := ts.Client()
+	job := createLifecycleJob(t, client, ts.URL)
+	stageID := job.Stages[0].ID
+	scheduleLifecycleStage(t, client, ts.URL, stageID)
+
+	response := mustRequest(t, client, http.MethodPut, ts.URL+"/api/stages/"+stageID+"/schedule", `{"meeting_date":null,"meeting_time":null,"meeting_url":null,"meeting_type":"video"}`)
+	closeIntegrationResource(t, response.Body)
+	requireStatus(t, response, http.StatusOK)
+	assertClearedMeetingDetails(t, client, ts.URL, job.ID, stageID)
+	assertNoScheduledMeetings(t, client, ts.URL)
+}
+
+func assertClearedMeetingDetails(t *testing.T, client *http.Client, serverURL, jobID, stageID string) {
+	t.Helper()
+	details := mustRequest(t, client, http.MethodGet, serverURL+"/api/jobs/"+jobID, "")
+	t.Cleanup(func() { closeIntegrationResource(t, details.Body) })
+	var updated models.Job
+	mustDecode(t, details, &updated)
+	scheduledStage := findIntegrationStage(updated.Stages, stageID)
+	if scheduledStage == nil {
+		t.Fatal("scheduled stage is missing from updated job")
+	}
+	if hasScheduledMeetingDetails(scheduledStage) {
+		t.Fatalf("cleared schedule retained meeting details: %+v", scheduledStage)
+	}
+	if scheduledStage.Notes != "Discuss platform security goals and interview expectations." {
+		t.Fatalf("clearing schedule changed notes: %+v", scheduledStage.Notes)
+	}
+}
+
+func findIntegrationStage(stages []models.Stage, stageID string) *models.Stage {
+	for index := range stages {
+		if stages[index].ID == stageID {
+			return &stages[index]
+		}
+	}
+	return nil
+}
+
+func hasScheduledMeetingDetails(stage *models.Stage) bool {
+	return stage.MeetingDate != nil && *stage.MeetingDate != "" ||
+		stage.MeetingTime != nil && *stage.MeetingTime != "" ||
+		stage.MeetingURL != nil && *stage.MeetingURL != ""
+}
+
+func assertNoScheduledMeetings(t *testing.T, client *http.Client, serverURL string) {
+	t.Helper()
+	meetingsResponse := mustRequest(t, client, http.MethodGet, serverURL+"/api/meetings", "")
+	t.Cleanup(func() { closeIntegrationResource(t, meetingsResponse.Body) })
+	var meetings []models.ScheduledMeeting
+	mustDecode(t, meetingsResponse, &meetings)
+	if len(meetings) != 0 {
+		t.Fatalf("cleared schedule still appears in meeting list: %d meetings", len(meetings))
+	}
+}
+
 func TestAPI_UpdatesRejectBlankRequiredTextWithoutChangingRecords(t *testing.T) {
 	ts, _, cleanup := setupTestServer(t)
 	defer cleanup()
@@ -273,7 +332,8 @@ func setLifecycleCurrentStage(t *testing.T, client *http.Client, serverURL, stag
 func scheduleLifecycleStage(t *testing.T, client *http.Client, serverURL, stageID string) {
 	t.Helper()
 	meetingURL := "https://meet.example.com/abc-def-ghi"
-	payload := models.ScheduleMeetingInput{MeetingDate: "2001-01-02", MeetingTime: "14:00", MeetingURL: &meetingURL}
+	notes := "Discuss platform security goals and interview expectations."
+	payload := models.ScheduleMeetingInput{MeetingDate: "2001-01-02", MeetingTime: "14:00", MeetingURL: &meetingURL, Notes: &notes}
 	url := fmt.Sprintf("%s/api/stages/%s/schedule", serverURL, stageID)
 	response := mustRequest(t, client, http.MethodPut, url, encodeJSON(t, payload))
 	t.Cleanup(func() { closeIntegrationResource(t, response.Body) })
@@ -291,6 +351,9 @@ func assertLifecycleMeeting(t *testing.T, client *http.Client, serverURL string)
 	}
 	if meetings[0].CompanyDomain != "example.test" {
 		t.Errorf("meeting company domain = %q, want %q", meetings[0].CompanyDomain, "example.test")
+	}
+	if meetings[0].StageNotes != "Discuss platform security goals and interview expectations." {
+		t.Errorf("meeting notes = %q, want saved schedule notes", meetings[0].StageNotes)
 	}
 }
 

@@ -464,15 +464,13 @@ func createLifecycleStagesForService(t *testing.T, jobs *service.JobService, job
 
 func exerciseLifecycleMeetingsAndBackup(t *testing.T, jobs *service.JobService, cfg *config.Config, jobID, stageID, secondID string) {
 	t.Helper()
-	if err := jobs.ScheduleMeeting(secondID, models.ScheduleMeetingInput{MeetingDate: "2031-04-06", MeetingTime: "11:00", MeetingURL: ptr("https://meet.invalid/2"), MeetingType: ptr("phone")}); err != nil {
+	if err := jobs.ScheduleMeeting(secondID, models.ScheduleMeetingInput{MeetingDate: "2031-04-06", MeetingTime: "11:00", MeetingURL: ptr("https://meet.invalid/2"), MeetingType: ptr("phone"), Notes: ptr("Preparation notes")}); err != nil {
 		t.Fatal(err)
 	}
 	if stages, err := jobs.SetCurrentStage(secondID); err != nil || len(stages) != 2 {
 		t.Fatalf("stages=%+v err=%v", stages, err)
 	}
-	if meetings, err := jobs.GetScheduledMeetings(); err != nil || len(meetings) != 1 {
-		t.Fatalf("meetings=%+v err=%v", meetings, err)
-	}
+	assertScheduledMeetingNotes(t, jobs)
 	if err := jobs.ReorderStages(jobID, []string{secondID, stageID}); err != nil {
 		t.Fatal(err)
 	}
@@ -481,6 +479,17 @@ func exerciseLifecycleMeetingsAndBackup(t *testing.T, jobs *service.JobService, 
 	}
 	if data, err := os.ReadFile(cfg.BackupPath); err != nil || !json.Valid(data) {
 		t.Fatalf("backup valid=%t err=%v", json.Valid(data), err)
+	}
+}
+
+func assertScheduledMeetingNotes(t *testing.T, jobs *service.JobService) {
+	t.Helper()
+	meetings, err := jobs.GetScheduledMeetings()
+	if err != nil || len(meetings) != 1 {
+		t.Fatalf("meetings=%+v err=%v", meetings, err)
+	}
+	if meetings[0].StageNotes != "Preparation notes" {
+		t.Fatalf("scheduled notes = %q, want %q", meetings[0].StageNotes, "Preparation notes")
 	}
 }
 

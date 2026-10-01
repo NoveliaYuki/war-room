@@ -385,6 +385,7 @@ type ScheduleMeetingInput struct {
 	MeetingTime string  `json:"meeting_time"`
 	MeetingURL  *string `json:"meeting_url"`
 	MeetingType *string `json:"meeting_type"`
+	Notes       *string `json:"notes"`
 }
 
 // ReorderPayload contains ordered IDs for reorder operations.
