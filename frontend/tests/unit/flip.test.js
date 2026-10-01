@@ -45,13 +45,26 @@ describe('flip', () => {
     closeWithFlip(targetEl, backdrop, complete);
     expect(backdrop.classList.contains('active')).toBe(false);
     expect(targetEl.style.opacity).toBe('0');
-    cancelPendingFlipClose();
+    cancelPendingFlipClose(true);
     vi.advanceTimersByTime(201);
     expect(complete).not.toHaveBeenCalled();
     closeWithFlip(targetEl, backdrop, complete);
     vi.advanceTimersByTime(201);
     expect(complete).toHaveBeenCalledOnce();
     expect(targetEl.style.opacity).toBe('');
+  });
+
+  it('clears the previous source when cancelling a pending close', () => {
+    const backdrop = document.createElement('div');
+    const complete = vi.fn();
+    openWithFlip(sourceEl, targetEl, backdrop);
+    closeWithFlip(targetEl, backdrop, vi.fn());
+
+    cancelPendingFlipClose(true);
+    closeWithFlip(targetEl, backdrop, complete);
+    expect(targetEl.style.transform).toBe('scale(0.95)');
+    vi.advanceTimersByTime(201);
+    expect(complete).toHaveBeenCalledOnce();
   });
 
   it('completes a fallback close when no callback is supplied', () => {
