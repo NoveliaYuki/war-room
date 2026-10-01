@@ -8,6 +8,7 @@ import { renderCardGrid } from "./components/cardGrid.js";
 import { renderScheduleView } from "./components/scheduleView.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
+import { activateModal, restoreModalFocus, trapModalTab } from "./modalA11y.js";
 import { showToast } from "./utils/toast.js";
 
 if (typeof window !== "undefined") {
@@ -200,7 +201,9 @@ function setFilter(filter) {
     // Keep navigation working when browser storage is unavailable.
   }
   filterTabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.getAttribute("data-filter") === filter);
+    const isActive = tab.getAttribute("data-filter") === filter;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-pressed", String(isActive));
   });
   refreshApp();
 }
@@ -231,7 +234,10 @@ function filterFromShortcut(event, isTyping) {
 
 /** Closes the modal and clears its content. */
 function closeModal() {
-  closeWithFlip(modalEl, backdropEl, () => { modalEl.innerHTML = ""; });
+  closeWithFlip(modalEl, backdropEl, () => {
+    modalEl.innerHTML = "";
+    restoreModalFocus();
+  });
 }
 
 /** Closes the data transfer dialog and returns focus to its trigger. */
@@ -240,6 +246,7 @@ function closeDataModal() {
   modalEl.classList.remove("data-transfer-modal");
   modalEl.innerHTML = "";
   resetModalAnimation();
+  restoreModalFocus();
   const compact = window.matchMedia("(max-width: 900px)").matches;
   (compact ? menuToggle : dataManagementButton)?.focus();
 }
@@ -287,6 +294,7 @@ function openDataModal() {
       </section>
     </div>`;
   backdropEl.classList.add("active");
+  activateModal(modalEl, "#btn-close-data-modal");
   modalEl.querySelector("#btn-close-data-modal").addEventListener("click", closeDataModal);
   modalEl.querySelector("#btn-export-backup").addEventListener("click", downloadBackup);
   const fileInput = modalEl.querySelector("#backup-import-file");
@@ -300,7 +308,6 @@ function openDataModal() {
   });
   confirmation.addEventListener("change", updateImportButton);
   importButton.addEventListener("click", () => importBackup(fileInput.files[0]));
-  modalEl.querySelector("#btn-close-data-modal").focus();
 }
 
 /** Downloads the generated ZIP archive. */
@@ -351,12 +358,14 @@ async function importBackup(file, allowEmpty = false) {
 
 /** Applies one global keyboard shortcut to the application. */
 function handleGlobalKeydown(event) {
+  if (backdropEl.classList.contains("active") && trapModalTab(event, modalEl)) return;
   const typing = isTypingTarget();
   if (event.key === "Escape" && backdropEl.classList.contains("active")) {
     if (modalEl.classList.contains("data-transfer-modal")) closeDataModal();
     else closeModal();
     return;
   }
+  if (backdropEl.classList.contains("active")) return;
   if (requestsNewProcess(event, typing)) {
     event.preventDefault();
     openNewProcessModal();
@@ -504,6 +513,7 @@ function openNewProcessModal() {
   `;
 
   const form = modalEl.querySelector("#new-process-form");
+  activateModal(modalEl, 'input[name="company_name"]');
   const keywordInput = form.querySelector('input[name="keyword_note"]');
   const countEl = modalEl.querySelector("#keyword-char-count");
   const closeBtn = modalEl.querySelector(".modal-close-btn");
@@ -516,6 +526,7 @@ function openNewProcessModal() {
   const closeForm = () => {
     closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
+      restoreModalFocus();
     });
   };
 
@@ -564,14 +575,19 @@ menuToggle?.addEventListener("click", () => {
 backdropEl.addEventListener("click", (e) => {
   if (e.target === backdropEl) {
     if (modalEl.classList.contains("data-transfer-modal")) closeDataModal();
-    else closeWithFlip(modalEl, backdropEl, () => { modalEl.innerHTML = ""; });
+    else closeWithFlip(modalEl, backdropEl, () => {
+      modalEl.innerHTML = "";
+      restoreModalFocus();
+    });
   }
 });
 
 window.addEventListener("keydown", handleGlobalKeydown);
 
 filterTabs.forEach((tab) => {
-  tab.classList.toggle("active", tab.getAttribute("data-filter") === currentFilter);
+  const isActive = tab.getAttribute("data-filter") === currentFilter;
+  tab.classList.toggle("active", isActive);
+  tab.setAttribute("aria-pressed", String(isActive));
 });
 
 document.body.dataset.appReady = "true";

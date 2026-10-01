@@ -10,6 +10,7 @@ import { api } from "../api.js";
 import { renderCompanyAvatar } from "../avatar.js";
 import { closeWithFlip, cancelPendingFlipClose } from "../flip.js";
 import { icon } from "../icons.js";
+import { activateModal, focusModalContents, restoreModalFocus } from "../modalA11y.js";
 import { enableQuestionReordering } from "./questionList.js";
 import { makeInlineEditable, parseSalaryInput } from "../inlineEdit.js";
 import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
@@ -336,6 +337,7 @@ export async function openDetailModal(arg1, arg2, arg3, arg4) {
   if (backdropEl) {
     backdropEl.classList.add("active");
   }
+  activateModal(modalEl);
 
   try {
     const job = await api.getJob(jobId);
@@ -348,6 +350,7 @@ export async function openDetailModal(arg1, arg2, arg3, arg4) {
     const currentIdx = job.stages ? job.stages.findIndex((s) => s.status === "current") : -1;
     activeStageIndex = currentIdx !== -1 ? currentIdx : 0;
     renderModalContent(modalEl, backdropEl, job, onGlobalRefresh);
+    focusModalContents(modalEl, ".modal-close-btn");
   } catch (err) {
     if (requestId !== detailLoadRequestId) return;
     console.error("Failed to load job details:", err);
@@ -359,6 +362,7 @@ export async function openDetailModal(arg1, arg2, arg3, arg4) {
 function clearFailedDetailLoad(modalEl, backdropEl) {
   modalEl.innerHTML = "";
   backdropEl?.classList.remove("active");
+  restoreModalFocus();
 }
 
 /** Renders one cohesive section of the job detail modal. */
@@ -692,6 +696,7 @@ function attachModalHandlers(context) {
     splitResizeObservers.get(modalEl)?.disconnect();
     closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
+      restoreModalFocus();
     });
   };
 

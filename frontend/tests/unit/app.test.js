@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn() },
-  renderCardGrid: vi.fn(), renderScheduleView: vi.fn(), closeWithFlip: vi.fn((_modal, _backdrop, done) => done?.()),
+  renderCardGrid: vi.fn(), renderScheduleView: vi.fn(), closeWithFlip: vi.fn((_modal, backdrop, done) => {
+    backdrop?.classList.remove('active');
+    done?.();
+  }),
   showToast: vi.fn(),
 }));
 vi.mock('../../public/js/api.js', () => ({ api: mocks.api }));
@@ -40,6 +43,8 @@ describe('application entry point', () => {
     localStorageGet.mockRestore();
     await flush();
     expect(mocks.renderCardGrid).toHaveBeenCalled();
+    expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-pressed')).toBe('false');
 
     const themeToggle = document.querySelector('#btn-theme-toggle');
     const animationFrames = [];
@@ -80,6 +85,8 @@ describe('application entry point', () => {
     menuToggle.click();
 
     document.querySelector('[data-filter="accepted"]').click();
+    expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-pressed')).toBe('false');
     expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     expect(headerControls.classList.contains('is-open')).toBe(false);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' }));

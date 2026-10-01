@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="/public/css/animations.css" />
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <div class="app-container">
     <header class="app-header">
       <div class="header-inner">
@@ -74,7 +75,7 @@
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
             </button>
-              <input type="text" id="search-input" class="search-input" placeholder="Search company, title, tag..." />
+              <input type="text" id="search-input" class="search-input" aria-label="Search selection processes" placeholder="Search company, title, tag..." />
               <span class="search-shortcut">/</span>
             </div>
 
@@ -103,7 +104,7 @@
       </div>
     </header>
 
-    <main>
+    <main id="main-content">
       <div id="cards-grid" class="cards-grid">
         <!-- Rendered dynamically by cardGrid.js -->
       </div>
@@ -111,7 +112,7 @@
   </div>
 
   <div id="modal-backdrop" class="modal-backdrop">
-    <div id="detail-modal" class="modal-container card-detail-modal" role="dialog" aria-modal="true">
+    <div id="detail-modal" class="modal-container card-detail-modal" role="dialog" aria-modal="true" tabindex="-1">
       <!-- Injected dynamically via detailModal.js -->
     </div>
   </div>
