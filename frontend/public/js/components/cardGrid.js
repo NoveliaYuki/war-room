@@ -135,7 +135,23 @@ function createCardElement(job) {
   <div class="card-footer">
     <div class="card-stage-indicator"><span class="card-stage-summary" title="${escapeAttr(stageIndicator.text)}">${stageIndicator.markup}</span>
       <button class="btn-card-open-details" type="button" aria-label="Open details for ${escapeAttr(job.position_title)}" title="Open details">${icon("arrowUpRight", 14)}</button></div></div>`;
+  setWideLogoFrame(card);
   return card;
+}
+
+/** Expands landscape logos while preserving the square frame for compact marks. */
+function setWideLogoFrame(card) {
+  const logo = card.querySelector(".company-logo-img");
+  if (!logo) return;
+
+  const applyFrame = () => {
+    if (logo.naturalHeight === 0 || logo.naturalWidth / logo.naturalHeight <= 1.2) return;
+    card.querySelector(".card-avatar")?.classList.add("card-avatar-wide-logo");
+    card.querySelector(".card-header")?.classList.add("has-wide-logo");
+  };
+
+  logo.addEventListener("load", applyFrame, { once: true });
+  if (logo.complete) applyFrame();
 }
 
 /** Updates the CSS mouse position for the card's glow effect. */
