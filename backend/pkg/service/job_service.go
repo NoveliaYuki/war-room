@@ -616,9 +616,14 @@ func (s *JobService) ScheduleMeeting(stageID string, input models.ScheduleMeetin
 	}
 	if input.MeetingURL != nil {
 		fields["meeting_url"] = *input.MeetingURL
+	} else if input.MeetingDate == "" && input.MeetingTime == "" {
+		fields["meeting_url"] = ""
 	}
 	if input.MeetingType != nil {
 		fields["meeting_type"] = *input.MeetingType
+	}
+	if input.Notes != nil {
+		fields["notes"] = *input.Notes
 	}
 	if err := s.repo.UpdateStage(stageID, fields); err != nil {
 		return err

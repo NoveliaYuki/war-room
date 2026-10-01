@@ -401,7 +401,12 @@ func TestCreateJobAndScheduleView(t *testing.T) {
 	if !strings.Contains(cardText, "E2E Test Company") {
 		t.Fatalf("created card is missing company name: %q", cardText)
 	}
+	scheduleMeetingWithNotes(t, page, card)
+	assertScheduleViewShowsSavedNotes(t, page)
+}
 
+func assertScheduleViewShowsSavedNotes(t *testing.T, page playwright.Page) {
+	t.Helper()
 	schedule := page.Locator(`[data-filter="schedule"]`)
 	if err := schedule.Click(); err != nil {
 		t.Fatalf("open schedule view: %v", err)
@@ -413,6 +418,43 @@ func TestCreateJobAndScheduleView(t *testing.T) {
 	text, err := scheduleHeading.TextContent()
 	if err != nil || !strings.HasPrefix(strings.TrimSpace(text), "Today (") {
 		t.Fatalf("expected schedule day heading, got %q (err=%v)", text, err)
+	}
+	note := page.Locator(".schedule-container .meeting-note-content")
+	if err := note.WaitFor(); err != nil {
+		t.Fatalf("saved meeting notes are not visible in schedule view: %v", err)
+	}
+	if value, err := note.TextContent(); err != nil || strings.TrimSpace(value) != "Note: E2E preparation notes" {
+		t.Fatalf("saved meeting notes = %q, err=%v", value, err)
+	}
+}
+
+func scheduleMeetingWithNotes(t *testing.T, page playwright.Page, card playwright.Locator) {
+	t.Helper()
+	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open created process details: %v", err)
+	}
+	if err := page.Locator("#detail-modal .btn-edit-meeting-schedule").Click(); err != nil {
+		t.Fatalf("open schedule form: %v", err)
+	}
+	dateValue, err := page.Evaluate(`() => {
+		const date = new Date();
+		const pad = value => String(value).padStart(2, "0");
+		return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read local date for schedule test: %v", err)
+	}
+	fill(t, page.Locator(`#schedule-stage-form input[name="meeting_date"]`), dateValue.(string))
+	fill(t, page.Locator(`#schedule-stage-form input[name="meeting_time"]`), "11:00 AM - 11:30 AM CEST")
+	fill(t, page.Locator(`#schedule-stage-form textarea[name="notes"]`), "E2E preparation notes")
+	if err := page.Locator(`#schedule-stage-form button[type="submit"]`).Click(); err != nil {
+		t.Fatalf("save schedule form: %v", err)
+	}
+	if err := page.Locator("#detail-modal .btn-edit-meeting-schedule").WaitFor(); err != nil {
+		t.Fatalf("wait for saved schedule details: %v", err)
+	}
+	if err := page.Locator("#detail-modal .modal-close-btn").Click(); err != nil {
+		t.Fatalf("close process details: %v", err)
 	}
 }
 
