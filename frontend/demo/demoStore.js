@@ -3,9 +3,12 @@ import { cacheDemoLogos, DEMO_LOGOS_STORAGE_KEY, getDemoLogoAsset, getDemoLogoUr
 import { saveFile, readFile, deleteFile, replaceFiles } from "./fileStore.js";
 import { createZip } from "./zipWriter.js";
 import { formatLocalDate, getDemoMeetingDayOffset, setDemoMeetingDate } from "./data/meetingDates.js";
+import { migrateFactorialDemoJob } from "../public/js/utils/demoMigration.js";
 
 const STORAGE_KEY = "war-room-demo-data-v13";
 const SCHEDULE_DATE_KEY = "war-room-demo-schedule-date";
+const DEMO_SEED_VERSION_KEY = "war-room-demo-seed-version";
+const DEMO_SEED_VERSION = "3";
 const BACKUP_FORMAT = "war-room-demo-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
@@ -41,10 +44,13 @@ function loadJobs() {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     const records = stored ? JSON.parse(stored) : clone(initialJobs);
     const today = formatLocalDate(new Date());
-    if (window.localStorage.getItem(SCHEDULE_DATE_KEY) !== today) {
+    const seedChanged = window.localStorage.getItem(DEMO_SEED_VERSION_KEY) !== DEMO_SEED_VERSION;
+    if (seedChanged) migrateFactorialDemoJob(records, initialJobs.find((record) => record.id === "demo-3"));
+    if (seedChanged || window.localStorage.getItem(SCHEDULE_DATE_KEY) !== today) {
       refreshDemoMeetingDates(records, today);
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
       window.localStorage.setItem(SCHEDULE_DATE_KEY, today);
+      window.localStorage.setItem(DEMO_SEED_VERSION_KEY, DEMO_SEED_VERSION);
     }
     return records;
   } catch {
