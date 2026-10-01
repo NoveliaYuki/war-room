@@ -218,6 +218,108 @@ func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
 	assertTodayMeetingsStack(t, page)
 }
 
+func TestKeyboardAccessibilityForNavigation(t *testing.T) {
+	page := newPage(t)
+	assertSkipLinkIsFirstFocus(t, page)
+	assertSearchAccessibleName(t, page)
+	assertFilterPressedStates(t, page, "ongoing")
+	if err := page.Locator(`[data-filter="accepted"]`).Click(); err != nil {
+		t.Fatalf("select accepted filter: %v", err)
+	}
+	assertFilterPressedStates(t, page, "accepted")
+}
+
+func TestModalContainsAndRestoresKeyboardFocus(t *testing.T) {
+	page := newPage(t)
+	openAndAssertDialogNameAndFocus(t, page)
+	assertDialogFocusWraps(t, page)
+	closeDialogAndAssertFocusRestored(t, page)
+}
+
+func openAndAssertDialogNameAndFocus(t *testing.T, page playwright.Page) {
+	t.Helper()
+	trigger := page.Locator("#btn-new-process")
+	if err := trigger.Click(); err != nil {
+		t.Fatalf("open process dialog: %v", err)
+	}
+	state, err := page.Evaluate(`() => {
+		const dialog = document.querySelector("#detail-modal");
+		const name = document.querySelector('input[name="company_name"]');
+		const labelId = dialog.getAttribute("aria-labelledby");
+		return document.activeElement === name && dialog.getAttribute("aria-modal") === "true" &&
+			document.querySelector(".app-container").inert && labelId &&
+			document.getElementById(labelId)?.textContent.includes("Add New Selection Process");
+	}`, nil)
+	if err != nil || state != true {
+		t.Fatalf("opening a dialog should name it and focus its first field (state=%v, err=%v)", state, err)
+	}
+}
+
+func assertDialogFocusWraps(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if _, err := page.Evaluate(`() => {
+		const dialog = document.querySelector("#detail-modal");
+		const controls = [...dialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+		controls.at(-1).focus();
+	}`, nil); err != nil {
+		t.Fatalf("focus final dialog control: %v", err)
+	}
+	if err := page.Keyboard().Press("Tab"); err != nil {
+		t.Fatalf("tab from final dialog control: %v", err)
+	}
+	wrapped, err := page.Evaluate(`() => document.activeElement === document.querySelector("#detail-modal .modal-close-btn")`, nil)
+	if err != nil || wrapped != true {
+		t.Fatalf("tabbing should wrap to the first dialog control (wrapped=%v, err=%v)", wrapped, err)
+	}
+}
+
+func closeDialogAndAssertFocusRestored(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatalf("close process dialog: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => !document.querySelector("#modal-backdrop").classList.contains("active") && document.querySelector("#detail-modal").innerHTML === ""`, nil); err != nil {
+		t.Fatalf("wait for dialog close: %v", err)
+	}
+	restored, err := page.Evaluate(`() => document.activeElement === document.querySelector("#btn-new-process") && !document.querySelector(".app-container").inert`, nil)
+	if err != nil || restored != true {
+		t.Fatalf("closing should return focus to its trigger (restored=%v, err=%v)", restored, err)
+	}
+}
+
+func assertSkipLinkIsFirstFocus(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if err := page.Keyboard().Press("Tab"); err != nil {
+		t.Fatalf("focus first keyboard control: %v", err)
+	}
+	skipLinkFocused, err := page.Evaluate(`() => {
+		const link = document.querySelector(".skip-link");
+		return document.activeElement === link && link.getAttribute("href") === "#main-content" &&
+			getComputedStyle(link).transform === "matrix(1, 0, 0, 1, 0, 0)";
+	}`, nil)
+	if err != nil || skipLinkFocused != true {
+		t.Fatalf("first keyboard control should reveal the skip link (focused=%v, err=%v)", skipLinkFocused, err)
+	}
+}
+
+func assertSearchAccessibleName(t *testing.T, page playwright.Page) {
+	t.Helper()
+	searchName, err := page.Locator("#search-input").GetAttribute("aria-label")
+	if err != nil || searchName != "Search selection processes" {
+		t.Fatalf("search field accessible name=%q, err=%v", searchName, err)
+	}
+}
+
+func assertFilterPressedStates(t *testing.T, page playwright.Page, activeFilter string) {
+	t.Helper()
+	for _, filter := range []string{"ongoing", "accepted", "rejected", "all"} {
+		pressed, err := page.Locator(fmt.Sprintf(`[data-filter="%s"]`, filter)).GetAttribute("aria-pressed")
+		if err != nil || pressed != fmt.Sprint(filter == activeFilter) {
+			t.Fatalf("initial %s filter pressed state=%q, err=%v", filter, pressed, err)
+		}
+	}
+}
+
 func assertDemoMeetingToday(t *testing.T, page playwright.Page) {
 	t.Helper()
 	if err := page.Locator(`[data-filter="schedule"]`).Click(); err != nil {

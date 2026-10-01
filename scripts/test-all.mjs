@@ -12,6 +12,12 @@ const suites = [
     cwd: root,
   },
   {
+    name: 'Frontend dependency vulnerability audit (high severity)',
+    command: npm,
+    args: ['audit', '--prefix', 'frontend', '--audit-level=high'],
+    cwd: root,
+  },
+  {
     name: 'Backend and frontend quality gates',
     command: npm,
     args: ['run', 'lint'],
