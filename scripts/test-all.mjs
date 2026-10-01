@@ -18,13 +18,13 @@ const suites = [
     cwd: root,
   },
   {
-    name: 'Backend unit tests (90% statement coverage)',
+    name: 'Backend unit tests (95% statement coverage)',
     command: process.execPath,
     args: ['scripts/test-backend-unit.mjs'],
     cwd: root,
   },
   {
-    name: 'Frontend unit tests (90% coverage thresholds)',
+    name: 'Frontend unit tests (95% statements, lines, and functions; 90% branches)',
     command: npm,
     args: ['run', 'test:unit'],
     cwd: resolve(root, 'frontend'),

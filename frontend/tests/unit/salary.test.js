@@ -16,8 +16,14 @@ describe("formatSalary", () => {
 
   it("handles missing and small amounts", () => {
     expect(formatSalary("unknown", null, null)).toBe("Salary undisclosed");
+    expect(formatSalary("no_max", null, null)).toBe("Salary undisclosed");
+    expect(formatSalary("no_min", null, null)).toBe("Salary undisclosed");
     expect(formatSalary("limited", 900, 900, "EUR")).toBe("€900");
     expect(formatSalary("limited", 1500, 1500, "EUR")).toBe("€1.5k");
+  });
+
+  it("preserves malformed bounds without displaying NaN", () => {
+    expect(formatSalary("limited", "pending", "pending")).toBe("€pending-pending");
   });
 
   it("uses the euro symbol for unsupported currencies", () => {

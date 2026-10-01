@@ -118,4 +118,56 @@ describe("parseSalaryInput", () => {
       expect(error).toHaveBeenCalledOnce();
       error.mockRestore();
     });
+
+    it('limits default multiline rows and ignores repeated activation', () => {
+      const lines = Array.from({ length: 15 }, (_, index) => `line ${index}`).join('\n');
+      element.setAttribute('data-raw-value', lines);
+      makeInlineEditable(element, { onSave, multiline: true });
+      element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+
+      expect(element.parentElement.querySelectorAll('textarea')).toHaveLength(1);
+      expect(element.parentElement.querySelector('textarea').rows).toBe('12');
+    });
+
+    it('uses the placeholder for empty edits, saves once, and reports success', async () => {
+      const previousToast = window.showToast;
+      const showToast = vi.fn();
+      window.showToast = showToast;
+      makeInlineEditable(element, { onSave, placeholder: 'Add a note' });
+      element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      const input = element.parentElement.querySelector('input');
+      input.value = '   ';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new Event('blur'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(onSave).toHaveBeenCalledOnce();
+      expect(element.textContent).toBe('Add a note');
+      expect(element.getAttribute('data-raw-value')).toBe('');
+      expect(showToast).toHaveBeenCalledWith('Saved!', 'success', 1200);
+      if (previousToast === undefined) delete window.showToast;
+      else window.showToast = previousToast;
+    });
+
+    it('uses empty display fallback and reports rejected saves', async () => {
+      const previousToast = window.showToast;
+      const showToast = vi.fn();
+      window.showToast = showToast;
+      const rejectSave = vi.fn().mockRejectedValue(new Error('offline'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      makeInlineEditable(element, { onSave: rejectSave });
+      element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      const input = element.parentElement.querySelector('input');
+      input.value = '';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(element.textContent).toBe('');
+      expect(showToast).toHaveBeenCalledWith('Failed to save', 'error', 2000);
+      expect(error).toHaveBeenCalledOnce();
+      error.mockRestore();
+      if (previousToast === undefined) delete window.showToast;
+      else window.showToast = previousToast;
+    });
   });
