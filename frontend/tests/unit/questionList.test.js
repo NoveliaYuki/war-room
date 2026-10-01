@@ -100,6 +100,18 @@ describe('renderQuestionList', () => {
     expect(toast).toHaveBeenCalledWith('delete failed', 'error');
     expect(toast).toHaveBeenCalledWith('create failed', 'error');
   });
+
+  it('allows successful question changes without a refresh callback', async () => {
+    const root = renderQuestionList('stage-without-refresh', [{ id: 'q1', question: 'Question' }]);
+    root.querySelector('.question-delete-btn').click();
+    root.querySelector('.add-question-input').value = ' Another question ';
+    root.querySelector('.add-question-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.deleteQuestion).toHaveBeenCalledWith('q1');
+    expect(api.createQuestion).toHaveBeenCalledWith({
+      stage_id: 'stage-without-refresh', question: 'Another question', answer_notes: '',
+    });
+  });
 });
 
 describe('enableQuestionReordering', () => {
@@ -127,6 +139,23 @@ describe('enableQuestionReordering', () => {
     expect(list.querySelector('.question-drop-placeholder')).not.toBeNull();
     expect(list.querySelector('.question-item.is-dragging')).toBe(handles[0].closest('.question-item'));
     window.dispatchEvent(new PointerEvent('pointerup'));
+  });
+
+  it('ignores multi-touch starts and moves without disrupting an active drag', () => {
+    const { list, handles } = createList();
+    enableQuestionReordering(list, 'stage', vi.fn());
+    const twoTouches = [{ clientX: 5, clientY: 5 }, { clientX: 8, clientY: 9 }];
+    handles[0].dispatchEvent(touchEvent('touchstart', twoTouches));
+    expect(list.querySelector('.question-drop-placeholder')).toBeNull();
+
+    handles[0].dispatchEvent(touchEvent('touchstart', [{ clientX: 5, clientY: 5 }]));
+    const multiMove = touchEvent('touchmove', twoTouches);
+    window.dispatchEvent(multiMove);
+    expect(multiMove.defaultPrevented).toBe(false);
+    expect(list.querySelector('.question-item.is-dragging')).not.toBeNull();
+    window.dispatchEvent(touchEvent('touchcancel', []));
+    expect(list.querySelector('.question-item.is-dragging')).toBeNull();
+    expect(list.querySelector('.question-drop-placeholder')).toBeNull();
   });
 
   it('handles dragging the only question when there are no remaining targets', async () => {

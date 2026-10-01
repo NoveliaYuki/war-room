@@ -191,6 +191,9 @@ describe('stage tracker', () => {
     expect(mocks.api.reorderStages).toHaveBeenCalledWith('job', ['two', 'one']);
     expect(mocks.api.deleteStage).toHaveBeenCalledWith('one');
     expect(mocks.api.createStage).toHaveBeenCalledWith({ job_id: 'job', stage_type: 'Technical', custom_title: 'Screen', description: '', status: 'pending' });
+    const emptyRoot = renderStageTracker('job', [], undefined);
+    emptyRoot.querySelector('.btn-new-stage').click();
+    emptyRoot.querySelector('.btn-cancel-stage').click();
   });
 
   it('canceling the stage form invokes refresh', () => {
@@ -219,9 +222,11 @@ describe('schedule view', () => {
 
     mocks.api.getMeetings.mockResolvedValueOnce([
       meeting('today', 0, { recruiter_name: 'R', recruiter_contact: '123|abc', stage_notes: 'Bring notes', meeting_url: 'https://meet.example' }),
+      meeting('unknown-today', 0, { company_name: 'Unknown', recruiter_name: 'No Contact Details', recruiter_contact: '' }),
       meeting('phone', 0, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '<img src=x onerror=alert(1)>|x' }),
       meeting('untrusted-type', 0, { meeting_type: 'video\" onmouseover=alert(1)', stage_type: '<img src=x onerror=alert(1)>' }),
       meeting('tomorrow', 1, { meeting_type: 'video" onmouseover=alert(1)', meeting_url: 'https://future.example', recruiter_name: 'Future recruiter', stage_notes: 'Confirm panel with the interview team and review the role expectations before the conversation.', stage_interviewers: [{ name: 'Taylor' }], company_domain: 'acme.example', avatar_seed: 'Acme' }),
+      meeting('onsite-tbd', 2, { company_name: 'Unknown', meeting_type: 'onsite', meeting_time: '', recruiter_name: 'Recruiter without contact', recruiter_contact: '' }),
       meeting('future', 4, { company_name: 'Unknown' }),
       meeting('future-phone', 5, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '555-0100|mobile' }),
       meeting('undated', null),
@@ -243,6 +248,10 @@ describe('schedule view', () => {
     expect(root.querySelector('.meeting-row-card .meeting-format-pill[onmouseover]')).toBeNull();
     expect(root.querySelector('.meeting-row-card .meeting-format-pill').classList.contains('pill-video')).toBe(true);
     expect(root.querySelector('.meeting-row-card').textContent).toContain('Interviewers: Taylor');
+    expect(root.querySelector('.meeting-row-card .meeting-format-pill.pill-onsite').textContent).toContain('On-Site');
+    const onsiteMeetingRow = root.querySelector('.meeting-format-pill.pill-onsite').closest('.meeting-row-card');
+    expect(onsiteMeetingRow.querySelector('.meeting-time-badge').textContent).toContain('Time TBD');
+    expect(onsiteMeetingRow.textContent).toContain('Unknown Company (Undisclosed)');
     const noteRoot = root.querySelector('.meeting-row-card');
     const noteContent = noteRoot.querySelector('.meeting-note-content');
     const noteToggle = noteRoot.querySelector('.meeting-note-toggle');
