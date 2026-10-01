@@ -107,6 +107,31 @@ describe('cardGrid', () => {
     expect(card.style.touchAction).toBe('none');
   });
 
+  it('expands landscape logos while keeping square logos in the compact frame', () => {
+    const { container } = setup([
+      makeJob({ id: 'wide-logo', company_name: 'Wide Logo' }),
+      makeJob({ id: 'square-logo', company_name: 'Square Logo' }),
+    ]);
+    const cards = container.querySelectorAll('.process-card');
+    const [wideLogo, squareLogo] = [...cards].map((card) => card.querySelector('.company-logo-img'));
+    Object.defineProperties(wideLogo, {
+      naturalWidth: { configurable: true, value: 600 },
+      naturalHeight: { configurable: true, value: 400 },
+      complete: { configurable: true, value: true },
+    });
+    Object.defineProperties(squareLogo, {
+      naturalWidth: { configurable: true, value: 112 },
+      naturalHeight: { configurable: true, value: 112 },
+      complete: { configurable: true, value: true },
+    });
+    wideLogo.dispatchEvent(new Event('load'));
+    squareLogo.dispatchEvent(new Event('load'));
+
+    expect(cards[0].querySelector('.card-avatar').classList.contains('card-avatar-wide-logo')).toBe(true);
+    expect(cards[0].querySelector('.card-header').classList.contains('has-wide-logo')).toBe(true);
+    expect(cards[1].querySelector('.card-avatar').classList.contains('card-avatar-wide-logo')).toBe(false);
+  });
+
   it('ignores synthetic touch pointer events and multi-touch card gestures', () => {
     vi.useFakeTimers();
     const { card } = setup();
