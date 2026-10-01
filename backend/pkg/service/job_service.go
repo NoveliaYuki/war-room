@@ -30,6 +30,12 @@ type JobService struct {
 // ErrInvalidAttachmentOwner indicates that an attachment references a missing or unrelated job or stage.
 var ErrInvalidAttachmentOwner = errors.New("invalid attachment owner")
 
+// ErrPositionTitleRequired indicates an attempted update with a blank title.
+var ErrPositionTitleRequired = errors.New("position_title is required")
+
+// ErrQuestionTextRequired indicates an attempted update with blank question text.
+var ErrQuestionTextRequired = errors.New("question text is required")
+
 // NewJobService creates a job service backed by repo and cfg.
 func NewJobService(repo *repository.Repository, cfg *config.Config) *JobService {
 	return &JobService{
@@ -118,7 +124,7 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 	}
 	position := strings.TrimSpace(input.PositionTitle)
 	if position == "" {
-		return nil, errors.New("position_title is required")
+		return nil, ErrPositionTitleRequired
 	}
 	company := strings.TrimSpace(input.CompanyName)
 	if company == "" {
@@ -253,6 +259,9 @@ func (s *JobService) createDefaultStages(job *models.Job, input models.CreateJob
 
 // UpdateJob applies the supplied fields to an existing job.
 func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.Job, error) {
+	if input.PositionTitle != nil && strings.TrimSpace(*input.PositionTitle) == "" {
+		return nil, ErrPositionTitleRequired
+	}
 	if input.WorkArrangement != nil {
 		if err := validateWorkArrangement(*input.WorkArrangement); err != nil {
 			return nil, err
@@ -632,7 +641,7 @@ func validateMeetingType(meetingType string) error {
 // CreateQuestion validates and persists a question for a stage.
 func (s *JobService) CreateQuestion(input models.CreateQuestionInput) (*models.Question, error) {
 	if strings.TrimSpace(input.Question) == "" {
-		return nil, errors.New("question text is required")
+		return nil, ErrQuestionTextRequired
 	}
 	q := &models.Question{
 		ID:          uuid.NewString(),
@@ -650,6 +659,9 @@ func (s *JobService) CreateQuestion(input models.CreateQuestionInput) (*models.Q
 
 // UpdateQuestion applies the supplied fields to an existing question.
 func (s *JobService) UpdateQuestion(id string, input models.UpdateQuestionInput) (*models.Question, error) {
+	if input.Question != nil && strings.TrimSpace(*input.Question) == "" {
+		return nil, ErrQuestionTextRequired
+	}
 	fields := make(map[string]interface{})
 	if input.Question != nil {
 		fields["question"] = strings.TrimSpace(*input.Question)

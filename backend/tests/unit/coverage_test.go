@@ -493,6 +493,9 @@ func exerciseLifecycleQuestions(t *testing.T, jobs *service.JobService, stageID 
 	if _, err := jobs.CreateQuestion(models.CreateQuestionInput{StageID: stageID, Question: "  "}); err == nil {
 		t.Fatal("expected blank question error")
 	}
+	if _, err := jobs.UpdateQuestion(question.ID, models.UpdateQuestionInput{Question: ptr(" \t ")}); !errors.Is(err, service.ErrQuestionTextRequired) {
+		t.Fatalf("blank question update error = %v, want required text error", err)
+	}
 	asked := true
 	if _, err := jobs.UpdateQuestion(question.ID, models.UpdateQuestionInput{Question: ptr(" New? "), AnswerNotes: ptr(" revised "), IsAsked: &asked}); err != nil {
 		t.Fatal(err)
@@ -506,6 +509,7 @@ func exerciseLifecycleQuestions(t *testing.T, jobs *service.JobService, stageID 
 func exerciseLifecycleJobUpdates(t *testing.T, jobs *service.JobService, jobID string) {
 	t.Helper()
 	assertEmploymentTypeCreate(t, jobs)
+	assertBlankPositionUpdateRejected(t, jobs, jobID)
 	minOnly := int64(90)
 	updated, err := jobs.UpdateJob(jobID, models.UpdateJobInput{CompanyName: ptr(" "), PositionTitle: ptr(" Updated "), SalaryMin: &minOnly,
 		SalaryCurrency: ptr("USD"), RecruiterType: ptr(models.RecruiterExternal), RecruiterName: ptr("R"), RecruiterAgency: ptr("Firm"), RecruiterContact: ptr("r@x"),
@@ -524,6 +528,13 @@ func exerciseLifecycleJobUpdates(t *testing.T, jobs *service.JobService, jobID s
 	unknown := models.SalaryUnknown
 	if _, err := jobs.UpdateJob(jobID, models.UpdateJobInput{SalaryType: &unknown}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func assertBlankPositionUpdateRejected(t *testing.T, jobs *service.JobService, jobID string) {
+	t.Helper()
+	if _, err := jobs.UpdateJob(jobID, models.UpdateJobInput{PositionTitle: ptr(" \t ")}); !errors.Is(err, service.ErrPositionTitleRequired) {
+		t.Fatalf("blank position update error = %v, want required title error", err)
 	}
 }
 
