@@ -7,11 +7,12 @@ const { api, calls } = vi.hoisted(() => {
 });
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('../../public/js/api.js', () => ({ api }));
-vi.mock('../../public/js/flip.js', () => ({ closeWithFlip: vi.fn((modal, backdrop, done) => done?.()), cancelPendingFlipClose: vi.fn() }));
+vi.mock('../../public/js/flip.js', () => ({ closeWithFlip: vi.fn((modal, backdrop, done) => { backdrop.classList.remove('active'); done?.(); }), cancelPendingFlipClose: vi.fn() }));
 vi.mock('../../public/js/components/questionList.js', () => ({ enableQuestionReordering: vi.fn() }));
 vi.mock('../../public/js/utils/toast.js', () => ({ showToast: toast }));
 
 import { openDetailModal } from '../../public/js/components/detailModal.js';
+import { closeWithFlip } from '../../public/js/flip.js';
 
 const tick = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -44,10 +45,25 @@ beforeEach(() => {
   delete document.body.dataset.demo;
   window.localStorage.removeItem('war-room-detail-split-ratio');
   toast.mockClear();
+  closeWithFlip.mockClear();
   Object.values(calls).forEach((fn) => fn.mockReset().mockResolvedValue({}));
 });
 
 describe('detail modal', () => {
+  it('runs the close animation once for each close control', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+
+    await openDetailModal('job-1');
+    modal.querySelector('.modal-close-btn').click();
+    expect(closeWithFlip).toHaveBeenCalledTimes(1);
+
+    closeWithFlip.mockClear();
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-close-modal').click();
+    expect(closeWithFlip).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the same attachment controls in demo mode', async () => {
     document.body.dataset.demo = 'true';
     api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]));
@@ -281,12 +297,71 @@ describe('detail modal', () => {
 
   it('logs a missing job and handles request failure', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const modal = document.querySelector('#detail-modal');
+    const backdrop = document.querySelector('#modal-backdrop');
     api.getJob.mockResolvedValueOnce(null);
     await openDetailModal('missing', vi.fn());
+    expect(backdrop.classList.contains('active')).toBe(false);
+    expect(modal.innerHTML).toBe('');
     api.getJob.mockRejectedValueOnce(new Error('network'));
     await openDetailModal('missing', vi.fn());
+    expect(backdrop.classList.contains('active')).toBe(false);
+    expect(modal.innerHTML).toBe('');
     expect(error).toHaveBeenCalledTimes(2);
     error.mockRestore();
+  });
+
+  it('ignores an older job response when a newer modal request completes first', async () => {
+    let resolveOlderRequest;
+    api.getJob
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOlderRequest = resolve; }))
+      .mockResolvedValueOnce({ ...job(), position_title: 'Latest selection' });
+    const modal = document.querySelector('#detail-modal');
+    const olderRequest = openDetailModal('older');
+
+    await openDetailModal('latest');
+    resolveOlderRequest({ ...job(), position_title: 'Stale selection' });
+    await olderRequest;
+
+    expect(modal.querySelector('.modal-title').textContent).toContain('Latest selection');
+    expect(modal.querySelector('.modal-title').textContent).not.toContain('Stale selection');
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(true);
+  });
+
+  it('does not clear the active modal when an older request fails late', async () => {
+    let rejectOlderRequest;
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    api.getJob
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectOlderRequest = reject; }))
+      .mockResolvedValueOnce({ ...job(), position_title: 'Current selection' });
+    const modal = document.querySelector('#detail-modal');
+    const olderRequest = openDetailModal('older');
+
+    await openDetailModal('current');
+    rejectOlderRequest(new Error('stale request failed'));
+    await olderRequest;
+
+    expect(modal.querySelector('.modal-title').textContent).toContain('Current selection');
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('does not reopen a modal after it is closed during a selection switch', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    const backdrop = document.querySelector('#modal-backdrop');
+    await openDetailModal('existing');
+
+    let resolvePendingRequest;
+    api.getJob.mockImplementationOnce(() => new Promise((resolve) => { resolvePendingRequest = resolve; }));
+    const pendingRequest = openDetailModal('next');
+    modal.querySelector('.modal-close-btn').click();
+    resolvePendingRequest({ ...job(), position_title: 'Closed pending selection' });
+    await pendingRequest;
+
+    expect(modal.innerHTML).toBe('');
+    expect(backdrop.classList.contains('active')).toBe(false);
   });
 
   it('cycles job status, handles deletion confirmation, and all general inline edits', async () => {
@@ -432,10 +507,16 @@ describe('detail modal', () => {
     modal.querySelector('#btn-add-stage-tab').click();
     await tick();
     expect(api.createStage).toHaveBeenCalledWith({ job_id: fixture.id, stage_type: 'Cultural', custom_title: 'Culture', description: 'Leadership values', status: 'pending' });
+    const createdStages = api.createStage.mock.calls.length;
+    prompt.mockReturnValueOnce(null);
+    modal.querySelector('#btn-add-stage-tab').click();
+    expect(api.createStage).toHaveBeenCalledTimes(createdStages);
 
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
     modal.querySelector('.btn-edit-meeting-schedule').click();
     const form = modal.querySelector('#schedule-stage-form');
+    expect(form.querySelector('[name="meeting_date"]').value).toBe(new Date().toISOString().slice(0, 10));
+    expect(form.querySelector('[name="meeting_type"]').value).toBe('video');
     form.querySelector('[name="meeting_date"]').value = '2026-10-01';
     form.querySelector('[name="meeting_time"]').value = '11:00';
     form.querySelector('[name="meeting_type"]').value = 'onsite';
@@ -447,6 +528,10 @@ describe('detail modal', () => {
 
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
     modal.querySelector('.btn-edit-meeting-schedule').click();
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    modal.querySelector('.btn-clear-schedule').click();
+    expect(api.scheduleMeeting).toHaveBeenCalledTimes(1);
+    vi.stubGlobal('confirm', vi.fn(() => true));
     modal.querySelector('.btn-clear-schedule').click();
     await tick();
     expect(api.scheduleMeeting).toHaveBeenCalledWith('s1', { meeting_date: null, meeting_time: null, meeting_url: null, meeting_type: 'video' });

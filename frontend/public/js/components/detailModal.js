@@ -32,6 +32,7 @@ const SPLIT_GUTTER_PX = 14;
 const JOB_STATUS_CYCLE = ["ongoing", "rejected", "accepted"];
 const JOB_STATUS_LABELS = { ongoing: "Ongoing", rejected: "Rejected", accepted: "Approved" };
 const splitResizeObservers = new WeakMap();
+let detailLoadRequestId = 0;
 
 /** Keeps both desktop panes wide enough for their contents. */
 function getSplitRatioLimits(layoutWidth) {
@@ -304,29 +305,33 @@ function renderStageAttachmentRows(view) {
 
 let activeStageIndex = 0;
 
+/** Resolves the supported modal and job arguments. */
+function resolveDetailModalTarget(arg1, arg2, arg3, arg4) {
+  if (typeof arg1 === "string") {
+    return {
+      jobId: arg1,
+      onGlobalRefresh: arg2,
+      modalEl: document.querySelector("#detail-modal"),
+      backdropEl: document.querySelector("#modal-backdrop"),
+    };
+  }
+  return {
+    modalEl: arg1 || document.querySelector("#detail-modal"),
+    backdropEl: arg2 || document.querySelector("#modal-backdrop"),
+    jobId: arg3,
+    onGlobalRefresh: arg4,
+  };
+}
+
 /**
  * Renders the modal content and mounts event listeners.
  * Accepts either (arg1: jobId, arg2: onGlobalRefresh)
  * or (arg1: modalEl, arg2: backdropEl, arg3: jobId, arg4: onGlobalRefresh)
  */
 export async function openDetailModal(arg1, arg2, arg3, arg4) {
+  const requestId = ++detailLoadRequestId;
   cancelPendingFlipClose();
-  let modalEl;
-  let backdropEl;
-  let jobId;
-  let onGlobalRefresh;
-
-  if (typeof arg1 === "string") {
-    jobId = arg1;
-    onGlobalRefresh = arg2;
-    modalEl = document.querySelector("#detail-modal");
-    backdropEl = document.querySelector("#modal-backdrop");
-  } else {
-    modalEl = arg1 || document.querySelector("#detail-modal");
-    backdropEl = arg2 || document.querySelector("#modal-backdrop");
-    jobId = arg3;
-    onGlobalRefresh = arg4;
-  }
+  const { modalEl, backdropEl, jobId, onGlobalRefresh } = resolveDetailModalTarget(arg1, arg2, arg3, arg4);
 
   if (backdropEl) {
     backdropEl.classList.add("active");
@@ -334,16 +339,26 @@ export async function openDetailModal(arg1, arg2, arg3, arg4) {
 
   try {
     const job = await api.getJob(jobId);
+    if (requestId !== detailLoadRequestId) return;
     if (!job) {
       console.error("Job process not found:", jobId);
+      clearFailedDetailLoad(modalEl, backdropEl);
       return;
     }
     const currentIdx = job.stages ? job.stages.findIndex((s) => s.status === "current") : -1;
     activeStageIndex = currentIdx !== -1 ? currentIdx : 0;
     renderModalContent(modalEl, backdropEl, job, onGlobalRefresh);
   } catch (err) {
+    if (requestId !== detailLoadRequestId) return;
     console.error("Failed to load job details:", err);
+    clearFailedDetailLoad(modalEl, backdropEl);
   }
+}
+
+/** Removes the empty modal shell after the requested job cannot be loaded. */
+function clearFailedDetailLoad(modalEl, backdropEl) {
+  modalEl.innerHTML = "";
+  backdropEl?.classList.remove("active");
 }
 
 /** Renders one cohesive section of the job detail modal. */
@@ -673,6 +688,7 @@ function attachModalHandlers(context) {
   };
 
   const closeAction = () => {
+    detailLoadRequestId += 1;
     splitResizeObservers.get(modalEl)?.disconnect();
     closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
@@ -699,8 +715,6 @@ function attachModalHandlers(context) {
 /** Wires the basicmodal controls. */
 function bindBasicModalActions(context) {
   const {modalEl, backdropEl, job, onGlobalRefresh, activeStage, stages, stageInterviewers, refreshModal, closeAction} = context;
-  modalEl.querySelector(".modal-close-btn")?.addEventListener("click", closeAction);
-  modalEl.querySelector(".btn-close-modal")?.addEventListener("click", closeAction);
 
   const statusButton = modalEl.querySelector(".editable-job-status");
   statusButton?.addEventListener("click", async (event) => {
