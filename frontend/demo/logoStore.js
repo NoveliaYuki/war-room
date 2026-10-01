@@ -1,5 +1,5 @@
 const DEMO_COMPANY_LOGOS = new Map([
-  ["google", "google-g.png"], ["openai", "openai.svg"], ["factorial", "factorial-mark.png"],
+  ["google", "google-g.png"], ["openai", "openai.svg"],
   ["apple", "apple.svg"], ["microsoft", "microsoft.svg"], ["datadog", "datadog.svg"],
   ["meta", "meta.svg"], ["stripe", "stripe.svg"], ["spotify", "spotify.svg"],
 ]);
