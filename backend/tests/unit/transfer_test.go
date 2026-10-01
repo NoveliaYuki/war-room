@@ -172,6 +172,16 @@ func TestImportRejectsMalformedArchives(t *testing.T) {
 	}
 }
 
+func TestImportRejectsInvalidMeetingDates(t *testing.T) {
+	_, jobs, _, _ := newCoverageApp(t)
+	manifest := []byte(`{"format":"war-room-backup","version":1,"jobs":[{"stages":[{"meeting_date":"2031-02-30"}]}]}`)
+	archive := makeTestArchive(t, testArchiveEntry{"manifest.json", manifest})
+	err := jobs.ImportArchive(bytes.NewReader(archive), int64(len(archive)), true)
+	if !errors.Is(err, service.ErrInvalidMeetingDate) {
+		t.Fatalf("invalid meeting date import error = %v", err)
+	}
+}
+
 func TestImportRejectsMissingAttachmentAndInvalidLogo(t *testing.T) {
 	_, jobs, _, _ := newCoverageApp(t)
 	job := models.Job{ID: "job-1", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,

@@ -342,6 +342,10 @@ func (h *Handler) handleScheduleStage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.jobs.ScheduleMeeting(id, input); err != nil {
+		if errors.Is(err, service.ErrInvalidMeetingDate) {
+			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			ErrorJSON(w, http.StatusNotFound, "Stage not found")
 			return
@@ -377,6 +381,10 @@ func (h *Handler) handleUpdateStage(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.jobs.UpdateStage(id, input)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidMeetingDate) {
+			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			ErrorJSON(w, http.StatusNotFound, "Stage not found")
 			return
