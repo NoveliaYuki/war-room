@@ -81,4 +81,17 @@ describe('flip', () => {
     expect(targetEl.style.transition).toBe('');
     expect(targetEl.style.opacity).toBe('');
   });
+
+  it('completes an animated close when no callback is supplied', () => {
+    sourceEl.getBoundingClientRect = vi.fn(() => ({ top: 10, left: 10, width: 80, height: 60 }));
+    targetEl.getBoundingClientRect = vi.fn(() => ({ top: 20, left: 20, width: 160, height: 120 }));
+    const backdrop = document.createElement('div');
+    openWithFlip(sourceEl, targetEl, backdrop);
+
+    closeWithFlip(targetEl, backdrop);
+    vi.advanceTimersByTime(300);
+
+    expect(targetEl.classList.contains('modal-animating')).toBe(false);
+    expect(targetEl.style.opacity).toBe('');
+  });
 });

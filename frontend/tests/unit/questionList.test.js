@@ -149,6 +149,13 @@ describe('enableQuestionReordering', () => {
     expect(list.querySelector('.question-drop-placeholder')).toBeNull();
 
     handles[0].dispatchEvent(touchEvent('touchstart', [{ clientX: 5, clientY: 5 }]));
+    const nonCancelableMove = new Event('touchmove', { bubbles: true, cancelable: false });
+    Object.defineProperty(nonCancelableMove, 'touches', { value: [{ clientX: 6, clientY: 6 }] });
+    window.dispatchEvent(nonCancelableMove);
+    expect(nonCancelableMove.defaultPrevented).toBe(false);
+    const cancelableMove = touchEvent('touchmove', [{ clientX: 7, clientY: 7 }]);
+    window.dispatchEvent(cancelableMove);
+    expect(cancelableMove.defaultPrevented).toBe(true);
     const multiMove = touchEvent('touchmove', twoTouches);
     window.dispatchEvent(multiMove);
     expect(multiMove.defaultPrevented).toBe(false);
