@@ -590,5 +590,5 @@ filterTabs.forEach((tab) => {
   tab.setAttribute("aria-pressed", String(isActive));
 });
 
+await refreshApp();
 document.body.dataset.appReady = "true";
-refreshApp();

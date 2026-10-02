@@ -669,7 +669,9 @@ func TestCardHoldDragPersistsOrderAndReleasesDragState(t *testing.T) {
 	}
 	dragCardAfter(t, page, source, target)
 	expectedOrder := !initialOrder
-	waitForCardOrder(t, page, titleA, titleB, expectedOrder, "drag did not reorder cards")
+	if _, err := page.WaitForFunction(cardOrderExpression(titleA, titleB, expectedOrder), nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(3000)}); err != nil {
+		t.Fatalf("drag did not reorder cards: %v", err)
+	}
 	assertCardDragReleased(t, page)
 	waitForPersistedCardOrder(t, page, titleA, titleB, expectedOrder)
 	if _, err := page.Reload(); err != nil {
@@ -954,23 +956,20 @@ func waitForPersistedQuestionOrder(t *testing.T, page playwright.Page, jobID, qu
 func dragCardAfter(t *testing.T, page playwright.Page, source, target playwright.Locator) {
 	t.Helper()
 	scrollCardIntoView(t, source)
-	sourceBox, err := source.BoundingBox()
-	if err != nil || sourceBox == nil {
-		t.Fatalf("read source card bounds: box=%v err=%v", sourceBox, err)
-	}
-	targetBox, err := target.BoundingBox()
-	if err != nil || targetBox == nil {
-		t.Fatalf("read target card bounds: box=%v err=%v", targetBox, err)
+	waitForCardEntranceAnimations(t, page, source, target)
+	if err := source.Hover(); err != nil {
+		t.Fatalf("hover source card before dragging: %v", err)
 	}
 	mouse := page.Mouse()
-	if err := mouse.Move(sourceBox.X+30, sourceBox.Y+90); err != nil {
-		t.Fatalf("move pointer to source card: %v", err)
-	}
 	if err := mouse.Down(); err != nil {
 		t.Fatalf("hold source card: %v", err)
 	}
-	if _, err := page.WaitForFunction(`() => Boolean(document.querySelector(".process-card.is-dragging"))`, nil); err != nil {
+	if _, err := page.WaitForFunction(`() => Boolean(document.querySelector(".process-card.is-dragging"))`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(3000)}); err != nil {
 		t.Fatalf("wait for hold-to-drag activation: %v", err)
+	}
+	targetBox, err := target.BoundingBox()
+	if err != nil || targetBox == nil {
+		t.Fatalf("read target card bounds after hold activation: box=%v err=%v", targetBox, err)
 	}
 	steps := 10
 	if err := mouse.Move(targetBox.X+targetBox.Width/2, targetBox.Y+targetBox.Height*0.75, playwright.MouseMoveOptions{Steps: &steps}); err != nil {
@@ -978,6 +977,25 @@ func dragCardAfter(t *testing.T, page playwright.Page, source, target playwright
 	}
 	if err := mouse.Up(); err != nil {
 		t.Fatalf("release dragged card: %v", err)
+	}
+}
+
+func waitForCardEntranceAnimations(t *testing.T, page playwright.Page, source, target playwright.Locator) {
+	t.Helper()
+	sourceID, err := source.GetAttribute("data-id")
+	if err != nil || sourceID == "" {
+		t.Fatalf("read source card ID: id=%q err=%v", sourceID, err)
+	}
+	targetID, err := target.GetAttribute("data-id")
+	if err != nil || targetID == "" {
+		t.Fatalf("read target card ID: id=%q err=%v", targetID, err)
+	}
+	animationsFinished := fmt.Sprintf(`() => [%q, %q].every((id) => {
+		const card = document.querySelector('.process-card[data-id="' + id + '"]');
+		return card && card.getAnimations().every((animation) => animation.playState === "finished");
+	})`, sourceID, targetID)
+	if _, err := page.WaitForFunction(animationsFinished, nil); err != nil {
+		t.Fatalf("wait for card entrance animations: %v", err)
 	}
 }
 

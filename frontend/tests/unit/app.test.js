@@ -35,13 +35,21 @@ describe('application entry point', () => {
       <span id="count-all"></span><span id="count-ongoing"></span><span id="count-accepted"></span><span id="count-rejected"></span><span id="count-meetings"></span>`;
     mocks.api.getJobCounts.mockResolvedValue({ all: 1, ongoing: 1, accepted: 0, rejected: 0 });
     mocks.api.getMeetings.mockResolvedValue([]);
-    mocks.api.getJobs.mockResolvedValue([]);
+    let resolveInitialJobs;
+    mocks.api.getJobs.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveInitialJobs = resolve;
+    }));
     mocks.api.createJob.mockResolvedValue({ id: 'new' });
     mocks.renderScheduleView.mockResolvedValue(undefined);
     window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }));
-    await import('../../public/js/app.js');
+    const appImport = import('../../public/js/app.js');
+    await vi.waitFor(() => expect(mocks.api.getJobs).toHaveBeenCalledTimes(1));
+    expect(document.body.dataset.appReady).toBeUndefined();
+    resolveInitialJobs([]);
+    await appImport;
     localStorageGet.mockRestore();
     await flush();
+    expect(document.body.dataset.appReady).toBe('true');
     expect(mocks.renderCardGrid).toHaveBeenCalled();
     expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-pressed')).toBe('true');
     expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-pressed')).toBe('false');
