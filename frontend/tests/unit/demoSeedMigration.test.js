@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { migrateFactorialDemoJob } from '../../public/js/utils/demoMigration.js';
+import { migrateLegacyDemoJob } from '../../public/js/utils/demoMigration.js';
 
 const updatedSeed = {
   id: 'demo-3',
-  company_name: 'Microsoft',
-  avatar_seed: 'Microsoft',
-  company_domain: 'microsoft.com',
-  job_post_url: 'https://careers.microsoft.com',
+  company_name: 'NVIDIA',
+  avatar_seed: 'NVIDIA',
+  company_domain: 'nvidia.com',
+  job_post_url: 'https://careers.nvidia.com',
   salary_min: 125000,
   salary_max: 165000,
   salary_type: 'limited',
@@ -14,7 +14,7 @@ const updatedSeed = {
   work_arrangement: 'hybrid',
   employment_type: 'permanent',
   is_referral: false,
-  keyword_note: 'Azure developer platform • Go services • Reliability engineering at global scale',
+  keyword_note: 'GPU computing platform • Go services • Reliability engineering at global scale',
 };
 
 describe('demo seed migration', () => {
@@ -39,33 +39,39 @@ describe('demo seed migration', () => {
       stages: [{ status: 'completed', description: 'HR conversation at Factorial.', recruiter_agency: 'Factorial Talent Acquisition' }],
     };
 
-    expect(migrateFactorialDemoJob([job], updatedSeed)).toBe(true);
-    expect(job.company_name).toBe('Microsoft');
-    expect(job.company_domain).toBe('microsoft.com');
+    expect(migrateLegacyDemoJob([job], updatedSeed)).toBe(true);
+    expect(job.company_name).toBe('NVIDIA');
+    expect(job.company_domain).toBe('nvidia.com');
     expect(job).toMatchObject({ salary_min: 125000, salary_max: 165000, salary_currency: 'EUR' });
     expect(job.keyword_note).toBe(updatedSeed.keyword_note);
-    expect(job.description).toContain("Microsoft's hybrid team");
-    expect(job.company_overview).toContain('Microsoft is');
-    expect(job.interview_notes).toContain('azure developer platform');
-    expect(job.stages[0]).toMatchObject({ status: 'completed', description: 'HR conversation at Microsoft.', recruiter_agency: 'Microsoft Talent Acquisition' });
+    expect(job.description).toContain("NVIDIA's hybrid team");
+    expect(job.company_overview).toContain('NVIDIA is');
+    expect(job.interview_notes).toContain('gpu computing platform');
+    expect(job.stages[0]).toMatchObject({ status: 'completed', description: 'HR conversation at NVIDIA.', recruiter_agency: 'NVIDIA Talent Acquisition' });
   });
 
   it('leaves records from other companies unchanged', () => {
     const job = { id: 'demo-3', company_name: 'Contoso', company_domain: 'contoso.com' };
-    expect(migrateFactorialDemoJob([job], updatedSeed)).toBe(false);
+    expect(migrateLegacyDemoJob([job], updatedSeed)).toBe(false);
     expect(job.company_name).toBe('Contoso');
   });
 
-  it('updates the stale salary on a demo already renamed by the earlier migration', () => {
+  it('replaces the earlier duplicate Microsoft demo role and preserves saved progress', () => {
     const job = {
       id: 'demo-3',
       company_name: 'Microsoft',
       company_domain: 'microsoft.com',
-      salary_min: 65000,
-      salary_max: 85000,
+      salary_min: 125000,
+      salary_max: 165000,
+      keyword_note: 'Azure developer platform • Go services • Reliability engineering at global scale',
+      description: "Software Engineer II on Microsoft's hybrid team.",
+      stages: [{ status: 'current', description: 'Technical conversation at Microsoft.', recruiter_agency: 'Microsoft Talent Acquisition' }],
     };
 
-    expect(migrateFactorialDemoJob([job], updatedSeed)).toBe(true);
-    expect(job).toMatchObject({ company_name: 'Microsoft', salary_min: 125000, salary_max: 165000 });
+    expect(migrateLegacyDemoJob([job], updatedSeed)).toBe(true);
+    expect(job).toMatchObject({ company_name: 'NVIDIA', company_domain: 'nvidia.com', salary_min: 125000, salary_max: 165000 });
+    expect(job.keyword_note).toBe(updatedSeed.keyword_note);
+    expect(job.description).toContain("NVIDIA's hybrid team");
+    expect(job.stages[0]).toMatchObject({ status: 'current', description: 'Technical conversation at NVIDIA.', recruiter_agency: 'NVIDIA Talent Acquisition' });
   });
 });
