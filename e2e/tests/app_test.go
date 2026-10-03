@@ -161,6 +161,29 @@ func newPage(t *testing.T) playwright.Page {
 	return page
 }
 
+func selectFilter(t *testing.T, page playwright.Page, filter string) {
+	t.Helper()
+	if filter == "schedule" {
+		if err := page.Locator("#tab-schedule").Click(); err != nil {
+			t.Fatalf("open daily schedule: %v", err)
+		}
+		return
+	}
+	menu := page.Locator("#filter-menu")
+	visible, err := menu.IsVisible()
+	if err != nil {
+		t.Fatalf("check process view menu visibility: %v", err)
+	}
+	if !visible {
+		if err := page.Locator("#filter-menu-trigger").Click(); err != nil {
+			t.Fatalf("open process view menu: %v", err)
+		}
+	}
+	if err := page.Locator(`[data-filter="` + filter + `"]`).Click(); err != nil {
+		t.Fatalf("select %s filter: %v", filter, err)
+	}
+}
+
 func TestApplicationShellAndFilters(t *testing.T) {
 	page := newPage(t)
 	title, err := page.Title()
@@ -170,8 +193,18 @@ func TestApplicationShellAndFilters(t *testing.T) {
 	if !strings.Contains(strings.ToLower(title), "war room") && !strings.Contains(strings.ToLower(title), "ongoing") {
 		t.Fatalf("unexpected page title %q", title)
 	}
-	for _, selector := range []string{".brand-title", "#search-input", `[data-filter="ongoing"]`, `[data-filter="accepted"]`, `[data-filter="rejected"]`, `[data-filter="all"]`} {
+	for _, selector := range []string{".brand-title", "#search-input", "#filter-current-action", "#filter-menu-trigger", "#tab-schedule"} {
 		assertVisible(t, page.Locator(selector))
+	}
+	if err := page.Locator("#filter-menu-trigger").Click(); err != nil {
+		t.Fatalf("open process view menu: %v", err)
+	}
+	for _, filter := range []string{"ongoing", "accepted", "rejected", "all"} {
+		assertVisible(t, page.Locator(`[data-filter="`+filter+`"]`))
+	}
+	assertVisible(t, page.Locator("#tab-schedule"))
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatalf("close process view menu: %v", err)
 	}
 	assertVisible(t, page.Locator("#btn-new-process"))
 	mobileActionVisible, err := page.Locator("#btn-new-process-mobile").IsVisible()
@@ -189,9 +222,7 @@ func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
 		name  string
 		count int
 	}{{"all", 9}, {"accepted", 1}, {"rejected", 2}, {"ongoing", 6}} {
-		if err := page.Locator(`[data-filter="` + filter.name + `"]`).Click(); err != nil {
-			t.Fatalf("select %s filter: %v", filter.name, err)
-		}
+		selectFilter(t, page, filter.name)
 		assertCardCount(t, page, filter.count)
 	}
 
@@ -223,9 +254,7 @@ func TestKeyboardAccessibilityForNavigation(t *testing.T) {
 	assertSkipLinkIsFirstFocus(t, page)
 	assertSearchAccessibleName(t, page)
 	assertFilterPressedStates(t, page, "ongoing")
-	if err := page.Locator(`[data-filter="accepted"]`).Click(); err != nil {
-		t.Fatalf("select accepted filter: %v", err)
-	}
+	selectFilter(t, page, "accepted")
 	assertFilterPressedStates(t, page, "accepted")
 }
 
@@ -313,7 +342,7 @@ func assertSearchAccessibleName(t *testing.T, page playwright.Page) {
 func assertFilterPressedStates(t *testing.T, page playwright.Page, activeFilter string) {
 	t.Helper()
 	for _, filter := range []string{"ongoing", "accepted", "rejected", "all"} {
-		pressed, err := page.Locator(fmt.Sprintf(`[data-filter="%s"]`, filter)).GetAttribute("aria-pressed")
+		pressed, err := page.Locator(fmt.Sprintf(`[data-filter="%s"]`, filter)).GetAttribute("aria-checked")
 		if err != nil || pressed != fmt.Sprint(filter == activeFilter) {
 			t.Fatalf("initial %s filter pressed state=%q, err=%v", filter, pressed, err)
 		}
@@ -322,9 +351,7 @@ func assertFilterPressedStates(t *testing.T, page playwright.Page, activeFilter 
 
 func assertDemoMeetingToday(t *testing.T, page playwright.Page) {
 	t.Helper()
-	if err := page.Locator(`[data-filter="schedule"]`).Click(); err != nil {
-		t.Fatalf("open demo schedule: %v", err)
-	}
+	selectFilter(t, page, "schedule")
 	assertVisible(t, page.Locator(".schedule-container .today-status-title"))
 	if count, err := page.Locator(".today-meeting-card").Count(); err != nil || count < 1 {
 		t.Fatalf("demo should always include a meeting today (count=%d, err=%v)", count, err)
@@ -442,7 +469,7 @@ func TestNarrowViewportNavigation(t *testing.T) {
 
 func TestIntermediateViewportUsesOpenSearchMenu(t *testing.T) {
 	page := newPage(t)
-	if err := page.SetViewportSize(901, 850); err != nil {
+	if err := page.SetViewportSize(780, 850); err != nil {
 		t.Fatalf("set intermediate viewport: %v", err)
 	}
 	menu := page.Locator("#btn-menu-toggle")
@@ -479,24 +506,32 @@ func TestCompactDesktopKeepsDailyScheduleTabVisible(t *testing.T) {
 		}
 		visibleTab, err := page.Evaluate(`() => {
 			const tabs = document.querySelector(".filter-tabs");
-			const schedule = document.querySelector("#tab-schedule");
+			const views = document.querySelector(".view-controls");
+			const trigger = document.querySelector("#filter-menu-trigger");
 			const search = document.querySelector(".search-wrapper");
-			const data = document.querySelector(".data-management-trigger");
+			const more = document.querySelector(".more-actions-menu");
 			const create = document.querySelector("#btn-new-process");
 			const theme = document.querySelector("#btn-theme-toggle");
-			const bounds = schedule.getBoundingClientRect();
+			const bounds = trigger.getBoundingClientRect();
 			return getComputedStyle(document.querySelector("#btn-menu-toggle")).display === "none" &&
 				tabs.scrollWidth <= tabs.clientWidth && bounds.right <= window.innerWidth &&
 				bounds.left >= tabs.getBoundingClientRect().left &&
-				tabs.getBoundingClientRect().right <= search.getBoundingClientRect().left &&
-				search.getBoundingClientRect().right <= data.getBoundingClientRect().left &&
-				data.getBoundingClientRect().right <= create.getBoundingClientRect().left &&
+				views.getBoundingClientRect().right <= search.getBoundingClientRect().left &&
+				search.getBoundingClientRect().right <= more.getBoundingClientRect().left &&
+				more.getBoundingClientRect().right <= create.getBoundingClientRect().left &&
 				create.getBoundingClientRect().right <= theme.getBoundingClientRect().left &&
 				theme.getBoundingClientRect().right <= window.innerWidth &&
-				schedule.innerText.includes("Daily Schedule");
+				document.querySelector(".filter-current-group").innerText.includes(document.querySelector("#filter-current-label").innerText);
 		}`, nil)
 		if err != nil || visibleTab != true {
-			t.Fatalf("compact desktop controls overlap or clip the Daily Schedule tab at %dpx (visible=%v, err=%v)", width, visibleTab, err)
+			t.Fatalf("compact desktop controls overlap or clip the process view selector at %dpx (visible=%v, err=%v)", width, visibleTab, err)
+		}
+		if err := page.Locator("#filter-menu-trigger").Click(); err != nil {
+			t.Fatalf("open process view menu at %dpx: %v", width, err)
+		}
+		assertVisible(t, page.Locator("#tab-schedule"))
+		if err := page.Keyboard().Press("Escape"); err != nil {
+			t.Fatalf("close process view menu at %dpx: %v", width, err)
 		}
 	}
 }
@@ -572,10 +607,7 @@ func TestCreateJobAndScheduleView(t *testing.T) {
 
 func assertScheduleViewShowsSavedNotes(t *testing.T, page playwright.Page) {
 	t.Helper()
-	schedule := page.Locator(`[data-filter="schedule"]`)
-	if err := schedule.Click(); err != nil {
-		t.Fatalf("open schedule view: %v", err)
-	}
+	selectFilter(t, page, "schedule")
 	scheduleHeading := page.Locator(".schedule-container .today-status-title")
 	if err := scheduleHeading.WaitFor(); err != nil {
 		t.Fatalf("wait for rendered schedule view: %v", err)
@@ -782,6 +814,9 @@ func reopenBackupDuringDetailClose(t *testing.T, page playwright.Page, card play
 
 func openBackupDialog(t *testing.T, page playwright.Page) playwright.Locator {
 	t.Helper()
+	if err := page.Locator("#toolbar-more-trigger").Click(); err != nil {
+		t.Fatalf("open more actions menu: %v", err)
+	}
 	if err := page.Locator("#btn-data-management").Click(); err != nil {
 		t.Fatalf("open data and backups: %v", err)
 	}
@@ -1071,9 +1106,7 @@ func cycleStatusAndVerifyFilter(t *testing.T, page playwright.Page, card, status
 	if err := page.Locator("#detail-modal .modal-close-btn").Click(); err != nil {
 		t.Fatalf("close details after changing status to %s: %v", next, err)
 	}
-	if err := page.Locator(`[data-filter="` + filter + `"]`).Click(); err != nil {
-		t.Fatalf("select %s filter: %v", filter, err)
-	}
+	selectFilter(t, page, filter)
 	if err := card.WaitFor(); err != nil {
 		t.Fatalf("process did not appear in %s filter: %v", filter, err)
 	}

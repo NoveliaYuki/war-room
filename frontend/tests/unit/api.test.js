@@ -128,6 +128,32 @@ describe('api', () => {
     await expect(api.importBackup(archive)).rejects.toMatchObject({ message: 'Failed to import backup', requiresEmptyConfirmation: false });
   });
 
+  it('uses the CV library API contract and encodes version and job identifiers', async () => {
+    mockResponse([{ id: 'v1', version_number: 1 }]);
+    expect(await api.getCvVersions()).toEqual([{ id: 'v1', version_number: 1 }]);
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/cv/versions');
+
+    const file = new File(['cv'], 'cv.pdf', { type: 'application/pdf' });
+    mockResponse({ id: 'v2' });
+    expect(await api.uploadCvVersion(file)).toEqual({ id: 'v2' });
+    expect(global.fetch.mock.lastCall[0]).toBe('/api/cv/versions');
+    expect(global.fetch.mock.lastCall[1].body.get('file')).toBe(file);
+
+    const cvBlob = new Blob(['cv']);
+    global.fetch.mockResolvedValueOnce({ ok: true, blob: async () => cvBlob });
+    expect(await api.downloadCvVersion('v/2')).toBe(cvBlob);
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/cv/versions/v%2F2/download');
+
+    mockResponse({ success: true });
+    await api.deleteCvVersion('v/2');
+    expect(global.fetch.mock.lastCall).toEqual(['/api/cv/versions/v%2F2', { method: 'DELETE' }]);
+
+    mockResponse({ success: true });
+    await api.setJobCvVersion('job/1', null);
+    expect(global.fetch.mock.lastCall[0]).toBe('/api/jobs/job%2F1/cv-version');
+    expect(JSON.parse(global.fetch.mock.lastCall[1].body)).toEqual({ version_id: null });
+  });
+
   it('uses a shared logo URL contract for the avatar component', () => {
     expect(api.getCompanyLogoUrl('Acme & Sons', 'acme.test', 'job/1')).toBe('/api/company-logo?company=Acme%20%26%20Sons&domain=acme.test&job_id=job%2F1');
   });

@@ -37,6 +37,53 @@ const backendApi = {
     return res.json();
   },
 
+  /** Lists the saved versions of the shared CV. */
+  async getCvVersions() {
+    const res = await fetch("/api/cv/versions");
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.json();
+  },
+
+  /** Uploads a new version of the shared CV. */
+  async uploadCvVersion(file) {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/cv/versions", { method: "POST", body: form });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to upload CV" }));
+      throw new Error(error.error || "Failed to upload CV");
+    }
+    return res.json();
+  },
+
+  /** Downloads a saved CV version. */
+  async downloadCvVersion(id) {
+    const res = await fetch(`/api/cv/versions/${pathSegment(id)}/download`);
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.blob();
+  },
+
+  /** Deletes an unassigned CV version. */
+  async deleteCvVersion(id) {
+    const res = await fetch(`/api/cv/versions/${pathSegment(id)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `HTTP error: ${res.status}` }));
+      throw new Error(error.error || `HTTP error: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  /** Selects or clears the CV version associated with a job. */
+  async setJobCvVersion(jobId, versionId) {
+    const res = await fetch(`/api/jobs/${pathSegment(jobId)}/cv-version`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version_id: versionId }),
+    });
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.json();
+  },
+
   /**
    * Fetches job processes with optional status and search filters.
    */

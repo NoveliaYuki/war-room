@@ -946,16 +946,28 @@ func (s *JobService) MirrorDatabaseToJSON() error {
 	defer s.mirrorLock.Unlock()
 
 	var fullJobs []models.Job
+	var cvVersions []models.CVVersion
+	var nextCVVersion int
 	err := s.repo.WithReadSnapshot(func(snapshot *repository.Repository) error {
 		var snapshotErr error
 		fullJobs, snapshotErr = loadFullJobSnapshot(snapshot)
+		if snapshotErr == nil {
+			cvVersions, snapshotErr = snapshot.ListCVVersions()
+		}
+		if snapshotErr == nil {
+			nextCVVersion, snapshotErr = snapshot.GetNextCVVersion()
+		}
 		return snapshotErr
 	})
 	if err != nil {
 		return fmt.Errorf("load consistent database snapshot: %w", err)
 	}
 
-	data, err := json.MarshalIndent(fullJobs, "", "  ")
+	snapshotVersions := make([]models.CVVersionSnapshot, 0, len(cvVersions))
+	for _, version := range cvVersions {
+		snapshotVersions = append(snapshotVersions, version.Snapshot())
+	}
+	data, err := json.MarshalIndent(models.RecoverySnapshot{Jobs: fullJobs, CVVersions: snapshotVersions, NextCVVersion: nextCVVersion}, "", "  ")
 	if err != nil {
 		return err
 	}

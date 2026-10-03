@@ -9,21 +9,33 @@ const FOCUSABLE_SELECTOR = [
 
 let returnFocusTarget = null;
 let backgroundState = null;
+const BODY_SCROLL_PROPERTIES = ["position", "top", "left", "right", "width", "overflow"];
 
 /** Gives an active dialog an accessible name and moves focus inside it. */
 export function activateModal(modal, focusSelector) {
   const background = document.querySelector(".app-container");
   if (!backgroundState) {
     returnFocusTarget = document.activeElement;
-  }
-  if (background && !backgroundState) {
     backgroundState = {
       element: background,
-      inert: background.inert,
-      ariaHidden: background.getAttribute("aria-hidden"),
+      inert: background?.inert,
+      ariaHidden: background?.getAttribute("aria-hidden"),
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      htmlOverflow: document.documentElement.style.overflow,
+      bodyStyles: Object.fromEntries(BODY_SCROLL_PROPERTIES.map((property) => [property, document.body.style[property]])),
     };
-    background.inert = true;
-    background.setAttribute("aria-hidden", "true");
+    if (background) {
+      background.inert = true;
+      background.setAttribute("aria-hidden", "true");
+    }
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${backgroundState.scrollY}px`;
+    document.body.style.left = `-${backgroundState.scrollX}px`;
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
   }
   focusModalContents(modal, focusSelector);
 }
@@ -71,13 +83,21 @@ export function trapModalTab(event, modal) {
 
 /** Returns focus to the control that opened the dialog. */
 export function restoreModalFocus() {
-  if (backgroundState?.element.isConnected) {
-    backgroundState.element.inert = backgroundState.inert;
-    if (backgroundState.ariaHidden === null) backgroundState.element.removeAttribute("aria-hidden");
-    else backgroundState.element.setAttribute("aria-hidden", backgroundState.ariaHidden);
+  const state = backgroundState;
+  if (state?.element?.isConnected) {
+    state.element.inert = state.inert;
+    if (state.ariaHidden === null) state.element.removeAttribute("aria-hidden");
+    else state.element.setAttribute("aria-hidden", state.ariaHidden);
   }
   backgroundState = null;
+  if (state) {
+    document.documentElement.style.overflow = state.htmlOverflow;
+    BODY_SCROLL_PROPERTIES.forEach((property) => {
+      document.body.style[property] = state.bodyStyles[property];
+    });
+  }
   const target = returnFocusTarget;
   returnFocusTarget = null;
   if (target?.isConnected && typeof target.focus === "function") target.focus();
+  if (state && (state.scrollX || state.scrollY)) window.scrollTo(state.scrollX, state.scrollY);
 }

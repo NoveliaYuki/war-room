@@ -94,4 +94,5 @@ describe('modal accessibility helpers', () => {
     expect(background.hasAttribute('aria-hidden')).toBe(false);
     expect(document.activeElement).toBe(trigger);
   });
+
 });

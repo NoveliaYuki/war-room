@@ -74,6 +74,27 @@ describe('detail modal', () => {
     expect(attachmentSections.every((section) => !section.textContent.includes('Attachments are unavailable'))).toBe(true);
   });
 
+  it('shows the assigned CV version and lets a job select a saved version', async () => {
+    const selectedJob = { ...job(), selected_cv_version: { id: 'cv-v2', version_number: 2, original_name: 'CV.pdf', uploaded_at: 1_798_080_000 } };
+    api.getJob.mockResolvedValueOnce(job()).mockResolvedValueOnce(selectedJob);
+    api.getCvVersions.mockResolvedValue([{ id: 'cv-v2', version_number: 2, original_name: 'CV.pdf', uploaded_at: 1_798_080_000 }]);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    expect(modal.querySelector('.job-cv-row').textContent).toContain('No CV version selected');
+    expect(modal.querySelector('.job-cv-row').textContent).toContain('Select');
+    expect(modal.querySelector('.job-cv-row input')).toBeNull();
+    modal.querySelector('.job-cv-change').click();
+    await tick();
+    expect(modal.querySelector('#job-cv-version-select').options[1].textContent).toContain('CV v2');
+    modal.querySelector('#job-cv-version-select').value = 'cv-v2';
+    modal.querySelector('.job-cv-save').click();
+    await tick();
+
+    expect(api.setJobCvVersion).toHaveBeenCalledWith('job-1', 'cv-v2');
+    expect(modal.querySelector('.job-cv-row').textContent).toContain('CV v2');
+  });
+
   it('supports keyboard and pointer resizing and remembers the pane ratio', async () => {
     api.getJob.mockResolvedValue(job());
     const modal = document.querySelector('#detail-modal');

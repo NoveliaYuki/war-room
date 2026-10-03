@@ -158,7 +158,7 @@ func TestImportRejectsMalformedArchives(t *testing.T) {
 		{"absolute path", makeTestArchive(t, testArchiveEntry{"/manifest.json", manifest})},
 		{"backslash path", makeTestArchive(t, testArchiveEntry{"bad\\path", manifest})},
 		{"invalid json", makeTestArchive(t, testArchiveEntry{"manifest.json", []byte("{")})},
-		{"unsupported version", makeTestArchive(t, testArchiveEntry{"manifest.json", []byte(`{"format":"war-room-backup","version":2,"jobs":[]}`)})},
+		{"unsupported version", makeTestArchive(t, testArchiveEntry{"manifest.json", []byte(`{"format":"war-room-backup","version":99,"jobs":[]}`)})},
 		{"no process list", makeTestArchive(t, testArchiveEntry{"manifest.json", []byte(`{"format":"war-room-backup","version":1}`)})},
 		{"unreferenced file", makeTestArchive(t, testArchiveEntry{"manifest.json", manifest}, testArchiveEntry{"extra", []byte("x")})},
 	}
@@ -169,6 +169,14 @@ func TestImportRejectsMalformedArchives(t *testing.T) {
 				t.Fatal("expected malformed archive to fail")
 			}
 		})
+	}
+}
+
+func TestImportAcceptsLegacyVersionOneBackup(t *testing.T) {
+	_, jobs, _, _ := newCoverageApp(t)
+	archive := makeTestArchive(t, testArchiveEntry{"manifest.json", []byte(`{"format":"war-room-backup","version":1,"jobs":[],"attachment_sha256":{}}`)})
+	if err := jobs.ImportArchive(bytes.NewReader(archive), int64(len(archive)), true); err != nil {
+		t.Fatalf("import legacy v1 archive: %v", err)
 	}
 }
 

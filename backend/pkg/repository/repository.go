@@ -44,6 +44,20 @@ func (r *Repository) WithReadSnapshot(read func(*Repository) error) error {
 
 // GetAllJobs returns jobs matching the optional status and search filters.
 func (r *Repository) GetAllJobs(status, search string) ([]models.Job, error) {
+	query, args := buildJobsQuery(status, search)
+	rows, err := r.reader.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	jobs, err := scanJobs(rows, r)
+	if err != nil {
+		return nil, err
+	}
+	return jobs, rows.Err()
+}
+
+func buildJobsQuery(status, search string) (string, []interface{}) {
 	query := `
 		SELECT
 			jobs.id, jobs.company_name, jobs.position_title, jobs.status, jobs.salary_type,
@@ -52,7 +66,7 @@ func (r *Repository) GetAllJobs(status, search string) ([]models.Job, error) {
 			jobs.interviewers_json, jobs.job_post_url, jobs.avatar_seed, jobs.keyword_note,
 			jobs.description, jobs.company_overview, jobs.company_domain, jobs.interview_notes,
 			jobs.reasons_to_change, jobs.experience_notes, jobs.expected_salary, jobs.work_arrangement,
-			jobs.employment_type, jobs.is_referral, jobs.order_index, jobs.created_at, jobs.updated_at,
+			jobs.employment_type, jobs.is_referral, jobs.order_index, jobs.created_at, jobs.updated_at, jobs.cv_version_id,
 			(SELECT COALESCE(custom_title, stage_type) FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_title,
 			(SELECT order_index + 1 FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_index,
 			(SELECT COUNT(*) FROM stages WHERE job_id = jobs.id) as total_stages_count
@@ -74,16 +88,15 @@ func (r *Repository) GetAllJobs(status, search string) ([]models.Job, error) {
 
 	query += " ORDER BY order_index ASC, updated_at DESC, created_at DESC"
 
-	rows, err := r.reader.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
+	return query, args
+}
 
+func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 	var jobs []models.Job
 	for rows.Next() {
 		var j models.Job
 		var ijJSON sql.NullString
+		var cvVersionID sql.NullString
 		err := rows.Scan(
 			&j.ID, &j.CompanyName, &j.PositionTitle, &j.Status, &j.SalaryType,
 			&j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency, &j.RecruiterType,
@@ -91,7 +104,7 @@ func (r *Repository) GetAllJobs(status, search string) ([]models.Job, error) {
 			&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 			&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 			&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.CreatedAt, &j.UpdatedAt,
+			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
 			&j.CurrentStageTitle, &j.CurrentStageIndex, &j.TotalStagesCount,
 		)
 		if err != nil {
@@ -103,10 +116,13 @@ func (r *Repository) GetAllJobs(status, search string) ([]models.Job, error) {
 				return nil, fmt.Errorf("decode job interviewers: %w", err)
 			}
 		}
+		if cvVersionID.Valid {
+			j.SelectedCVVersion, err = repo.GetCVVersionByID(cvVersionID.String)
+			if err != nil {
+				return nil, fmt.Errorf("load selected CV version: %w", err)
+			}
+		}
 		jobs = append(jobs, j)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return jobs, nil
 }
@@ -119,12 +135,13 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
-			employment_type, is_referral, order_index, created_at, updated_at
+			employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
 		FROM jobs WHERE id = ?
 	`, id)
 
 	var j models.Job
 	var ijJSON sql.NullString
+	var cvVersionID sql.NullString
 	err := row.Scan(
 		&j.ID, &j.CompanyName, &j.PositionTitle, &j.Status, &j.SalaryType,
 		&j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency, &j.RecruiterType,
@@ -132,7 +149,7 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 		&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 		&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 		&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.CreatedAt, &j.UpdatedAt,
+		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -146,7 +163,167 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 			return nil, fmt.Errorf("decode job interviewers: %w", err)
 		}
 	}
+	if cvVersionID.Valid {
+		j.SelectedCVVersion, err = r.GetCVVersionByID(cvVersionID.String)
+		if err != nil {
+			return nil, fmt.Errorf("load selected CV version: %w", err)
+		}
+	}
 	return &j, nil
+}
+
+// ListCVVersions returns CV uploads in descending version order.
+func (r *Repository) ListCVVersions() ([]models.CVVersion, error) {
+	rows, err := r.reader.Query(`SELECT id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at FROM cv_versions ORDER BY version DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	versions := []models.CVVersion{}
+	for rows.Next() {
+		var version models.CVVersion
+		if err := rows.Scan(&version.ID, &version.Version, &version.OriginalName, &version.StoredFilename, &version.FileSize, &version.MimeType, &version.SHA256, &version.UploadedAt); err != nil {
+			return nil, err
+		}
+		versions = append(versions, version)
+	}
+	return versions, rows.Err()
+}
+
+// GetCVVersionByID returns the version identified by id.
+func (r *Repository) GetCVVersionByID(id string) (*models.CVVersion, error) {
+	var version models.CVVersion
+	err := r.reader.QueryRow(`SELECT id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at FROM cv_versions WHERE id = ?`, id).
+		Scan(&version.ID, &version.Version, &version.OriginalName, &version.StoredFilename, &version.FileSize, &version.MimeType, &version.SHA256, &version.UploadedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &version, nil
+}
+
+// InsertCVVersion stores metadata for a newly uploaded CV version.
+func (r *Repository) InsertCVVersion(version *models.CVVersion) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := tx.QueryRow(`SELECT next_version FROM cv_version_sequence WHERE id = 1`).Scan(&version.Version); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO cv_versions (id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		version.ID, version.Version, version.OriginalName, version.StoredFilename, version.FileSize, version.MimeType, version.SHA256, version.UploadedAt); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE cv_version_sequence SET next_version = ? WHERE id = 1`, version.Version+1); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// AssignCVVersion selects a CV version for a job, or clears it when versionID is nil.
+func (r *Repository) AssignCVVersion(jobID string, versionID *string) error {
+	result, err := r.db.Exec(`UPDATE jobs SET cv_version_id = ?, updated_at = unixepoch() WHERE id = ?`, versionID, jobID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteCVVersion removes an unassigned version.
+func (r *Repository) DeleteCVVersion(id string) error {
+	result, err := r.db.Exec(`DELETE FROM cv_versions WHERE id = ? AND NOT EXISTS (SELECT 1 FROM jobs WHERE cv_version_id = ?)`, id, id)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// CountCVBlobReferences reports how many versions still point at one stored blob.
+func (r *Repository) CountCVBlobReferences(filename string, count *int) error {
+	return r.db.QueryRow(`SELECT COUNT(*) FROM cv_versions WHERE stored_filename = ?`, filename).Scan(count)
+}
+
+// GetNextCVVersion returns the persistent next version number.
+func (r *Repository) GetNextCVVersion() (int, error) {
+	var next int
+	err := r.reader.QueryRow(`SELECT next_version FROM cv_version_sequence WHERE id = 1`).Scan(&next)
+	return next, err
+}
+
+// MigrateLegacyCVAttachments atomically creates the initial version and replaces legacy attachment references.
+func (r *Repository) MigrateLegacyCVAttachments(version *models.CVVersion, attachments []models.Attachment, jobIDs []string) (bool, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	created, err := migrateLegacyCVRows(tx, version, attachments, jobIDs)
+	if err != nil || !created {
+		return created, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func migrateLegacyCVRows(tx *sql.Tx, version *models.CVVersion, attachments []models.Attachment, jobIDs []string) (bool, error) {
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM cv_versions`).Scan(&count); err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return false, nil
+	}
+	if _, err := tx.Exec(`INSERT INTO cv_versions (id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at) VALUES (?, 1, ?, ?, ?, ?, ?, ?)`, version.ID, version.OriginalName, version.StoredFilename, version.FileSize, version.MimeType, version.SHA256, version.UploadedAt); err != nil {
+		return false, err
+	}
+	if err := assignLegacyCVJobs(tx, version.ID, jobIDs); err != nil {
+		return false, err
+	}
+	if err := deleteLegacyCVAttachments(tx, attachments); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(`UPDATE cv_version_sequence SET next_version = MAX(next_version, 2) WHERE id = 1`); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func assignLegacyCVJobs(tx *sql.Tx, versionID string, jobIDs []string) error {
+	for _, jobID := range jobIDs {
+		if _, err := tx.Exec(`UPDATE jobs SET cv_version_id = ? WHERE id = ?`, versionID, jobID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func deleteLegacyCVAttachments(tx *sql.Tx, attachments []models.Attachment) error {
+	for _, attachment := range attachments {
+		if _, err := tx.Exec(`DELETE FROM attachments WHERE id = ?`, attachment.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetJobCounts returns the number of jobs in each status.

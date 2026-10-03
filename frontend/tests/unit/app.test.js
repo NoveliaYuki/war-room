@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn() },
+  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn(), getCvVersions: vi.fn() },
   renderCardGrid: vi.fn(), renderScheduleView: vi.fn(), closeWithFlip: vi.fn((_modal, backdrop, done) => {
     backdrop?.classList.remove('active');
     done?.();
@@ -28,11 +28,16 @@ describe('application entry point', () => {
       <button id="btn-new-process" class="new-process-trigger"></button>
       <button id="btn-theme-toggle"></button>
       <div id="header-controls"><div class="search-wrapper"><button class="search-focus"></button><input id="search-input"></div>
-      <button id="btn-data-management"></button><div class="filter-tabs">
-      <button class="filter-tab" data-filter="ongoing"></button><button class="filter-tab" data-filter="accepted"></button>
-      <button class="filter-tab" data-filter="rejected"></button><button class="filter-tab" data-filter="all"></button>
-      <button class="filter-tab" data-filter="schedule"></button><button class="filter-tab" data-filter="invalid"></button></div></div>
-      <span id="count-all"></span><span id="count-ongoing"></span><span id="count-accepted"></span><span id="count-rejected"></span><span id="count-meetings"></span>`;
+      <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management" role="menuitem"></button></div></div>
+      <nav class="view-controls"><div class="filter-tabs">
+      <div class="filter-current-group"><button id="filter-current-action"><span id="filter-current-label"></span><span id="filter-current-count"></span></button><button id="filter-menu-trigger" aria-expanded="false"></button></div>
+      <div id="filter-menu" hidden><button class="filter-tab" data-filter="ongoing" aria-checked="false"><span class="filter-label">Ongoing</span><span class="tab-count" id="count-ongoing"></span></button>
+      <button class="filter-tab" data-filter="accepted" aria-checked="false"><span class="filter-label">Accepted</span><span class="tab-count" id="count-accepted"></span></button>
+      <button class="filter-tab" data-filter="rejected" aria-checked="false"><span class="filter-label">Rejected</span><span class="tab-count" id="count-rejected"></span></button>
+      <button class="filter-tab" data-filter="all" aria-checked="false"><span class="filter-label">All</span><span class="tab-count" id="count-all"></span></button>
+      <button class="filter-tab" data-filter="invalid" aria-checked="false"><span class="filter-label">Invalid</span></button></div></div>
+      <button id="tab-schedule" class="schedule-trigger" data-filter="schedule" aria-pressed="false"><span>Daily Schedule</span><span class="tab-count" id="count-meetings"></span></button></nav></div>
+      `;
     mocks.api.getJobCounts.mockResolvedValue({ all: 1, ongoing: 1, accepted: 0, rejected: 0 });
     mocks.api.getMeetings.mockResolvedValue([]);
     let resolveInitialJobs;
@@ -40,6 +45,7 @@ describe('application entry point', () => {
       resolveInitialJobs = resolve;
     }));
     mocks.api.createJob.mockResolvedValue({ id: 'new' });
+    mocks.api.getCvVersions.mockResolvedValue([]);
     mocks.renderScheduleView.mockResolvedValue(undefined);
     window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }));
     const appImport = import('../../public/js/app.js');
@@ -51,8 +57,8 @@ describe('application entry point', () => {
     await flush();
     expect(document.body.dataset.appReady).toBe('true');
     expect(mocks.renderCardGrid).toHaveBeenCalled();
-    expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-checked')).toBe('true');
+    expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-checked')).toBe('false');
 
     const themeToggle = document.querySelector('#btn-theme-toggle');
     const animationFrames = [];
@@ -81,6 +87,7 @@ describe('application entry point', () => {
     const headerControls = document.querySelector('#header-controls');
     const dataButton = document.querySelector('#btn-data-management');
     menuToggle.click();
+
     expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
     expect(headerControls.classList.contains('is-open')).toBe(true);
     document.querySelector('.search-focus').click();
@@ -92,9 +99,40 @@ describe('application entry point', () => {
     expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     menuToggle.click();
 
+    document.querySelector('#toolbar-more-trigger').click();
+    expect(document.querySelector('#toolbar-more-options').hidden).toBe(false);
+    dataButton.click();
+    expect(document.querySelector('#toolbar-more-options').hidden).toBe(true);
+    expect(document.querySelector('#btn-open-cv-library')).toBeNull();
+    expect(document.querySelector('.modal-title').textContent).toBe('Data & Backups');
+    document.querySelector('#btn-close-data-modal').click();
+    document.querySelector('#toolbar-more-trigger').click();
+    document.querySelector('#btn-cv-library').click();
+    await flush();
+    expect(document.querySelector('.modal-title').textContent).toBe('CV Library');
+    document.querySelector('#btn-cv-library-back').click();
+    expect(document.querySelector('.modal-title')).toBeNull();
+
+    const moreTrigger = document.querySelector('#toolbar-more-trigger');
+    moreTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('#btn-cv-library'));
+    document.querySelector('#toolbar-more-options').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(dataButton);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#toolbar-more-options').hidden).toBe(true);
+    expect(document.activeElement).toBe(moreTrigger);
+    moreTrigger.click();
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('#toolbar-more-options').hidden).toBe(true);
+
+    document.querySelector('#filter-menu-trigger').click();
+    expect(document.querySelector('#filter-menu').hidden).toBe(false);
+    expect(document.querySelector('#filter-menu-trigger').getAttribute('aria-expanded')).toBe('true');
     document.querySelector('[data-filter="accepted"]').click();
-    expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-checked')).toBe('true');
+    expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-checked')).toBe('false');
+    expect(document.querySelector('#filter-current-label').textContent).toBe('Accepted');
+    expect(document.querySelector('#filter-menu').hidden).toBe(true);
     expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     expect(headerControls.classList.contains('is-open')).toBe(false);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' }));
@@ -250,6 +288,7 @@ describe('application entry point', () => {
 
 
     // Export and import use the same ZIP dialog and confirmation regardless of data adapter.
+    document.querySelector('#toolbar-more-trigger').click();
     dataButton.click();
     expect(document.querySelector('#btn-export-backup').textContent).toContain('ZIP backup');
     expect(document.querySelector('#btn-import-backup').disabled).toBe(true);

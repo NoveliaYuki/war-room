@@ -18,7 +18,7 @@ import (
 
 func TestValidateExportArchiveSizeLimits(t *testing.T) {
 	valid := []models.Job{{Attachments: []models.Attachment{{FileSize: 12}}}}
-	if err := validateExportArchiveSize(valid, []backupLogo{{Size: 8}}); err != nil {
+	if err := validateExportArchiveSize(valid, nil, []backupLogo{{Size: 8}}, t.TempDir()); err != nil {
 		t.Fatalf("valid archive size: %v", err)
 	}
 	for name, job := range map[string]models.Job{
@@ -26,12 +26,12 @@ func TestValidateExportArchiveSizeLimits(t *testing.T) {
 		"oversized file": {Attachments: []models.Attachment{{FileSize: maxAttachmentBytes + 1}}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := validateExportArchiveSize([]models.Job{job}, nil); err == nil {
+			if err := validateExportArchiveSize([]models.Job{job}, nil, nil, t.TempDir()); err == nil {
 				t.Fatal("invalid attachment size should fail")
 			}
 		})
 	}
-	if err := validateExportArchiveSize(nil, []backupLogo{{Size: maxLogoBytes + 1}}); err == nil {
+	if err := validateExportArchiveSize(nil, nil, []backupLogo{{Size: maxLogoBytes + 1}}, t.TempDir()); err == nil {
 		t.Fatal("oversized logo should fail")
 	}
 	entries := maxArchiveEntries
@@ -43,6 +43,35 @@ func TestValidateExportArchiveSizeLimits(t *testing.T) {
 	entries = 0
 	if err := addExportSize(&entries, &expanded, 1, maxAttachmentBytes); err == nil {
 		t.Fatal("expanded archive limit should fail")
+	}
+}
+
+func TestValidateExportArchiveIncludesUniqueCVBlobs(t *testing.T) {
+	directory := t.TempDir()
+	content := []byte("cv content")
+	digestBytes := sha256.Sum256(content)
+	digest := hex.EncodeToString(digestBytes[:])
+	if err := os.WriteFile(filepath.Join(directory, digest), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	versions := []models.CVVersion{{Version: 1, StoredFilename: digest, FileSize: int64(len(content)), SHA256: digest},
+		{Version: 2, StoredFilename: digest, FileSize: int64(len(content)), SHA256: digest}}
+	if err := validateExportArchiveSize(nil, versions, nil, directory); err != nil {
+		t.Fatalf("valid shared blob: %v", err)
+	}
+	assertCVExportRejected(t, directory, models.CVVersion{Version: 1, StoredFilename: "../escape", FileSize: int64(len(content)), SHA256: digest})
+	assertCVExportRejected(t, directory, models.CVVersion{Version: 1, StoredFilename: digest, FileSize: int64(len(content)), SHA256: strings.Repeat("z", 64)})
+	assertCVExportRejected(t, directory, models.CVVersion{Version: 3, StoredFilename: strings.Repeat("a", 64), FileSize: 2, SHA256: strings.Repeat("a", 64)})
+	conflicting := append(versions, models.CVVersion{Version: 3, StoredFilename: digest, FileSize: 1, SHA256: digest})
+	if err := validateExportArchiveSize(nil, conflicting, nil, directory); err == nil {
+		t.Fatal("conflicting metadata for shared blob should fail")
+	}
+}
+
+func assertCVExportRejected(t *testing.T, directory string, version models.CVVersion) {
+	t.Helper()
+	if err := validateExportArchiveSize(nil, []models.CVVersion{version}, nil, directory); err == nil {
+		t.Fatalf("CV version should be rejected: %+v", version)
 	}
 }
 
@@ -71,6 +100,86 @@ func TestCollectCachedLogosDeduplicatesAndValidatesFiles(t *testing.T) {
 	}
 	if _, _, err := findCachedLogo("folder.test", directory); err == nil {
 		t.Fatal("directory should not be accepted as a logo")
+	}
+}
+
+func TestArchiveImportStageCleanupAndCommit(t *testing.T) {
+	root := t.TempDir()
+	attachments := filepath.Join(root, "attachments")
+	cvs := filepath.Join(root, "cvs")
+	staging := filepath.Join(attachments, ".import-test")
+	if err := os.MkdirAll(staging, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(attachments, "new-attachment"), filepath.Join(cvs, "new-cv")} {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("test"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stage := &archiveImportStage{attachmentsDir: attachments, cvDir: cvs, stagingDir: staging,
+		createdFiles: []string{"new-attachment"}, createdCVFiles: []string{"new-cv"}}
+	stage.cleanup()
+	for _, path := range []string{staging, filepath.Join(attachments, "new-attachment"), filepath.Join(cvs, "new-cv")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("uncommitted import path %q remains: %v", path, err)
+		}
+	}
+
+	committed := filepath.Join(attachments, "committed")
+	if err := os.WriteFile(committed, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stage = &archiveImportStage{attachmentsDir: attachments, stagingDir: filepath.Join(attachments, ".import-committed"),
+		createdFiles: []string{"committed"}, committed: true}
+	if err := os.Mkdir(stage.stagingDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	stage.cleanup()
+	if _, err := os.Stat(committed); err != nil {
+		t.Fatalf("committed import file was removed: %v", err)
+	}
+}
+
+func TestRegisterJobRecordIDsDetectsNestedDuplicates(t *testing.T) {
+	job := &models.Job{ID: "job", Stages: []models.Stage{{ID: "stage", Questions: []models.Question{{ID: "question"}}}}}
+	if err := registerJobRecordIDs(map[string]bool{}, job); err != nil {
+		t.Fatalf("unique IDs rejected: %v", err)
+	}
+	for _, duplicate := range []string{"job", "stage", "question"} {
+		if err := registerJobRecordIDs(map[string]bool{duplicate: true}, job); err == nil {
+			t.Errorf("duplicate ID %q was accepted", duplicate)
+		}
+	}
+}
+
+func TestRemoveOldCVBlobsOnlyRemovesUnreferencedSafeFiles(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	version := storeCVTestVersion(t, fixture.service, "resume.pdf", "old CV")
+	blobPath := filepath.Join(fixture.cfg.CVDir, version.StoredFilename)
+	removeOldCVBlobs(fixture.repo, fixture.cfg.CVDir, []models.CVVersion{*version})
+	if _, err := os.Stat(blobPath); err != nil {
+		t.Fatalf("referenced blob removed: %v", err)
+	}
+	if err := fixture.repo.DeleteCVVersion(version.ID); err != nil {
+		t.Fatal(err)
+	}
+	removeOldCVBlobs(fixture.repo, fixture.cfg.CVDir, []models.CVVersion{*version})
+	if _, err := os.Stat(blobPath); !os.IsNotExist(err) {
+		t.Fatalf("unreferenced blob remains: %v", err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("safe"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	unsafe := *version
+	unsafe.StoredFilename = "../" + filepath.Base(outside)
+	removeOldCVBlobs(fixture.repo, fixture.cfg.CVDir, []models.CVVersion{unsafe})
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("unsafe cleanup removed unrelated file: %v", err)
 	}
 }
 
@@ -288,6 +397,135 @@ func TestValidateArchiveReferencesFindsInconsistentMetadata(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStageImportedCVVersionsRejectsInvalidMetadata(t *testing.T) {
+	cases := map[string]func(*backupManifest){
+		"legacy versions":     func(manifest *backupManifest) { manifest.Version = 1 },
+		"missing ID":          func(manifest *backupManifest) { manifest.CVVersions[0].ID = "" },
+		"invalid size":        func(manifest *backupManifest) { manifest.CVVersions[0].FileSize = maxAttachmentBytes + 1 },
+		"invalid checksum":    func(manifest *backupManifest) { manifest.CVVersions[0].SHA256 = "nope" },
+		"unsafe path":         func(manifest *backupManifest) { manifest.CVVersions[0].Path = "cvs/../escape" },
+		"sequence regression": func(manifest *backupManifest) { manifest.NextCVVersion = 1 },
+		"missing selected version": func(manifest *backupManifest) {
+			manifest.Jobs = []models.Job{{ID: "job", SelectedCVVersion: &models.CVVersion{ID: "missing"}}}
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			manifest := validCVImportManifest()
+			mutate(&manifest)
+			service := &JobService{cfg: &config.Config{CVDir: t.TempDir()}}
+			if err := service.stageImportedCVVersions(&manifest, map[string]*zip.File{}, &[]string{}, map[string]bool{}); err == nil {
+				t.Fatal("invalid CV metadata should be rejected")
+			}
+		})
+	}
+}
+
+func TestStageImportedCVVersionsInstallsAndResolvesSelection(t *testing.T) {
+	manifest := validCVImportManifest()
+	manifest.Jobs = []models.Job{{ID: "job", SelectedCVVersion: &models.CVVersion{ID: "cv-1"}}}
+	content := []byte("cv")
+	files, err := inspectFiles(makeTestArchive(t, map[string][]byte{"manifest.json": []byte("{}"), manifest.CVVersions[0].Path: content}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	service := &JobService{cfg: &config.Config{CVDir: directory}}
+	created := []string{}
+	used := map[string]bool{}
+	if err := service.stageImportedCVVersions(&manifest, files, &created, used); err != nil {
+		t.Fatal(err)
+	}
+	assertImportedCVStage(t, directory, content, created, used, &manifest)
+}
+
+func assertImportedCVStage(t *testing.T, directory string, content []byte, created []string, used map[string]bool, manifest *backupManifest) {
+	t.Helper()
+	version := manifest.CVVersions[0]
+	if len(created) != 1 || created[0] != version.StoredFilename || !used[version.Path] {
+		t.Fatalf("created=%v used=%v", created, used)
+	}
+	if manifest.Jobs[0].SelectedCVVersion == nil || manifest.Jobs[0].SelectedCVVersion.Version != 1 || manifest.NextCVVersion != 2 {
+		t.Fatalf("finalized manifest=%+v", manifest)
+	}
+	// #nosec G304 -- created filename came from a validated SHA-256 digest in the import manifest.
+	stored, err := os.ReadFile(filepath.Join(directory, created[0]))
+	if err != nil || !bytes.Equal(stored, content) {
+		t.Fatalf("stored bytes=%q err=%v", stored, err)
+	}
+}
+
+func TestStageImportedCVVersionsRejectsDuplicateNumbers(t *testing.T) {
+	manifest := validCVImportManifest()
+	second := manifest.CVVersions[0]
+	second.ID = "cv-2"
+	manifest.CVVersions = append(manifest.CVVersions, second)
+	manifest.NextCVVersion = 3
+	files, err := inspectFiles(makeTestArchive(t, map[string][]byte{"manifest.json": []byte("{}"), second.Path: []byte("cv")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &JobService{cfg: &config.Config{CVDir: t.TempDir()}}
+	if err := service.stageImportedCVVersions(&manifest, files, &[]string{}, map[string]bool{}); err == nil {
+		t.Fatal("duplicate version numbers should fail")
+	}
+}
+
+func TestStageImportedCVVersionsHandlesExistingAndInvalidBlobs(t *testing.T) {
+	manifest := validCVImportManifest()
+	version := manifest.CVVersions[0]
+	content := []byte("cv")
+	files, err := inspectFiles(makeTestArchive(t, map[string][]byte{"manifest.json": []byte("{}"), version.Path: content}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &JobService{cfg: &config.Config{CVDir: t.TempDir()}}
+	if err := os.WriteFile(filepath.Join(service.cfg.CVDir, version.SHA256), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	created := []string{}
+	if err := service.stageImportedCVVersions(&manifest, files, &created, map[string]bool{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("existing blob unexpectedly recreated: %v", created)
+	}
+
+	for _, scenario := range []struct {
+		name  string
+		files map[string][]byte
+	}{
+		{name: "missing archive blob", files: map[string][]byte{"manifest.json": []byte("{}")}},
+		{name: "wrong content", files: map[string][]byte{"manifest.json": []byte("{}"), version.Path: []byte("zz")}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			candidate := validCVImportManifest()
+			archiveFiles, err := inspectFiles(makeTestArchive(t, scenario.files))
+			if err != nil {
+				t.Fatal(err)
+			}
+			staging := &JobService{cfg: &config.Config{CVDir: t.TempDir()}}
+			if err := staging.stageImportedCVVersions(&candidate, archiveFiles, &[]string{}, map[string]bool{}); err == nil {
+				t.Fatal("invalid CV archive blob should fail")
+			}
+		})
+	}
+}
+
+func inspectFiles(data []byte) (map[string]*zip.File, error) {
+	files, _, _, err := parseTestArchive(data)
+	return files, err
+}
+
+func validCVImportManifest() backupManifest {
+	content := []byte("cv")
+	digestBytes := sha256.Sum256(content)
+	digest := hex.EncodeToString(digestBytes[:])
+	return backupManifest{Version: backupFormatVersion, NextCVVersion: 2, CVVersions: []backupCVVersion{{CVVersion: models.CVVersion{
+		ID: "cv-1", Version: 1, OriginalName: "resume.pdf", FileSize: int64(len(content)), SHA256: digest,
+	}, Path: "cvs/" + digest}}}
 }
 
 func TestExtractArchiveAttachmentEnforcesExactSizeAndExclusiveCreation(t *testing.T) {

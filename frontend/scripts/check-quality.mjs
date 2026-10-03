@@ -5,6 +5,7 @@ import { parse } from "@babel/parser";
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const roots = ["public/js", "tests", "scripts", "../scripts"].map((directory) => path.join(frontendRoot, directory));
+const standaloneSourceModules = ["demo/zipWriter.js"];
 const root = frontendRoot;
 const MAX_COMPLEXITY = 10;
 const FUNCTION_TYPES = new Set([
@@ -233,6 +234,7 @@ function findImportCycles(graph) {
 async function main() {
   const failures = [];
   const files = (await Promise.all(roots.map(collectJavaScriptFiles))).flat();
+  files.push(...standaloneSourceModules.map((modulePath) => path.join(frontendRoot, modulePath)));
   files.push(path.join(frontendRoot, "vitest.config.js"));
   files.sort();
   const sourceFiles = new Set(files);

@@ -17,6 +17,11 @@ type importStatements struct {
 
 // ReplaceAllJobs atomically replaces local process data with an imported archive.
 func (r *Repository) ReplaceAllJobs(jobs []models.Job) error {
+	return r.ReplaceAllJobsWithCV(jobs, nil, false, 1)
+}
+
+// ReplaceAllJobsWithCV replaces jobs and, for a current-format backup, its CV library.
+func (r *Repository) ReplaceAllJobsWithCV(jobs []models.Job, versions []models.CVVersion, replaceCV bool, nextCVVersion int) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -25,18 +30,68 @@ func (r *Repository) ReplaceAllJobs(jobs []models.Job) error {
 	if _, err := tx.Exec("DELETE FROM jobs"); err != nil {
 		return fmt.Errorf("clear existing processes: %w", err)
 	}
+	if replaceCV {
+		if err := replaceImportedCVLibrary(tx, versions, nextCVVersion); err != nil {
+			return err
+		}
+	}
 	statements, err := prepareImportStatements(tx)
 	if err != nil {
 		return err
 	}
 	defer statements.close()
+	if err := insertImportedJobs(statements, jobs); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit imported processes: %w", err)
+	}
+	return nil
+}
+
+func replaceImportedCVLibrary(tx *sql.Tx, versions []models.CVVersion, nextVersion int) error {
+	if _, err := tx.Exec("DELETE FROM cv_versions"); err != nil {
+		return fmt.Errorf("clear existing CV versions: %w", err)
+	}
+	for _, version := range versions {
+		if err := insertImportedCVVersion(tx, version); err != nil {
+			return err
+		}
+	}
+	maxNext := maxCVVersion(versions, nextVersion)
+	if _, err := tx.Exec(`UPDATE cv_version_sequence SET next_version = ? WHERE id = 1`, maxNext); err != nil {
+		return fmt.Errorf("reset CV version sequence: %w", err)
+	}
+	return nil
+}
+
+func insertImportedCVVersion(tx *sql.Tx, version models.CVVersion) error {
+	_, err := tx.Exec(`INSERT INTO cv_versions (id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		version.ID, version.Version, version.OriginalName, version.StoredFilename, version.FileSize, defaultValue(version.MimeType, "application/octet-stream"), version.SHA256, version.UploadedAt)
+	if err != nil {
+		return fmt.Errorf("import CV version %d: %w", version.Version, err)
+	}
+	return nil
+}
+
+func maxCVVersion(versions []models.CVVersion, nextVersion int) int {
+	maxNext := 1
+	for _, version := range versions {
+		if version.Version >= maxNext {
+			maxNext = version.Version + 1
+		}
+	}
+	if nextVersion > maxNext {
+		maxNext = nextVersion
+	}
+	return maxNext
+}
+
+func insertImportedJobs(statements *importStatements, jobs []models.Job) error {
 	for _, job := range jobs {
 		if err := insertImportedJob(statements, job); err != nil {
 			return fmt.Errorf("import process %q: %w", job.ID, err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit imported processes: %w", err)
 	}
 	return nil
 }
@@ -47,8 +102,8 @@ func prepareImportStatements(tx *sql.Tx) (*importStatements, error) {
 		salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 		interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
-		work_arrangement, employment_type, is_referral, order_index, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		work_arrangement, employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return nil, err
 	}
@@ -92,15 +147,16 @@ func (s *importStatements) close() {
 }
 
 func insertImportedJob(statements *importStatements, job models.Job) error {
-	interviewers, err := marshalInterviewers(job.Interviewers)
-	if err != nil {
-		return err
+	interviewers := marshalInterviewers(job.Interviewers)
+	var cvVersionID any
+	if job.SelectedCVVersion != nil {
+		cvVersionID = job.SelectedCVVersion.ID
 	}
 	if _, err := statements.job.Exec(job.ID, job.CompanyName, job.PositionTitle, job.Status, defaultValue(string(job.SalaryType), "unknown"), job.SalaryMin, job.SalaryMax,
 		defaultValue(job.SalaryCurrency, "EUR"), defaultValue(string(job.RecruiterType), "none"), job.RecruiterName, job.RecruiterAgency, job.RecruiterContact,
 		interviewers, job.JobPostURL, job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary, defaultValue(string(job.WorkArrangement), "unknown"),
-		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt); err != nil {
+		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt, cvVersionID); err != nil {
 		return err
 	}
 	for _, stage := range job.Stages {
@@ -118,10 +174,7 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 }
 
 func insertImportedStage(statements *importStatements, stage models.Stage, jobID string) error {
-	interviewers, err := marshalInterviewers(stage.Interviewers)
-	if err != nil {
-		return err
-	}
+	interviewers := marshalInterviewers(stage.Interviewers)
 	if _, err := statements.stage.Exec(stage.ID, jobID, stage.OrderIndex, stage.StageType, stage.CustomTitle, stage.Description, stage.Status,
 		stage.ScheduledAt, stage.MeetingDate, stage.MeetingTime, stage.MeetingURL, defaultValue(stage.MeetingType, "video"), stage.Notes,
 		stage.RecruiterName, defaultValue(string(stage.RecruiterType), "none"), stage.RecruiterAgency, stage.RecruiterContact, interviewers, stage.CreatedAt); err != nil {
@@ -135,13 +188,10 @@ func insertImportedStage(statements *importStatements, stage models.Stage, jobID
 	return nil
 }
 
-func marshalInterviewers(interviewers []models.Interviewer) (string, error) {
+func marshalInterviewers(interviewers []models.Interviewer) string {
 	if interviewers == nil {
-		return "[]", nil
+		return "[]"
 	}
-	data, err := json.Marshal(interviewers)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+	data, _ := json.Marshal(interviewers)
+	return string(data)
 }
