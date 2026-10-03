@@ -35,7 +35,8 @@ prefix such as `feature/`, `fix/`, `docs/`, or `chore/` to make the purpose clea
 Push the topic branch and open a pull request targeting `main`; do not push a
 change directly to `main`, even for a release or a small fix. Merge only through
 the pull request after the required checks pass. Keep GitHub branch protection on
-`main` enabled so direct pushes, force pushes, and branch deletion are blocked.
+`main` enabled so direct pushes, force pushes, and deletion of `main` are blocked.
+Enable automatic deletion of head branches after their pull requests are merged.
 
 ```text
 main → feature/<short-description> → pull request → main
@@ -125,7 +126,7 @@ After an authorized minor or major release pull request is merged and CI passes,
 create and push the matching `vX.Y.0` or `vX.0.0` tag, then publish a GitHub
 release for that tag. Do not publish a release from an unmerged branch or before
 CI passes. Release notes use this template; keep each bullet to no more than two
-sentences and omit an optional section when it has no entries:
+sentences:
 
 ```markdown
 ## Highlights
@@ -134,15 +135,15 @@ sentences and omit an optional section when it has no entries:
 ## What changed
 - List other shipped changes, including fixes accumulated since the prior release.
 
-## Migration notes
-- Include only when a user must take action or a compatibility change needs explanation.
 ```
 
 Use **Highlights** rather than **New features** so the heading also fits major
 improvements and releases whose main value is broader than a single new feature.
 Use **What changed** for the concise change list, including accumulated bug
-fixes; add **Migration notes** only when applicable. Report the release URL, tag,
-commit, and verified CI result when the user authorized those operations.
+fixes. Omit upgrade notes by default for this local app; add an **Upgrade notes**
+section only when a release requires user action or a special manual data or
+compatibility step. Report the release URL, tag, commit, and verified CI result
+when the user authorized those operations.
 
 ## 9. Red Flags — Never / Always
 
