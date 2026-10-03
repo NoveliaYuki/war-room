@@ -31,6 +31,162 @@ func TestLogoExtensionForMimeType(t *testing.T) {
 	}
 }
 
+func TestJobStageAndQuestionServiceCRUD(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	assertJobQueries(t, fixture.service)
+	assertJobUpdates(t, fixture.service)
+	assertStageQuestionLifecycle(t, fixture.service)
+}
+
+func assertJobQueries(t *testing.T, service *JobService) {
+	t.Helper()
+	jobs, err := service.GetAllJobs("ongoing", "Example")
+	if err != nil || len(jobs) != 2 {
+		t.Fatalf("filtered jobs=%d err=%v", len(jobs), err)
+	}
+	counts, err := service.GetJobCounts()
+	if err != nil || counts.All != 2 || counts.Ongoing != 2 {
+		t.Fatalf("counts=%+v err=%v", counts, err)
+	}
+	if err := service.ReorderJobs([]string{"owner-b", "owner-a"}); err != nil {
+		t.Fatalf("reorder jobs: %v", err)
+	}
+	if err := service.ReorderJobs([]string{"owner-a", "owner-a"}); err == nil {
+		t.Fatal("duplicate job order should fail")
+	}
+	if err := service.DeleteJob("owner-b"); err != nil {
+		t.Fatalf("delete job: %v", err)
+	}
+}
+
+func assertJobUpdates(t *testing.T, service *JobService) {
+	t.Helper()
+	blank := "  "
+	if _, err := service.UpdateJob("owner-a", models.UpdateJobInput{PositionTitle: &blank}); !errors.Is(err, ErrPositionTitleRequired) {
+		t.Fatalf("blank title error=%v", err)
+	}
+	title := "Staff Engineer"
+	updated, err := service.UpdateJob("owner-a", models.UpdateJobInput{PositionTitle: &title})
+	if err != nil || updated.PositionTitle != title {
+		t.Fatalf("updated job=%+v err=%v", updated, err)
+	}
+	assertAllJobFieldsUpdate(t, service)
+	if _, err := service.UpdateJob("missing", models.UpdateJobInput{}); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing job update error=%v", err)
+	}
+}
+
+func assertAllJobFieldsUpdate(t *testing.T, service *JobService) {
+	t.Helper()
+	company, title, status := "Updated Co", "Principal Engineer", models.StatusAccepted
+	salaryType, currency := models.SalaryLimited, "USD"
+	minSalary, maxSalary := int64(150), int64(200)
+	recruiterType, recruiterName := models.RecruiterExternal, "Alex Recruiter"
+	recruiterAgency, recruiterContact := "Agency", "alex@example.test"
+	url, avatar, keyword := "https://example.test/job", "seed", "distributed systems"
+	description, overview, domain := "Role description", "Company profile", "example.test"
+	interviewNotes, reasons, experience, expected := "notes", "growth", "platform work", "170k USD"
+	work, employment := models.WorkArrangementRemote, models.EmploymentTypePermanent
+	referral, order := true, 1
+	updated, err := service.UpdateJob("owner-a", models.UpdateJobInput{
+		CompanyName: &company, PositionTitle: &title, Status: &status, SalaryType: &salaryType, SalaryMin: &minSalary,
+		SalaryMax: &maxSalary, SalaryCurrency: &currency, RecruiterType: &recruiterType, RecruiterName: &recruiterName,
+		RecruiterAgency: &recruiterAgency, RecruiterContact: &recruiterContact, Interviewers: []models.Interviewer{{Name: "Jamie", Role: "Hiring manager"}},
+		JobPostURL: &url, AvatarSeed: &avatar, KeywordNote: &keyword, Description: &description, CompanyOverview: &overview,
+		CompanyDomain: &domain, InterviewNotes: &interviewNotes, ReasonsToChange: &reasons, ExperienceNotes: &experience,
+		ExpectedSalary: &expected, WorkArrangement: &work, EmploymentType: &employment, IsReferral: &referral, OrderIndex: &order,
+	})
+	if err != nil || updated.CompanyName != company || updated.Status != status || updated.SalaryMin == nil || *updated.SalaryMin != minSalary || updated.RecruiterName == nil || *updated.RecruiterName != recruiterName || !updated.IsReferral {
+		t.Fatalf("updated fields=%+v err=%v", updated, err)
+	}
+}
+
+func assertStageQuestionLifecycle(t *testing.T, service *JobService) {
+	t.Helper()
+	stage := createAndUpdateTestStage(t, service)
+	assertTestQuestionLifecycle(t, service, stage.ID)
+	if err := service.DeleteStage(stage.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func createAndUpdateTestStage(t *testing.T, service *JobService) *models.Stage {
+	t.Helper()
+	stage, err := service.CreateStage(models.CreateStageInput{JobID: "owner-a", StageType: models.StageTechnical})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description, date, meetingType := "System design", "2030-06-15", "onsite"
+	updated, err := service.UpdateStage(stage.ID, models.UpdateStageInput{Description: &description, MeetingDate: &date, MeetingType: &meetingType})
+	if err != nil || updated.Description != description || updated.MeetingDate == nil || *updated.MeetingDate != date {
+		t.Fatalf("updated stage=%+v err=%v", updated, err)
+	}
+	assertStageMeetingOperations(t, service, stage.ID, date)
+	assertStageOrdering(t, service, stage.ID)
+	return stage
+}
+
+func assertStageMeetingOperations(t *testing.T, service *JobService, stageID, date string) {
+	t.Helper()
+	invalidDate := "invalid"
+	if _, err := service.UpdateStage(stageID, models.UpdateStageInput{MeetingDate: &invalidDate}); !errors.Is(err, ErrInvalidMeetingDate) {
+		t.Fatalf("invalid meeting date error=%v", err)
+	}
+	meeting := "video"
+	if err := service.ScheduleMeeting(stageID, models.ScheduleMeetingInput{MeetingDate: date, MeetingTime: "10:00", MeetingType: &meeting}); err != nil {
+		t.Fatalf("schedule meeting: %v", err)
+	}
+	if _, err := service.GetScheduledMeetings(); err != nil {
+		t.Fatalf("scheduled meetings: %v", err)
+	}
+}
+
+func assertStageOrdering(t *testing.T, service *JobService, stageID string) {
+	t.Helper()
+	if _, err := service.SetCurrentStage(stageID); err != nil {
+		t.Fatalf("set current stage: %v", err)
+	}
+	if err := service.ReorderStages("owner-a", []string{stageID, "stage-a"}); err != nil {
+		t.Fatalf("reorder stages: %v", err)
+	}
+}
+
+func assertTestQuestionLifecycle(t *testing.T, service *JobService, stageID string) {
+	t.Helper()
+	question, err := service.CreateQuestion(models.CreateQuestionInput{StageID: stageID, Question: "  Design a cache  "})
+	if err != nil || question.Question != "Design a cache" {
+		t.Fatalf("question=%+v err=%v", question, err)
+	}
+	updatedText, notes := "Design a distributed cache", "Discuss eviction"
+	asked := true
+	changed, err := service.UpdateQuestion(question.ID, models.UpdateQuestionInput{Question: &updatedText, AnswerNotes: &notes, IsAsked: &asked})
+	if err != nil || changed.Question != updatedText || !changed.IsAsked {
+		t.Fatalf("updated question=%+v err=%v", changed, err)
+	}
+	if err := service.DeleteQuestion(question.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertQuestionReordering(t, service, stageID)
+}
+
+func assertQuestionReordering(t *testing.T, service *JobService, stageID string) {
+	t.Helper()
+	other, err := service.CreateQuestion(models.CreateQuestionInput{StageID: stageID, Question: "Follow-up"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	another, err := service.CreateQuestion(models.CreateQuestionInput{StageID: stageID, Question: "Edge cases"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ReorderQuestions(stageID, []string{other.ID, other.ID}); err == nil {
+		t.Fatal("duplicate question order should fail")
+	}
+	if err := service.ReorderQuestions(stageID, []string{another.ID, other.ID}); err != nil {
+		t.Fatalf("reorder questions: %v", err)
+	}
+}
+
 func TestSetSalaryRangeNormalizesRangesAndTypes(t *testing.T) {
 	minimum, maximum := int64(140), int64(90)
 	requested := models.SalaryType("custom")
@@ -169,7 +325,7 @@ func newAttachmentOwnerFixture(t *testing.T) attachmentOwnerFixture {
 	cfg := &config.Config{
 		DataDir: directory, DBPath: filepath.Join(directory, "service.db"),
 		BackupPath:     filepath.Join(directory, "backup.json"),
-		AttachmentsDir: filepath.Join(directory, "attachments"), LogosDir: filepath.Join(directory, "logos"),
+		AttachmentsDir: filepath.Join(directory, "attachments"), CVDir: filepath.Join(directory, "cvs"), LogosDir: filepath.Join(directory, "logos"),
 	}
 	db, err := database.InitDB(cfg)
 	if err != nil {
@@ -178,8 +334,10 @@ func newAttachmentOwnerFixture(t *testing.T) attachmentOwnerFixture {
 	t.Cleanup(func() { _ = db.Close() })
 	repo := repository.New(db)
 	service := NewJobService(repo, cfg)
-	if err := os.MkdirAll(cfg.AttachmentsDir, 0700); err != nil {
-		t.Fatal(err)
+	for _, dir := range []string{cfg.AttachmentsDir, cfg.CVDir, cfg.LogosDir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, id := range []string{"owner-a", "owner-b"} {
 		job := &models.Job{ID: id, CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
@@ -419,6 +577,82 @@ func TestNormalizeLogoHostRejectsInvalidURLAndDNSLabels(t *testing.T) {
 	for input, expected := range tests {
 		if got := normalizeLogoHost(input); got != expected {
 			t.Errorf("normalizeLogoHost(%q)=%q, want %q", input, got, expected)
+		}
+	}
+}
+
+func TestNormalizeJobWorkDetailsOptions(t *testing.T) {
+	defaultWork, defaultEmployment, err := normalizeJobWorkDetails(models.CreateJobInput{})
+	if err != nil || defaultWork != models.WorkArrangementUnknown || defaultEmployment != models.EmploymentTypeUnknown {
+		t.Fatalf("default work details=%q/%q err=%v", defaultWork, defaultEmployment, err)
+	}
+	remote := models.WorkArrangementRemote
+	permanent := models.EmploymentTypePermanent
+	work, employment, err := normalizeJobWorkDetails(models.CreateJobInput{WorkArrangement: &remote, EmploymentType: &permanent})
+	if err != nil || work != remote || employment != permanent {
+		t.Fatalf("valid work details=%q/%q err=%v", work, employment, err)
+	}
+	invalidWork := models.WorkArrangement("invalid")
+	if _, _, err := normalizeJobWorkDetails(models.CreateJobInput{WorkArrangement: &invalidWork}); err == nil {
+		t.Fatal("invalid work arrangement accepted")
+	}
+	invalidEmployment := models.EmploymentType("invalid")
+	if _, _, err := normalizeJobWorkDetails(models.CreateJobInput{EmploymentType: &invalidEmployment}); err == nil {
+		t.Fatal("invalid employment type accepted")
+	}
+
+}
+
+func TestNormalizeSalaryOptions(t *testing.T) {
+	min, max := int64(120), int64(80)
+	cases := []struct {
+		name             string
+		input            models.CreateJobInput
+		kind             models.SalaryType
+		wantMin, wantMax *int64
+	}{
+		{name: "both reordered", input: models.CreateJobInput{SalaryMin: &min, SalaryMax: &max}, kind: models.SalaryLimited, wantMin: &max, wantMax: &min},
+		{name: "minimum only", input: models.CreateJobInput{SalaryMin: &min}, kind: models.SalaryNoMax, wantMin: &min},
+		{name: "maximum only", input: models.CreateJobInput{SalaryMax: &max}, kind: models.SalaryNoMin, wantMax: &max},
+		{name: "explicit without bounds", input: models.CreateJobInput{SalaryType: ptrSalaryType(models.SalaryLimited)}, kind: models.SalaryLimited},
+		{name: "unknown", input: models.CreateJobInput{}, kind: models.SalaryUnknown},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			kind, gotMin, gotMax := normalizeSalary(test.input)
+			if kind != test.kind || !equalInt64(gotMin, test.wantMin) || !equalInt64(gotMax, test.wantMax) {
+				t.Fatalf("normalized salary=(%q,%v,%v), want (%q,%v,%v)", kind, gotMin, gotMax, test.kind, test.wantMin, test.wantMax)
+			}
+		})
+	}
+}
+
+func ptrSalaryType(value models.SalaryType) *models.SalaryType { return &value }
+
+func equalInt64(left, right *int64) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
+}
+
+func TestUpdateStageFieldBuildersIncludeAllOptionalFields(t *testing.T) {
+	text := func(value string) *string { return &value }
+	status := models.StageStatusCompleted
+	recruiterType := models.RecruiterExternal
+	input := models.UpdateStageInput{
+		CustomTitle: text("Final interview"), Description: text("Panel round"), Status: &status, Notes: text("Bring examples"),
+		MeetingDate: text("2030-06-15"), MeetingTime: text("10:00"), MeetingURL: text("https://meet.example"), MeetingType: text("video"),
+		RecruiterName: text("Alex"), RecruiterType: &recruiterType, RecruiterAgency: text("Agency"), RecruiterContact: text("alex@example.test"),
+		Interviewers: []models.Interviewer{{Name: "Pat", Role: "Engineer"}},
+	}
+	fields := make(map[string]interface{})
+	addStageCoreFields(fields, input)
+	addStageMeetingFields(fields, input)
+	addStageRecruiterFields(fields, input)
+	for _, key := range []string{"custom_title", "description", "status", "notes", "interviewers_json", "meeting_date", "meeting_time", "meeting_url", "meeting_type", "recruiter_name", "recruiter_type", "recruiter_agency", "recruiter_contact"} {
+		if _, ok := fields[key]; !ok {
+			t.Errorf("update field %q missing from built map", key)
 		}
 	}
 }

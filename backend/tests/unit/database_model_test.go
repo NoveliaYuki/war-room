@@ -14,6 +14,14 @@ import (
 	"war-room/backend/pkg/models"
 )
 
+func TestCVVersionSnapshotRoundTrip(t *testing.T) {
+	original := models.CVVersion{ID: "cv-1", Version: 1, OriginalName: "resume.pdf", StoredFilename: "sha.pdf", FileSize: 12,
+		MimeType: "application/pdf", SHA256: "digest", UploadedAt: 42}
+	if restored := original.Snapshot().CVVersion(); restored != original {
+		t.Fatalf("snapshot round trip=%+v want=%+v", restored, original)
+	}
+}
+
 // TestForeignKeysApplyToEveryPooledConnection verifies per-connection SQLite integrity.
 func TestForeignKeysApplyToEveryPooledConnection(t *testing.T) {
 	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "integrity.db")}
@@ -49,7 +57,7 @@ func TestVersionedMigrationRejectsNewerSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize database: %v", err)
 	}
-	if _, err := db.Exec("INSERT INTO schema_migrations(version) VALUES (7)"); err != nil {
+	if _, err := db.Exec("INSERT INTO schema_migrations(version) VALUES (8)"); err != nil {
 		t.Fatalf("insert future migration: %v", err)
 	}
 	if err := db.Close(); err != nil {

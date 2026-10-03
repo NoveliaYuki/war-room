@@ -35,6 +35,9 @@ func main() {
 
 	repo := repository.New(db)
 	jobSvc := service.NewJobService(repo, cfg)
+	if err := jobSvc.MigrateLegacyCVAttachments(); err != nil {
+		log.Fatalf("Fatal: Failed to migrate legacy CV attachments: %v", err)
+	}
 	logoSvc := service.NewLogoService(cfg)
 	h := handlers.NewHandler(jobSvc, logoSvc, cfg)
 

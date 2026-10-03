@@ -15,7 +15,32 @@ const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024;
 const MAX_ARCHIVE_MANIFEST_BYTES = 20 * 1024 * 1024;
 const MAX_ARCHIVE_LOGO_BYTES = 1024 * 1024;
+const CV_VERSIONS_KEY = "war-room-demo-cv-versions-v1";
+const NEXT_CV_VERSION_KEY = "war-room-demo-next-cv-version-v1";
 const clone = (value) => JSON.parse(JSON.stringify(value));
+
+function readDemoCvVersions() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(CV_VERSIONS_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDemoCvVersions(versions) {
+  window.localStorage.setItem(CV_VERSIONS_KEY, JSON.stringify(versions));
+}
+
+function getDemoNextCvVersion(versions = readDemoCvVersions()) {
+  const saved = Number(window.localStorage.getItem(NEXT_CV_VERSION_KEY));
+  const minimum = Math.max(1, ...versions.map((version) => (Number(version.version_number) || 0) + 1));
+  return Number.isInteger(saved) && saved >= minimum ? saved : minimum;
+}
+
+function saveDemoNextCvVersion(nextVersion) {
+  window.localStorage.setItem(NEXT_CV_VERSION_KEY, String(nextVersion));
+}
 
 function refreshDemoMeetingDates(records, today) {
   if (!Array.isArray(records)) return;
@@ -105,6 +130,35 @@ function validateBackup(value) {
       }
     }
   }
+  const importedCvVersions = Array.isArray(value.cv_versions) ? clone(value.cv_versions) : [];
+  if (importedCvVersions.length > 1000) throw new Error("The backup contains too many CV versions.");
+  const cvIds = new Set();
+  for (const version of importedCvVersions) {
+    const checksum = String(version?.sha256 || "").toLowerCase();
+    if (!version || typeof version.id !== "string" || !version.id.trim() || cvIds.has(version.id)
+      || !Number.isInteger(Number(version.version_number)) || Number(version.version_number) < 1
+      || typeof version.original_name !== "string" || !version.original_name
+      || version.path !== `cvs/${checksum}`
+      || !Number.isInteger(Number(version.file_size)) || Number(version.file_size) < 0
+      || !/^[a-f0-9]{64}$/.test(checksum)) {
+      throw new Error("The backup contains invalid CV version metadata.");
+    }
+    version.sha256 = checksum;
+    version.stored_file_id = checksum;
+    cvIds.add(version.id);
+  }
+  const minimumNextCVVersion = Math.max(1, ...importedCvVersions.map((version) => Number(version.version_number) + 1));
+  const providedNextCVVersion = Number(value.next_cv_version);
+  if (value.next_cv_version !== undefined && (!Number.isInteger(providedNextCVVersion) || providedNextCVVersion < minimumNextCVVersion)) {
+    throw new Error("The backup CV version sequence is lower than its saved versions.");
+  }
+  const nextCVVersion = Number.isInteger(providedNextCVVersion) && providedNextCVVersion >= minimumNextCVVersion
+    ? providedNextCVVersion : minimumNextCVVersion;
+  for (const job of importedJobs) {
+    if (job.selected_cv_version && !cvIds.has(String(job.selected_cv_version.id || ""))) {
+      throw new Error("A process refers to a CV version missing from the backup.");
+    }
+  }
   const validJobIds = new Set(importedJobs.map((job) => job.id));
   const importedLogos = value.company_logos ?? {};
   if (!importedLogos || typeof importedLogos !== "object" || Array.isArray(importedLogos)) {
@@ -118,7 +172,7 @@ function validateBackup(value) {
     logoBytes += dataUrl.length;
     if (logoBytes > MAX_BACKUP_BYTES) throw new Error("Company icons exceed the demo backup size limit.");
   }
-  return { jobs: importedJobs, logos: importedLogos };
+  return { jobs: importedJobs, logos: importedLogos, cvVersions: importedCvVersions, nextCVVersion };
 }
 
 function findZipEntry(view, bytes, entry) {
@@ -225,8 +279,11 @@ async function readApplicationZip(file) {
   } catch {
     throw new Error("The ZIP backup manifest is not valid JSON.");
   }
-  if (manifest?.format !== "war-room-backup" || manifest.version !== 1 || !Array.isArray(manifest.jobs)) {
+  if (manifest?.format !== "war-room-backup" || ![1, 2].includes(manifest.version) || !Array.isArray(manifest.jobs)) {
     throw new Error("The ZIP is not a supported War Room backup.");
+  }
+  if (manifest.version === 1 && Array.isArray(manifest.cv_versions) && manifest.cv_versions.length) {
+    throw new Error("Legacy v1 backups cannot contain CV versions.");
   }
   const jobs = manifest.jobs.map((job) => {
     if (!job || typeof job !== "object" || Array.isArray(job)) return job;
@@ -278,7 +335,27 @@ async function readApplicationZip(file) {
       files.set(attachment.id, new Blob([fileBytes], { type: attachment.mime_type || "application/octet-stream" }));
     }
   }
-  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, jobs, company_logos: companyLogos, files };
+  const cvVersions = Array.isArray(manifest.cv_versions) ? manifest.cv_versions : [];
+  if (cvVersions.length > 1000) throw new Error("The backup contains too many CV versions.");
+  for (const version of cvVersions) {
+    const checksum = String(version?.sha256 || "").toLowerCase();
+    if (!version || typeof version.id !== "string" || !version.id || !/^[a-f0-9]{64}$/.test(checksum)
+      || version.path !== `cvs/${checksum}` || !Number.isInteger(Number(version.version_number))
+      || Number(version.version_number) < 1 || typeof version.original_name !== "string" || !version.original_name
+      || !Number.isInteger(Number(version.file_size)) || Number(version.file_size) < 0) {
+      throw new Error("The ZIP backup contains invalid CV version metadata.");
+    }
+    const entry = entries.get(version.path);
+    if (!entry || entry.uncompressedSize > 50 * 1024 * 1024) throw new Error("The ZIP backup is missing a CV version file.");
+    const fileBytes = await readZipEntry(view, bytes, entry, 50 * 1024 * 1024);
+    if (fileBytes.length !== version.file_size || await sha256(fileBytes) !== checksum) {
+      throw new Error("A CV version in the ZIP backup failed validation.");
+    }
+    version.sha256 = checksum;
+    version.stored_file_id = checksum;
+    files.set(checksum, new Blob([fileBytes], { type: version.mime_type || "application/pdf" }));
+  }
+  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, jobs, company_logos: companyLogos, files, cv_versions: cvVersions, next_cv_version: manifest.next_cv_version };
 }
 
 async function sha256(bytes) {
@@ -300,6 +377,8 @@ async function makeZipBackup() {
   const backupJobs = clone(jobs);
   const entries = [];
   const attachmentSHA256 = {};
+  const backupCvVersions = clone(readDemoCvVersions());
+  const cvArchivePaths = new Set();
   for (const job of backupJobs) {
     for (const attachment of job.attachments || []) {
       const blob = await readFile(attachment.id);
@@ -311,6 +390,31 @@ async function makeZipBackup() {
       attachment.file_size = bytes.length;
       attachmentSHA256[attachment.id] = await sha256(bytes);
       entries.push([path, bytes]);
+    }
+  }
+  for (const version of backupCvVersions) {
+    const blob = await readFile(version.stored_file_id || version.id);
+    if (!blob) throw new Error(`CV version ${version.version_number} is missing from browser storage.`);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const storageId = version.stored_file_id || version.id;
+    version.stored_file_id = storageId;
+    version.file_size = bytes.length;
+    version.sha256 = await sha256(bytes);
+    version.path = `cvs/${version.sha256}`;
+    if (!cvArchivePaths.has(version.path)) {
+      entries.push([version.path, bytes]);
+      cvArchivePaths.add(version.path);
+    }
+  }
+  const backupCvById = new Map(backupCvVersions.map((version) => [version.id, version]));
+  for (const job of backupJobs) {
+    const selected = job.selected_cv_version;
+    const version = selected && backupCvById.get(selected.id);
+    if (version) {
+      job.selected_cv_version = {
+        id: version.id, version_number: version.version_number, original_name: version.original_name,
+        file_size: version.file_size, mime_type: version.mime_type, sha256: version.sha256, uploaded_at: version.uploaded_at,
+      };
     }
   }
   const logos = [];
@@ -330,7 +434,8 @@ async function makeZipBackup() {
     entries.push([path, bytes]);
     seenDomains.add(domain);
   }
-  const manifest = { format: "war-room-backup", version: 1, exported_at: new Date().toISOString(), jobs: backupJobs, attachment_sha256: attachmentSHA256, logos };
+  const publicCvVersions = backupCvVersions.map(({ stored_file_id, stored_filename, ...version }) => version);
+  const manifest = { format: "war-room-backup", version: 2, exported_at: new Date().toISOString(), jobs: backupJobs, attachment_sha256: attachmentSHA256, cv_versions: publicCvVersions, next_cv_version: getDemoNextCvVersion(backupCvVersions), logos };
   entries.push(["manifest.json", new TextEncoder().encode(JSON.stringify(manifest))]);
   return createZip(entries);
 }
@@ -453,7 +558,7 @@ export const demoApi = {
   async exportBackup() { return makeZipBackup(); },
   async importBackup(file, allowEmpty = false) {
     const backup = await readApplicationZip(file);
-    const { jobs: importedJobs, logos } = validateBackup(backup);
+    const { jobs: importedJobs, logos, cvVersions, nextCVVersion } = validateBackup(backup);
     const files = backup.files;
     if (importedJobs.length === 0 && !allowEmpty) {
       const error = new Error("The backup contains no saved demo processes.");
@@ -462,9 +567,13 @@ export const demoApi = {
     }
     const previousJobs = window.localStorage.getItem(STORAGE_KEY);
     const previousLogos = window.localStorage.getItem(DEMO_LOGOS_STORAGE_KEY);
+    const previousCvVersions = window.localStorage.getItem(CV_VERSIONS_KEY);
+    const previousNextCVVersion = window.localStorage.getItem(NEXT_CV_VERSION_KEY);
     try {
       window.localStorage.setItem(DEMO_LOGOS_STORAGE_KEY, JSON.stringify(logos));
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(importedJobs));
+      saveDemoCvVersions(cvVersions);
+      saveDemoNextCvVersion(nextCVVersion);
       await replaceFiles(files);
     } catch {
       try {
@@ -472,6 +581,10 @@ export const demoApi = {
         else window.localStorage.setItem(STORAGE_KEY, previousJobs);
         if (previousLogos === null) window.localStorage.removeItem(DEMO_LOGOS_STORAGE_KEY);
         else window.localStorage.setItem(DEMO_LOGOS_STORAGE_KEY, previousLogos);
+        if (previousCvVersions === null) window.localStorage.removeItem(CV_VERSIONS_KEY);
+        else window.localStorage.setItem(CV_VERSIONS_KEY, previousCvVersions);
+        if (previousNextCVVersion === null) window.localStorage.removeItem(NEXT_CV_VERSION_KEY);
+        else window.localStorage.setItem(NEXT_CV_VERSION_KEY, previousNextCVVersion);
       } catch {
         // Preserve the import error when browser storage is unavailable.
       }
@@ -494,6 +607,49 @@ export const demoApi = {
       if (blob) attachment.download_url = URL.createObjectURL(blob);
     }
     return job;
+  },
+  async getCvVersions() { return clone(readDemoCvVersions()); },
+  async uploadCvVersion(file) {
+    if (!(file instanceof Blob) || !file.size) throw new Error("Choose a non-empty CV file.");
+    const versions = readDemoCvVersions();
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    const sha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const existing = versions.find((version) => version.sha256 === sha256);
+    const nextVersion = getDemoNextCvVersion(versions);
+    const record = { id: crypto.randomUUID(), version_number: nextVersion, original_name: file.name || "CV.pdf", file_size: file.size, mime_type: file.type || "application/pdf", sha256, uploaded_at: Math.floor(Date.now() / 1000), stored_file_id: existing?.stored_file_id || existing?.id || "" };
+    if (!record.stored_file_id) {
+      record.stored_file_id = record.id;
+      await saveFile(record.stored_file_id, file);
+    }
+    versions.unshift(record);
+    saveDemoCvVersions(versions);
+    saveDemoNextCvVersion(nextVersion + 1);
+    return clone(record);
+  },
+  async downloadCvVersion(id) {
+    const version = readDemoCvVersions().find((item) => item.id === String(id));
+    if (!version) throw new Error("CV version not found");
+    const blob = await readFile(version.stored_file_id || version.id);
+    if (!blob) throw new Error("CV version not found");
+    return blob;
+  },
+  async deleteCvVersion(id) {
+    if (jobs.some((job) => job.selected_cv_version?.id === String(id))) throw new Error("This CV version is assigned to a job and cannot be deleted.");
+    const versions = readDemoCvVersions();
+    if (!versions.some((version) => version.id === String(id))) throw new Error("CV version not found");
+    const remaining = versions.filter((version) => version.id !== String(id));
+    const storageId = versions.find((version) => version.id === String(id))?.stored_file_id || String(id);
+    if (!remaining.some((version) => (version.stored_file_id || version.id) === storageId)) await deleteFile(storageId);
+    saveDemoCvVersions(remaining);
+    return { success: true };
+  },
+  async setJobCvVersion(jobId, versionId) {
+    const job = getJob(jobId);
+    const version = versionId === null ? null : readDemoCvVersions().find((item) => item.id === String(versionId));
+    if (versionId !== null && !version) throw new Error("CV version not found");
+    job.selected_cv_version = version ? clone(version) : null;
+    save();
+    return { success: true, selected_cv_version: clone(job.selected_cv_version) };
   },
   async createJob(payload) { const job = makeJob(payload); jobs.push(job); save(); return clone(job); },
   async updateJob(id, payload) { const job = getJob(id); Object.assign(job, payload, { updated_at: Date.now() }); refreshDerived(job); save(); return clone(job); },
@@ -541,6 +697,8 @@ export const demoApi = {
 export async function resetDemoData() {
   await replaceFiles(new Map());
   jobs = clone(initialJobs);
+  window.localStorage.removeItem(CV_VERSIONS_KEY);
+  window.localStorage.removeItem(NEXT_CV_VERSION_KEY);
   window.localStorage.removeItem(DEMO_LOGOS_STORAGE_KEY);
   cacheDemoLogos({});
   save();

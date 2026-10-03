@@ -54,6 +54,28 @@
 .data-transfer-header .modal-title { margin: 0; }
 .data-transfer-content { overflow-y: auto; padding: 22px 26px 26px; }
 .data-transfer-section + .data-transfer-section { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--border-subtle); }
+.cv-library-content { min-height: 220px; }
+.cv-library-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.cv-library-back { display: inline-flex; align-items: center; gap: 5px; padding: 8px 0; border: 0; color: var(--text-secondary); background: transparent; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cv-library-back:hover { color: var(--text-primary); }
+.cv-library-back:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 3px; border-radius: 4px; }
+.cv-upload-label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.cv-library-file-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); border: 0; }
+.cv-version-list { display: grid; gap: 9px; }
+.cv-version-row { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 14px; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); }
+.cv-version-info { display: grid; min-width: 0; gap: 3px; }
+.cv-version-filename { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cv-version-date { color: var(--text-muted); font-size: 12px; }
+.cv-version-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+.cv-version-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.cv-library-empty { margin: 0; padding: 18px 0; color: var(--text-muted); font-size: 13px; }
+.job-cv-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 10px; padding: 9px 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); font-size: 12px; }
+.job-cv-version { min-width: 0; flex: 1 1 140px; overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.job-cv-version.is-empty { color: var(--text-muted); font-style: italic; }
+.job-cv-row .btn-secondary, .job-cv-row .btn-primary { flex: 0 0 auto; padding: 5px 10px; font-size: 11px; }
+.job-cv-row select { min-width: 0; max-width: 100%; flex: 1 1 220px; padding: 7px 9px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--bg-surface); }
+.job-cv-picker-label { font-weight: 600; }
+.job-cv-picker-status { flex-basis: 100%; color: var(--text-danger, #dc2626); overflow-wrap: anywhere; }
 .data-transfer-section h3 { margin: 0 0 7px; font-size: 15px; }
 .data-transfer-section p { margin: 0 0 14px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .data-transfer-file-label { display: block; margin-bottom: 6px; color: var(--text-secondary); font-size: 12px; }
@@ -1188,6 +1210,10 @@ body.is-resizing-split * {
   .modal-container { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
   .modal-container.data-transfer-modal { width: 100%; max-width: none; height: 100dvh; max-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
   .data-transfer-content { padding: 20px 16px 28px; }
+  .cv-library-entry { align-items: flex-start; flex-direction: column; }
+  .cv-version-row { align-items: flex-start; flex-direction: column; }
+  .cv-version-actions { width: 100%; }
+  .cv-version-actions button { flex: 1 1 0; justify-content: center; }
   .modal-header { padding: 12px 8px; }
   .modal-header-main { grid-template-columns: 42px minmax(0, 1fr); column-gap: 8px; }
   .modal-avatar { width: 42px; height: 42px; }

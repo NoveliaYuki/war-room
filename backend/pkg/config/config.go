@@ -17,6 +17,7 @@ type Config struct {
 	BackupPath        string
 	InitialBackupPath string
 	AttachmentsDir    string
+	CVDir             string
 	LogosDir          string
 	StaticDir         string
 	CORSAllowed       string
@@ -34,6 +35,7 @@ func Load() *Config {
 		BackupPath:        filepath.Join(absDataDir, "backup.json"),
 		InitialBackupPath: os.Getenv("WARROOM_INITIAL_BACKUP"),
 		AttachmentsDir:    filepath.Join(absDataDir, "attachments"),
+		CVDir:             filepath.Join(absDataDir, "cvs"),
 		LogosDir:          filepath.Join(absDataDir, "logos"),
 		StaticDir:         configuredStaticDirectory(),
 		CORSAllowed:       valueOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"),
@@ -102,7 +104,7 @@ func boolOrDefault(name string, fallback bool) bool {
 }
 
 func createDataDirectories(cfg *Config) error {
-	for _, directory := range []string{cfg.DataDir, cfg.AttachmentsDir, cfg.LogosDir} {
+	for _, directory := range []string{cfg.DataDir, cfg.AttachmentsDir, cfg.CVDir, cfg.LogosDir} {
 		if err := os.MkdirAll(directory, 0750); err != nil {
 			return fmt.Errorf("create data directory %q: %w", directory, err)
 		}

@@ -6,6 +6,31 @@ import (
 	"testing"
 )
 
+func TestChainSecurityHeadersAndCorsMiddleware(t *testing.T) {
+	called := false
+	endpoint := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusAccepted)
+	})
+	handler := Chain(endpoint, RequestLogger, SecurityHeaders, CORS("https://app.example"))
+	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request.Header.Set("Origin", "https://app.example")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if !called || recorder.Code != http.StatusAccepted || recorder.Header().Get("X-Frame-Options") != "DENY" || recorder.Header().Get("Access-Control-Allow-Origin") != "https://app.example" {
+		t.Fatalf("middleware response: called=%t status=%d headers=%v", called, recorder.Code, recorder.Header())
+	}
+
+	called = false
+	request = httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request.Header.Set("Origin", "https://blocked.example")
+	recorder = httptest.NewRecorder()
+	CORS("https://app.example")(endpoint).ServeHTTP(recorder, request)
+	if called || recorder.Code != http.StatusForbidden {
+		t.Fatalf("blocked origin reached handler: called=%t status=%d", called, recorder.Code)
+	}
+}
+
 func TestHandleCORSPreflightDecisions(t *testing.T) {
 	tests := []struct {
 		name    string

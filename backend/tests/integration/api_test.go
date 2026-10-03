@@ -42,10 +42,11 @@ func setupTestServer(t *testing.T) (*httptest.Server, *config.Config, func()) {
 		DBPath:         filepath.Join(tmpDir, "test_jobs.db"),
 		BackupPath:     filepath.Join(tmpDir, "test_backup.json"),
 		AttachmentsDir: filepath.Join(tmpDir, "attachments"),
+		CVDir:          filepath.Join(tmpDir, "cvs"),
 		LogosDir:       filepath.Join(tmpDir, "logos"),
 		CORSAllowed:    "*",
 	}
-	for _, directory := range []string{cfg.AttachmentsDir, cfg.LogosDir} {
+	for _, directory := range []string{cfg.AttachmentsDir, cfg.CVDir, cfg.LogosDir} {
 		if err := os.MkdirAll(directory, 0700); err != nil {
 			t.Fatalf("create integration directory: %v", err)
 		}
@@ -92,6 +93,74 @@ func TestAPI_JobLifecycle(t *testing.T) {
 	assertLifecycleMeeting(t, client, ts.URL)
 	createLifecycleQuestion(t, client, ts.URL, stageID)
 	deleteLifecycleJob(t, client, ts.URL, job.ID)
+}
+
+func TestAPI_CVVersionLibraryAndJobAssignment(t *testing.T) {
+	ts, _, cleanup := setupTestServer(t)
+	defer cleanup()
+	client := ts.Client()
+	job := createLifecycleJob(t, client, ts.URL)
+	first := uploadTestCV(t, client, ts.URL, "resume.pdf", "same CV bytes")
+	second := uploadTestCV(t, client, ts.URL, "resume-copy.pdf", "same CV bytes")
+	if first.Version != 1 || second.Version != 2 || first.SHA256 != second.SHA256 {
+		t.Fatalf("uploaded versions=%+v %+v", first, second)
+	}
+	if first.UploadedAt <= 0 || second.UploadedAt <= 0 {
+		t.Fatal("CV upload dates were not recorded")
+	}
+	response := mustRequest(t, client, http.MethodPut, ts.URL+"/api/jobs/"+job.ID+"/cv-version", `{"version_id":"`+first.ID+`"}`)
+	requireStatus(t, response, http.StatusOK)
+	_ = response.Body.Close()
+	detailResponse := mustRequest(t, client, http.MethodGet, ts.URL+"/api/jobs/"+job.ID, "")
+	var detail models.Job
+	if err := json.NewDecoder(detailResponse.Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+	_ = detailResponse.Body.Close()
+	if detail.SelectedCVVersion == nil || detail.SelectedCVVersion.ID != first.ID {
+		t.Fatalf("selected CV=%+v", detail.SelectedCVVersion)
+	}
+	response = mustRequest(t, client, http.MethodDelete, ts.URL+"/api/cv/versions/"+first.ID, "")
+	requireStatus(t, response, http.StatusConflict)
+	_ = response.Body.Close()
+	response = mustRequest(t, client, http.MethodPut, ts.URL+"/api/jobs/"+job.ID+"/cv-version", `{"version_id":null}`)
+	requireStatus(t, response, http.StatusOK)
+	_ = response.Body.Close()
+	response = mustRequest(t, client, http.MethodDelete, ts.URL+"/api/cv/versions/"+second.ID, "")
+	requireStatus(t, response, http.StatusNoContent)
+	_ = response.Body.Close()
+}
+
+func uploadTestCV(t *testing.T, client *http.Client, baseURL, filename, contents string) models.CVVersion {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	file, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(file, contents); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(http.MethodPost, baseURL+"/api/cv/versions", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	requireStatus(t, response, http.StatusCreated)
+	var version models.CVVersion
+	if err := json.NewDecoder(response.Body).Decode(&version); err != nil {
+		t.Fatal(err)
+	}
+	return version
 }
 
 func TestAPI_ClearMeetingScheduleClearsJoinURLAndKeepsNotes(t *testing.T) {

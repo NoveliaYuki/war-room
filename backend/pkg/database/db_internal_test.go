@@ -1,7 +1,9 @@
 package database
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +21,133 @@ type migrationTestExecutor struct {
 	db        *sql.DB
 	failQuery string
 	failExec  string
+}
+
+func TestAddCVVersionJobReferenceLeavesExistingColumnUntouched(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE jobs ADD COLUMN cv_version_id TEXT NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := addCVVersionJobReference(db); err != nil {
+		t.Fatalf("existing jobs.cv_version_id should be accepted: %v", err)
+	}
+}
+
+func TestInitDBReturnsDatabaseOpenErrors(t *testing.T) {
+	openError := errors.New("driver unavailable")
+	_, err := initDBWithOpener(&config.Config{DBPath: filepath.Join(t.TempDir(), "db.sqlite")}, func(string, string) (*sql.DB, error) {
+		return nil, openError
+	})
+	if !errors.Is(err, openError) {
+		t.Fatalf("database open error=%v, want wrapped opener error", err)
+	}
+}
+
+func TestInitDBReturnsSchemaExecutionErrors(t *testing.T) {
+	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "readonly.db")}
+	setup, err := sql.Open("sqlite", sqliteDataSource(cfg.DBPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = initDBWithOpener(cfg, func(_, source string) (*sql.DB, error) {
+		return sql.Open("sqlite", source+"&mode=ro")
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed to execute schema") {
+		t.Fatalf("schema execution error=%v", err)
+	}
+}
+
+func TestRestoreRecoveryCVSnapshotValidatesBlobAndSequence(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		filename string
+		content  string
+		wantErr  bool
+	}{
+		{name: "unsafe filename", filename: "../escape", content: "cv", wantErr: true},
+		{name: "missing blob", filename: strings.Repeat("a", 64), content: "", wantErr: true},
+		{name: "checksum mismatch", filename: strings.Repeat("a", 64), content: "wrong", wantErr: true},
+		{name: "valid", filename: strings.Repeat("a", 64), content: "cv"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, cvDir := recoveryDatabase(t)
+			content := []byte(test.content)
+			if test.name != "missing blob" && test.filename != "../escape" {
+				if err := os.WriteFile(filepath.Join(cvDir, test.filename), content, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			digest := hex.EncodeToString(sha256.New().Sum(nil))
+			if test.name == "valid" {
+				digestBytes := sha256.Sum256(content)
+				digest = hex.EncodeToString(digestBytes[:])
+			}
+			snapshot := models.RecoverySnapshot{NextCVVersion: 8, CVVersions: []models.CVVersionSnapshot{{ID: "cv-1", Version: 3, OriginalName: "resume.pdf", StoredFilename: test.filename, FileSize: int64(len(content)), SHA256: digest, UploadedAt: 42}}}
+			err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), cvDir)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("restore error=%v, want error=%t", err, test.wantErr)
+			}
+			if !test.wantErr {
+				var next int
+				if err := db.QueryRow(`SELECT next_version FROM cv_version_sequence WHERE id = 1`).Scan(&next); err != nil || next != 8 {
+					t.Fatalf("next version=%d err=%v", next, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRestoreRecoveryCVSnapshotRollsBackFailedWrites(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	content := []byte("cv")
+	digestBytes := sha256.Sum256(content)
+	digest := hex.EncodeToString(digestBytes[:])
+	if err := os.WriteFile(filepath.Join(directory, digest), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := models.RecoverySnapshot{Jobs: []models.Job{}, CVVersions: []models.CVVersionSnapshot{{ID: "cv", Version: 1, OriginalName: "resume.pdf", StoredFilename: digest, FileSize: 2, SHA256: digest}}}
+	if err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), directory); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), directory); err == nil {
+		t.Fatal("duplicate CV metadata should fail restore")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM cv_versions`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("versions after rollback=%d err=%v", count, err)
+	}
+	sequenceDB, _ := recoveryDatabase(t)
+	if _, err := sequenceDB.Exec(`DROP TABLE cv_version_sequence`); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreRecoverySnapshot(sequenceDB, models.RecoverySnapshot{Jobs: []models.Job{}}, t.TempDir(), directory); err == nil {
+		t.Fatal("missing sequence table should fail restore")
+	}
+}
+
+func recoveryDatabase(t *testing.T) (*sql.DB, string) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := &config.Config{DataDir: dir, DBPath: filepath.Join(dir, "recovery.sqlite"), BackupPath: filepath.Join(dir, "backup.json"),
+		AttachmentsDir: filepath.Join(dir, "attachments"), CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfg.CVDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db, cfg.CVDir
 }
 
 func (executor migrationTestExecutor) Exec(query string, args ...any) (sql.Result, error) {
@@ -67,6 +196,29 @@ func TestEnsureOptionalColumnsOnLegacyJobsTable(t *testing.T) {
 	}
 	if err := ensureEmploymentTypeColumn(db); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunCVSchemaMigrationReportsStepFailures(t *testing.T) {
+	for _, test := range []struct {
+		name, failExec, failQuery string
+	}{
+		{name: "CV table", failExec: "CREATE TABLE IF NOT EXISTS cv_versions"},
+		{name: "sequence table", failExec: "CREATE TABLE IF NOT EXISTS cv_version_sequence"},
+		{name: "inspect job column", failQuery: "PRAGMA table_info"},
+		{name: "job reference", failExec: "ALTER TABLE jobs ADD COLUMN cv_version_id"},
+		{name: "version index", failExec: "idx_cv_versions_version"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+				t.Fatal(err)
+			}
+			executor := migrationTestExecutor{db: db, failExec: test.failExec, failQuery: test.failQuery}
+			if err := runSchemaMigration(executor, 7); err == nil {
+				t.Fatal("migration step failure should be returned")
+			}
+		})
 	}
 }
 

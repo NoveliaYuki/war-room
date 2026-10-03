@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
+	"path/filepath"
+	"war-room/backend/pkg/config"
+	"war-room/backend/pkg/database"
 	"war-room/backend/pkg/models"
 )
 
@@ -14,16 +17,123 @@ type rowsResult struct {
 	err  error
 }
 
+func TestReplaceAllJobsWithCVRestoresGappedSequenceAndSelection(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	versions := []models.CVVersion{{ID: "cv-1", Version: 1, OriginalName: "old.pdf", StoredFilename: "hash-1", FileSize: 3, SHA256: "hash-1"},
+		{ID: "cv-3", Version: 3, OriginalName: "new.pdf", StoredFilename: "hash-3", FileSize: 3, SHA256: "hash-3"}}
+	job := &models.Job{ID: "job-new", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone,
+		SelectedCVVersion: &versions[1]}
+	if err := repo.ReplaceAllJobsWithCV([]models.Job{*job}, versions, true, 7); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := repo.GetJobByID("job-new")
+	if err != nil || loaded.SelectedCVVersion == nil || loaded.SelectedCVVersion.ID != "cv-3" {
+		t.Fatalf("job=%+v err=%v", loaded, err)
+	}
+	next, err := repo.GetNextCVVersion()
+	if err != nil || next != 7 {
+		t.Fatalf("next version=%d err=%v", next, err)
+	}
+}
+
+func TestCVRepositoryVersionLifecycle(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "job-cv")
+	version := &models.CVVersion{ID: "cv-1", OriginalName: "resume.pdf", StoredFilename: "hash", FileSize: 5, MimeType: "application/pdf", SHA256: "hash", UploadedAt: 42}
+	assertCVInsertAndRead(t, repo, version)
+	assertCVAssignmentAndDelete(t, repo, version.ID)
+}
+
+func assertCVInsertAndRead(t *testing.T, repo *Repository, version *models.CVVersion) {
+	t.Helper()
+	if err := repo.InsertCVVersion(version); err != nil || version.Version != 1 {
+		t.Fatalf("insert version=%+v err=%v", version, err)
+	}
+	loaded, err := repo.GetCVVersionByID(version.ID)
+	if err != nil || loaded == nil || loaded.Version != 1 {
+		t.Fatalf("loaded version=%+v err=%v", loaded, err)
+	}
+	if missing, err := repo.GetCVVersionByID("missing"); err != nil || missing != nil {
+		t.Fatalf("missing version=%+v err=%v", missing, err)
+	}
+	versions, err := repo.ListCVVersions()
+	if err != nil || len(versions) != 1 {
+		t.Fatalf("versions=%+v err=%v", versions, err)
+	}
+}
+
+func assertCVAssignmentAndDelete(t *testing.T, repo *Repository, versionID string) {
+	t.Helper()
+	if err := repo.AssignCVVersion("job-cv", &versionID); err != nil {
+		t.Fatal(err)
+	}
+	var refs int
+	if err := repo.CountCVBlobReferences("hash", &refs); err != nil || refs != 1 {
+		t.Fatalf("references=%d err=%v", refs, err)
+	}
+	if err := repo.DeleteCVVersion(versionID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("assigned delete err=%v", err)
+	}
+	if err := repo.AssignCVVersion("job-cv", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteCVVersion(versionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.AssignCVVersion("missing", nil); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing job assignment err=%v", err)
+	}
+}
+
+func TestMigrateLegacyCVAttachmentsIsIdempotent(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "legacy-job")
+	version := &models.CVVersion{ID: "legacy-cv", OriginalName: "resume.pdf", StoredFilename: "hash", FileSize: 4, MimeType: "application/pdf", SHA256: "hash", UploadedAt: 15}
+	created, err := repo.MigrateLegacyCVAttachments(version, nil, []string{"legacy-job"})
+	if err != nil || !created {
+		t.Fatalf("migration created=%t err=%v", created, err)
+	}
+	created, err = repo.MigrateLegacyCVAttachments(version, nil, []string{"legacy-job"})
+	if err != nil || created {
+		t.Fatalf("repeat migration created=%t err=%v", created, err)
+	}
+	job, err := repo.GetJobByID("legacy-job")
+	if err != nil || job.SelectedCVVersion == nil || job.SelectedCVVersion.ID != version.ID {
+		t.Fatalf("migrated job=%+v err=%v", job, err)
+	}
+}
+
+func insertRepositoryTestJob(t *testing.T, repo *Repository, id string) {
+	t.Helper()
+	if err := repo.InsertJob(&models.Job{ID: id, CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newImportRepositoryFixture(t *testing.T) *Repository {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.InitDB(&config.Config{DataDir: dir, DBPath: filepath.Join(dir, "import.sqlite"), BackupPath: filepath.Join(dir, "backup.json"),
+		AttachmentsDir: filepath.Join(dir, "attachments"), CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return New(db)
+}
+
 func TestMarshalInterviewersPreservesEmptyArrays(t *testing.T) {
 	for _, interviewers := range [][]models.Interviewer{nil, {}} {
-		encoded, err := marshalInterviewers(interviewers)
-		if err != nil || encoded != "[]" {
-			t.Fatalf("marshal empty interviewers=%q err=%v", encoded, err)
+		encoded := marshalInterviewers(interviewers)
+		if encoded != "[]" {
+			t.Fatalf("marshal empty interviewers=%q", encoded)
 		}
 	}
-	encoded, err := marshalInterviewers([]models.Interviewer{{Name: "Alex", Role: "Recruiter"}})
-	if err != nil || encoded != `[{"name":"Alex","role":"Recruiter"}]` {
-		t.Fatalf("marshal interviewer=%q err=%v", encoded, err)
+	encoded := marshalInterviewers([]models.Interviewer{{Name: "Alex", Role: "Recruiter"}})
+	if encoded != `[{"name":"Alex","role":"Recruiter"}]` {
+		t.Fatalf("marshal interviewer=%q", encoded)
 	}
 }
 

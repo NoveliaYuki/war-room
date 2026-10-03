@@ -130,6 +130,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/attachments/{id}/download", h.handleDownloadAttachment)
 	mux.HandleFunc("DELETE /api/attachments/{id}", h.handleDeleteAttachment)
 
+	mux.HandleFunc("GET /api/cv/versions", h.handleListCVVersions)
+	mux.HandleFunc("POST /api/cv/versions", h.handleUploadCVVersion)
+	mux.HandleFunc("GET /api/cv/versions/{id}/download", h.handleDownloadCVVersion)
+	mux.HandleFunc("DELETE /api/cv/versions/{id}", h.handleDeleteCVVersion)
+	mux.HandleFunc("PUT /api/jobs/{id}/cv-version", h.handleAssignCVVersion)
+
 	mux.HandleFunc("GET /api/company-logo", h.handleGetCompanyLogo)
 
 	// Static Assets fallback (for local single-binary or unified execution)
@@ -143,6 +149,111 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 			fs.ServeHTTP(w, r)
 		})
 	}
+}
+
+func (h *Handler) handleListCVVersions(w http.ResponseWriter, _ *http.Request) {
+	versions, err := h.jobs.ListCVVersions()
+	if err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to load CV versions")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"versions": versions})
+}
+
+func (h *Handler) handleUploadCVVersion(w http.ResponseWriter, r *http.Request) {
+	const maxUploadSize = 50 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		status := http.StatusBadRequest
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			status = http.StatusRequestEntityTooLarge
+		}
+		ErrorJSON(w, status, "Choose a CV file no larger than 50 MiB")
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Choose a CV file to upload")
+		return
+	}
+	defer func() { _ = file.Close() }()
+	if header.Size == 0 {
+		ErrorJSON(w, http.StatusBadRequest, "CV file cannot be empty")
+		return
+	}
+	filename := filepath.Base(header.Filename)
+	buffer := make([]byte, 512)
+	read, _ := file.Read(buffer)
+	mimeType := http.DetectContentType(buffer[:read])
+	version, err := h.jobs.StoreCVVersion(filename, io.MultiReader(bytes.NewReader(buffer[:read]), file), header.Size, mimeType)
+	if err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to save CV version")
+		return
+	}
+	JSON(w, http.StatusCreated, version)
+}
+
+func (h *Handler) handleDownloadCVVersion(w http.ResponseWriter, r *http.Request) {
+	version, err := h.jobs.GetCVVersion(r.PathValue("id"))
+	if err != nil || version == nil {
+		ErrorJSON(w, http.StatusNotFound, "CV version not found")
+		return
+	}
+	filename := filepath.Base(version.StoredFilename)
+	if filename != version.StoredFilename || filename == "." {
+		ErrorJSON(w, http.StatusNotFound, "CV version not found")
+		return
+	}
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": version.OriginalName}))
+	w.Header().Set("Content-Type", version.MimeType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeFile(w, r, filepath.Join(h.cfg.CVDir, filename)) // #nosec G304
+}
+
+func (h *Handler) handleDeleteCVVersion(w http.ResponseWriter, r *http.Request) {
+	if err := h.jobs.DeleteCVVersion(r.PathValue("id")); err != nil {
+		if errors.Is(err, service.ErrCVVersionInUse) {
+			ErrorJSON(w, http.StatusConflict, "CV version is assigned to a job")
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			ErrorJSON(w, http.StatusNotFound, "CV version not found")
+			return
+		}
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to delete CV version")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) handleAssignCVVersion(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		VersionID *string `json:"version_id"`
+	}
+	if err := decodeJSONBody(r.Body, &request); err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Invalid CV version assignment")
+		return
+	}
+	if err := h.jobs.AssignCVVersion(r.PathValue("id"), request.VersionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ErrorJSON(w, http.StatusNotFound, "Job or CV version not found")
+			return
+		}
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to assign CV version")
+		return
+	}
+	job, err := h.jobs.GetFullJobDetails(r.PathValue("id"))
+	if err != nil || job == nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to load job")
+		return
+	}
+	JSON(w, http.StatusOK, job)
 }
 
 func (h *Handler) handleExportBackup(w http.ResponseWriter, _ *http.Request) {
@@ -164,10 +275,6 @@ func (h *Handler) handleExportBackup(w http.ResponseWriter, _ *http.Request) {
 	info, err := archive.Stat()
 	if err != nil || archive.Sync() != nil {
 		ErrorJSON(w, http.StatusInternalServerError, "Failed to finish backup archive")
-		return
-	}
-	if info.Size() > 500<<20 {
-		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup ZIP exceeds the 500 MiB limit")
 		return
 	}
 	if _, err := archive.Seek(0, io.SeekStart); err != nil {
@@ -202,13 +309,8 @@ func (h *Handler) handleImportBackup(w http.ResponseWriter, r *http.Request) {
 		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup ZIP exceeds the 500 MiB limit")
 		return
 	}
-	readerAt, ok := file.(io.ReaderAt)
-	if !ok {
-		ErrorJSON(w, http.StatusBadRequest, "Could not read the uploaded backup")
-		return
-	}
 	allowEmpty := r.FormValue("allow_empty") == "true"
-	if err := h.jobs.ImportArchive(readerAt, header.Size, allowEmpty); err != nil {
+	if err := h.jobs.ImportArchive(file, header.Size, allowEmpty); err != nil {
 		if errors.Is(err, service.ErrEmptyBackupRequiresConfirmation) {
 			JSON(w, http.StatusConflict, map[string]interface{}{
 				"error":                 "This backup contains no saved processes.",

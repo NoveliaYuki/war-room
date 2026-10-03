@@ -6,6 +6,7 @@
 import { api } from "./api.js";
 import { renderCardGrid } from "./components/cardGrid.js";
 import { renderScheduleView } from "./components/scheduleView.js";
+import { openCvLibrary } from "./components/cvLibrary.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, trapModalTab } from "./modalA11y.js";
@@ -41,6 +42,7 @@ function getSavedFilter() {
 }
 
 let currentFilter = getSavedFilter();
+let currentStatusFilter = currentFilter === "schedule" ? "ongoing" : currentFilter;
 let currentSearch = "";
 let searchDebounceTimer = null;
 
@@ -58,10 +60,17 @@ const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
 const searchFocusButton = document.querySelector(".search-focus");
 const filterTabs = document.querySelectorAll(".filter-tab");
+const scheduleButton = document.querySelector("#tab-schedule");
+const filterMenu = document.querySelector("#filter-menu");
+const filterMenuTrigger = document.querySelector("#filter-menu-trigger");
+const filterCurrentAction = document.querySelector("#filter-current-action");
+const moreActionsMenu = document.querySelector("#toolbar-more-options");
+const moreActionsTrigger = document.querySelector("#toolbar-more-trigger");
 const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 const dataManagementButton = document.querySelector("#btn-data-management");
+const cvLibraryButton = document.querySelector("#btn-cv-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
 
 /** Returns the selected theme, falling back to the current system preference. */
@@ -106,6 +115,36 @@ function closeMobileMenu() {
   headerControls.classList.remove("is-open");
 }
 
+/** Closes the process view menu and restores focus when a choice hides. */
+function closeFilterMenu(restoreFocus = false) {
+  if (!filterMenu || filterMenu.hidden) return;
+  const focusWasInMenu = filterMenu.contains(document.activeElement);
+  filterMenu.hidden = true;
+  filterMenuTrigger?.setAttribute("aria-expanded", "false");
+  if (restoreFocus || focusWasInMenu) filterMenuTrigger?.focus();
+}
+
+/** Closes the low-frequency actions menu and restores focus if an item hides. */
+function closeMoreActionsMenu(restoreFocus = false) {
+  if (!moreActionsMenu || moreActionsMenu.hidden) return;
+  const focusWasInMenu = moreActionsMenu.contains(document.activeElement);
+  moreActionsMenu.hidden = true;
+  moreActionsTrigger?.setAttribute("aria-expanded", "false");
+  if (restoreFocus || focusWasInMenu) moreActionsTrigger?.focus();
+}
+
+/** Updates the compact view control with the active view and its current count. */
+function updateFilterSummary() {
+  const active = [...filterTabs].find((tab) => tab.getAttribute("data-filter") === currentStatusFilter);
+  const label = active?.querySelector(".filter-label")?.textContent?.trim();
+  const count = active?.querySelector(".tab-count")?.textContent?.trim();
+  const labelTarget = document.querySelector("#filter-current-label");
+  const countTarget = document.querySelector("#filter-current-count");
+  if (labelTarget && label) labelTarget.textContent = label;
+  if (countTarget && count !== undefined) countTarget.textContent = count;
+  if (filterCurrentAction && label) filterCurrentAction.setAttribute("aria-label", `Show ${label.toLowerCase()} processes`);
+}
+
 /**
  * Updates filter counters and re-renders cards.
  */
@@ -122,6 +161,7 @@ async function refreshApp() {
     if (countMeetingsEl) {
       countMeetingsEl.textContent = meetings.length;
     }
+    updateFilterSummary();
 
     if (currentFilter === "schedule") {
       cardGridEl.classList.add("schedule-mode");
@@ -195,16 +235,21 @@ async function submitNewJobForm(event, form, closeForm) {
 function setFilter(filter) {
   if (!validFilters.has(filter)) return;
   currentFilter = filter;
+  if (filter !== "schedule") currentStatusFilter = filter;
   try {
     window.localStorage.setItem(FILTER_STORAGE_KEY, filter);
   } catch {
     // Keep navigation working when browser storage is unavailable.
   }
   filterTabs.forEach((tab) => {
-    const isActive = tab.getAttribute("data-filter") === filter;
+    const isActive = tab.getAttribute("data-filter") === currentStatusFilter;
     tab.classList.toggle("active", isActive);
-    tab.setAttribute("aria-pressed", String(isActive));
+    tab.setAttribute("aria-checked", String(isActive));
   });
+  scheduleButton?.classList.toggle("active", filter === "schedule");
+  scheduleButton?.setAttribute("aria-pressed", String(filter === "schedule"));
+  updateFilterSummary();
+  closeFilterMenu(true);
   refreshApp();
 }
 
@@ -241,14 +286,30 @@ function closeModal() {
 }
 
 /** Closes the data transfer dialog and returns focus to its trigger. */
-function closeDataModal() {
+function closeManagementModal(focusTarget) {
   backdropEl.classList.remove("active");
   modalEl.classList.remove("data-transfer-modal");
   modalEl.innerHTML = "";
   resetModalAnimation();
   restoreModalFocus();
-  const compact = window.matchMedia("(max-width: 900px)").matches;
-  (compact ? menuToggle : dataManagementButton)?.focus();
+  const compact = window.matchMedia("(max-width: 800px)").matches;
+  (compact ? menuToggle : focusTarget)?.focus();
+}
+
+/** Closes the data transfer dialog and returns focus to its trigger. */
+function closeDataModal() {
+  closeManagementModal(moreActionsTrigger);
+}
+
+/** Closes the CV library and returns focus to its trigger. */
+function closeCvLibraryModal() {
+  closeManagementModal(moreActionsTrigger);
+}
+
+/** Closes whichever data or CV view is currently in the shared dialog. */
+function closeTransferModal() {
+  if (modalEl.querySelector("#btn-close-cv-library")) closeCvLibraryModal();
+  else closeDataModal();
 }
 
 /** Clears FLIP styles before reusing the modal while a close animation is pending. */
@@ -263,6 +324,7 @@ function resetModalAnimation() {
 
 /** Opens the data transfer dialog. */
 function openDataModal() {
+  closeMoreActionsMenu();
   closeMobileMenu();
   cancelPendingFlipClose(true);
   resetModalAnimation();
@@ -308,6 +370,17 @@ function openDataModal() {
   });
   confirmation.addEventListener("change", updateImportButton);
   importButton.addEventListener("click", () => importBackup(fileInput.files[0]));
+}
+
+/** Opens CV version management directly from the main toolbar. */
+function openCvLibraryModal() {
+  closeMoreActionsMenu();
+  closeMobileMenu();
+  cancelPendingFlipClose(true);
+  resetModalAnimation();
+  modalEl.classList.add("data-transfer-modal");
+  backdropEl.classList.add("active");
+  openCvLibrary(modalEl, closeCvLibraryModal, closeCvLibraryModal);
 }
 
 /** Downloads the generated ZIP archive. */
@@ -356,15 +429,31 @@ async function importBackup(file, allowEmpty = false) {
   }
 }
 
+/** Closes the active modal or view menu in response to Escape. */
+function handleEscape(event) {
+  if (event.key !== "Escape") return false;
+  event.preventDefault();
+  if (backdropEl.classList.contains("active")) {
+    if (modalEl.classList.contains("data-transfer-modal")) closeTransferModal();
+    else closeModal();
+    return true;
+  }
+  if (filterMenu && !filterMenu.hidden) {
+    closeFilterMenu(true);
+    return true;
+  }
+  if (moreActionsMenu && !moreActionsMenu.hidden) {
+    closeMoreActionsMenu(true);
+    return true;
+  }
+  return false;
+}
+
 /** Applies one global keyboard shortcut to the application. */
 function handleGlobalKeydown(event) {
   if (backdropEl.classList.contains("active") && trapModalTab(event, modalEl)) return;
   const typing = isTypingTarget();
-  if (event.key === "Escape" && backdropEl.classList.contains("active")) {
-    if (modalEl.classList.contains("data-transfer-modal")) closeDataModal();
-    else closeModal();
-    return;
-  }
+  if (handleEscape(event)) return;
   if (backdropEl.classList.contains("active")) return;
   if (requestsNewProcess(event, typing)) {
     event.preventDefault();
@@ -551,7 +640,76 @@ filterTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     setFilter(tab.getAttribute("data-filter"));
     closeMobileMenu();
+    if (window.matchMedia("(max-width: 800px)").matches) menuToggle?.focus();
   });
+});
+scheduleButton?.addEventListener("click", () => {
+  setFilter("schedule");
+  closeMobileMenu();
+  if (window.matchMedia("(max-width: 800px)").matches) menuToggle?.focus();
+});
+
+filterCurrentAction?.addEventListener("click", () => {
+  setFilter(currentStatusFilter);
+  closeMobileMenu();
+  if (window.matchMedia("(max-width: 800px)").matches) menuToggle?.focus();
+});
+
+filterMenuTrigger?.addEventListener("click", () => {
+  const willOpen = filterMenu?.hidden;
+  if (!filterMenu) return;
+  filterMenu.hidden = !willOpen;
+  filterMenuTrigger.setAttribute("aria-expanded", String(willOpen));
+});
+
+filterMenuTrigger?.addEventListener("keydown", (event) => {
+  if (!filterMenu || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  filterMenu.hidden = false;
+  filterMenuTrigger.setAttribute("aria-expanded", "true");
+  const options = [...filterTabs];
+  (event.key === "ArrowDown" ? options[0] : options.at(-1))?.focus();
+});
+
+filterMenu?.addEventListener("keydown", (event) => {
+  const options = [...filterTabs];
+  const index = options.indexOf(document.activeElement);
+  if (index < 0) return;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    options[(index + direction + options.length) % options.length]?.focus();
+  }
+});
+
+moreActionsTrigger?.addEventListener("click", () => {
+  if (!moreActionsMenu) return;
+  const willOpen = moreActionsMenu.hidden;
+  moreActionsMenu.hidden = !willOpen;
+  moreActionsTrigger.setAttribute("aria-expanded", String(willOpen));
+});
+
+moreActionsTrigger?.addEventListener("keydown", (event) => {
+  if (!moreActionsMenu || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  moreActionsMenu.hidden = false;
+  moreActionsTrigger.setAttribute("aria-expanded", "true");
+  const options = [...moreActionsMenu.querySelectorAll('[role="menuitem"]')];
+  (event.key === "ArrowDown" ? options[0] : options.at(-1))?.focus();
+});
+
+moreActionsMenu?.addEventListener("keydown", (event) => {
+  const options = [...moreActionsMenu.querySelectorAll('[role="menuitem"]')];
+  const index = options.indexOf(document.activeElement);
+  if (index < 0 || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  const direction = event.key === "ArrowDown" ? 1 : -1;
+  options[(index + direction + options.length) % options.length]?.focus();
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".filter-tabs")) closeFilterMenu();
+  if (!event.target.closest(".more-actions-menu")) closeMoreActionsMenu();
 });
 
 searchInput.addEventListener("input", () => {
@@ -566,6 +724,7 @@ searchFocusButton?.addEventListener("click", () => searchInput.focus());
 
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
 dataManagementButton?.addEventListener("click", openDataModal);
+cvLibraryButton?.addEventListener("click", openCvLibraryModal);
 menuToggle?.addEventListener("click", () => {
   const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
   menuToggle.setAttribute("aria-expanded", String(!isOpen));
@@ -574,7 +733,7 @@ menuToggle?.addEventListener("click", () => {
 });
 backdropEl.addEventListener("click", (e) => {
   if (e.target === backdropEl) {
-    if (modalEl.classList.contains("data-transfer-modal")) closeDataModal();
+    if (modalEl.classList.contains("data-transfer-modal")) closeTransferModal();
     else closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
       restoreModalFocus();
@@ -585,10 +744,13 @@ backdropEl.addEventListener("click", (e) => {
 window.addEventListener("keydown", handleGlobalKeydown);
 
 filterTabs.forEach((tab) => {
-  const isActive = tab.getAttribute("data-filter") === currentFilter;
+  const isActive = tab.getAttribute("data-filter") === currentStatusFilter;
   tab.classList.toggle("active", isActive);
-  tab.setAttribute("aria-pressed", String(isActive));
+  tab.setAttribute("aria-checked", String(isActive));
 });
+scheduleButton?.classList.toggle("active", currentFilter === "schedule");
+scheduleButton?.setAttribute("aria-pressed", String(currentFilter === "schedule"));
+updateFilterSummary();
 
 await refreshApp();
 document.body.dataset.appReady = "true";

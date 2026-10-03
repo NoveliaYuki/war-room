@@ -147,6 +147,48 @@ type Job struct {
 	Interviewers      []Interviewer `json:"interviewers,omitempty"`
 	Stages            []Stage       `json:"stages,omitempty"`
 	Attachments       []Attachment  `json:"attachments,omitempty"`
+	SelectedCVVersion *CVVersion    `json:"selected_cv_version"`
+}
+
+// CVVersion represents one upload in the single CV version history.
+type CVVersion struct {
+	ID             string `json:"id"`
+	Version        int    `json:"version_number"`
+	OriginalName   string `json:"original_name"`
+	StoredFilename string `json:"-"`
+	FileSize       int64  `json:"file_size"`
+	MimeType       string `json:"mime_type"`
+	SHA256         string `json:"sha256"`
+	UploadedAt     int64  `json:"uploaded_at"`
+}
+
+// CVVersionSnapshot preserves storage metadata in the atomic recovery snapshot.
+type CVVersionSnapshot struct {
+	ID             string `json:"id"`
+	Version        int    `json:"version_number"`
+	OriginalName   string `json:"original_name"`
+	StoredFilename string `json:"stored_filename"`
+	FileSize       int64  `json:"file_size"`
+	MimeType       string `json:"mime_type"`
+	SHA256         string `json:"sha256"`
+	UploadedAt     int64  `json:"uploaded_at"`
+}
+
+// Snapshot converts a library record to its recovery representation.
+func (version CVVersion) Snapshot() CVVersionSnapshot {
+	return CVVersionSnapshot(version)
+}
+
+// CVVersion converts recovery metadata to a library record.
+func (snapshot CVVersionSnapshot) CVVersion() CVVersion {
+	return CVVersion(snapshot)
+}
+
+// RecoverySnapshot atomically stores the job state and CV library metadata.
+type RecoverySnapshot struct {
+	Jobs          []Job               `json:"jobs"`
+	CVVersions    []CVVersionSnapshot `json:"cv_versions,omitempty"`
+	NextCVVersion int                 `json:"next_cv_version"`
 }
 
 // UnmarshalJSON reads boolean flags written by both the current API and legacy SQLite snapshots.

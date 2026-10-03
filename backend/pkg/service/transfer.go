@@ -23,7 +23,7 @@ import (
 
 const (
 	backupFormat          = "war-room-backup"
-	backupFormatVersion   = 1
+	backupFormatVersion   = 2
 	maxImportArchiveBytes = 500 << 20
 	maxExpandedBytes      = 1 << 30
 	maxManifestBytes      = 100 << 20
@@ -40,8 +40,15 @@ type backupManifest struct {
 	Version          int               `json:"version"`
 	ExportedAt       time.Time         `json:"exported_at"`
 	Jobs             []models.Job      `json:"jobs"`
+	NextCVVersion    int               `json:"next_cv_version,omitempty"`
 	AttachmentSHA256 map[string]string `json:"attachment_sha256"`
 	Logos            []backupLogo      `json:"logos,omitempty"`
+	CVVersions       []backupCVVersion `json:"cv_versions,omitempty"`
+}
+
+type backupCVVersion struct {
+	models.CVVersion
+	Path string `json:"path"`
 }
 
 type backupLogo struct {
@@ -54,10 +61,20 @@ type backupLogo struct {
 
 // ExportArchive writes a portable ZIP backup containing process data and uploaded files.
 func (s *JobService) ExportArchive(output io.Writer) error {
+	cvUploadLock.Lock()
+	defer cvUploadLock.Unlock()
 	var jobs []models.Job
+	var versions []models.CVVersion
+	var nextCVVersion int
 	if err := s.repo.WithReadSnapshot(func(snapshot *repository.Repository) error {
 		var err error
 		jobs, err = loadFullJobSnapshot(snapshot)
+		if err == nil {
+			versions, err = snapshot.ListCVVersions()
+		}
+		if err == nil {
+			nextCVVersion, err = snapshot.GetNextCVVersion()
+		}
 		return err
 	}); err != nil {
 		return fmt.Errorf("load export snapshot: %w", err)
@@ -69,12 +86,15 @@ func (s *JobService) ExportArchive(output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := validateExportArchiveSize(jobs, logos); err != nil {
+	if err := validateExportArchiveSize(jobs, versions, logos, s.cfg.CVDir); err != nil {
 		return err
 	}
 
 	archive := zip.NewWriter(output)
-	manifest := backupManifest{Format: backupFormat, Version: backupFormatVersion, ExportedAt: time.Now().UTC(), Jobs: jobs, AttachmentSHA256: make(map[string]string), Logos: logos}
+	manifest := backupManifest{Format: backupFormat, Version: backupFormatVersion, ExportedAt: time.Now().UTC(), Jobs: jobs, NextCVVersion: nextCVVersion, AttachmentSHA256: make(map[string]string), Logos: logos}
+	for _, version := range versions {
+		manifest.CVVersions = append(manifest.CVVersions, backupCVVersion{CVVersion: version, Path: "cvs/" + version.StoredFilename})
+	}
 	if err := writeArchiveFiles(archive, &manifest, s.cfg); err != nil {
 		_ = archive.Close()
 		return err
@@ -86,7 +106,39 @@ func writeArchiveFiles(archive *zip.Writer, manifest *backupManifest, cfg *confi
 	if err := addArchiveAttachments(archive, manifest.Jobs, manifest.AttachmentSHA256, cfg.AttachmentsDir); err != nil {
 		return err
 	}
+	if err := addArchiveCVVersions(archive, manifest.CVVersions, cfg.CVDir); err != nil {
+		return err
+	}
 	return addArchiveLogos(archive, manifest.Logos, cfg.LogosDir)
+}
+
+func addArchiveCVVersions(archive *zip.Writer, versions []backupCVVersion, cvDirectory string) error {
+	seen := map[string]bool{}
+	for _, version := range versions {
+		name, err := backupStoredFilename(version.StoredFilename)
+		if err != nil || version.Path != "cvs/"+name {
+			return errors.New("CV backup contains unsafe file path")
+		}
+		if seen[version.Path] {
+			continue
+		}
+		seen[version.Path] = true
+		if err := verifyCVBlob(filepath.Join(cvDirectory, name), version.SHA256, version.FileSize); err != nil {
+			return fmt.Errorf("CV version %d is unavailable or changed: %w", version.Version, err)
+		}
+		entry, createErr := archive.Create(version.Path)
+		var digest string
+		if createErr == nil {
+			digest, createErr = copyArchiveFile(entry, filepath.Join(cvDirectory, name), version.FileSize, maxAttachmentBytes)
+		}
+		if createErr != nil {
+			return createErr
+		}
+		if !strings.EqualFold(digest, version.SHA256) {
+			return fmt.Errorf("CV version %d failed checksum validation during export", version.Version)
+		}
+	}
+	return nil
 }
 
 func writeArchiveManifest(archive *zip.Writer, manifest backupManifest) error {
@@ -113,7 +165,7 @@ func writeArchiveManifest(archive *zip.Writer, manifest backupManifest) error {
 	return nil
 }
 
-func validateExportArchiveSize(jobs []models.Job, logos []backupLogo) error {
+func validateExportArchiveSize(jobs []models.Job, versions []models.CVVersion, logos []backupLogo, cvDirectory string) error {
 	entries := 1
 	var expanded uint64
 	for _, job := range jobs {
@@ -127,6 +179,55 @@ func validateExportArchiveSize(jobs []models.Job, logos []backupLogo) error {
 		if err := addExportSize(&entries, &expanded, logo.Size, maxLogoBytes); err != nil {
 			return err
 		}
+	}
+	return validateCVExportSize(versions, cvDirectory, &entries, &expanded)
+}
+
+func validateCVExportSize(versions []models.CVVersion, cvDirectory string, entries *int, expanded *uint64) error {
+	seenBlobs := make(map[string]models.CVVersion)
+	for _, version := range versions {
+		filename, err := backupStoredFilename(version.StoredFilename)
+		if err != nil || len(version.SHA256) != 64 || filename != strings.ToLower(version.SHA256) {
+			return errors.New("CV version has invalid stored file metadata")
+		}
+		if previous, exists := seenBlobs[filename]; exists {
+			if previous.SHA256 != version.SHA256 || previous.FileSize != version.FileSize {
+				return errors.New("CV versions contain conflicting metadata for a shared blob")
+			}
+			continue
+		}
+		if err := verifyCVBlob(filepath.Join(cvDirectory, filename), version.SHA256, version.FileSize); err != nil {
+			return fmt.Errorf("CV version %d is unavailable or changed: %w", version.Version, err)
+		}
+		seenBlobs[filename] = version
+		if err := addExportSize(entries, expanded, version.FileSize, maxAttachmentBytes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyCVBlob(filename, expectedHash string, expectedSize int64) error {
+	info, err := os.Lstat(filename)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() != expectedSize || expectedSize <= 0 || expectedSize > maxAttachmentBytes {
+		return errors.New("CV blob size or file type is invalid")
+	}
+	// #nosec G304 -- filename is an internal content-addressed path within configured CV storage.
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	hash := sha256.New()
+	written, err := io.Copy(hash, io.LimitReader(file, maxAttachmentBytes+1))
+	if err != nil {
+		return err
+	}
+	if written != expectedSize || hex.EncodeToString(hash.Sum(nil)) != expectedHash {
+		return errors.New("CV blob checksum mismatch")
 	}
 	return nil
 }
@@ -280,6 +381,8 @@ func copyArchiveFile(entry io.Writer, filePath string, expectedSize, limit int64
 
 // ImportArchive validates an archive and replaces all saved processes atomically.
 func (s *JobService) ImportArchive(input io.ReaderAt, size int64, allowEmpty bool) error {
+	cvUploadLock.Lock()
+	defer cvUploadLock.Unlock()
 	manifest, files, err := readImportArchive(input, size)
 	if err != nil {
 		return err
@@ -295,38 +398,108 @@ func (s *JobService) applyImportedArchive(manifest *backupManifest, files map[st
 	if err != nil {
 		return fmt.Errorf("read existing attachment list: %w", err)
 	}
-	stagingDir, err := os.MkdirTemp(s.cfg.AttachmentsDir, ".import-")
+	oldCVVersions, err := s.repo.ListCVVersions()
 	if err != nil {
-		return fmt.Errorf("prepare import staging: %w", err)
+		return fmt.Errorf("read existing CV version list: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(stagingDir) }()
-	createdFiles := make([]string, 0)
-	committed := false
-	defer func() {
-		if !committed {
-			for _, filename := range createdFiles {
-				_ = os.Remove(filepath.Join(s.cfg.AttachmentsDir, filename))
-			}
-		}
-	}()
-	usedEntries := map[string]bool{"manifest.json": true}
-	if err := s.stageImportedAttachments(manifest, files, stagingDir, &createdFiles, usedEntries); err != nil {
+	stage, err := newArchiveImportStage(s.cfg)
+	if err != nil {
 		return err
 	}
-	if err := s.commitImportedArchive(manifest, files, &createdFiles, usedEntries); err != nil {
+	defer stage.cleanup()
+	if err := s.stageArchiveImport(manifest, files, stage); err != nil {
 		return err
 	}
-	committed = true
-	for _, attachment := range oldAttachments {
-		filename, err := backupStoredFilename(attachment.StoredFilename)
-		if err == nil {
-			_ = os.Remove(filepath.Join(s.cfg.AttachmentsDir, filename))
+	stage.committed = true
+	if manifest.Version == 1 {
+		if err := s.MigrateLegacyCVAttachments(); err != nil {
+			log.Printf("Warning: failed to convert legacy CV attachments after import: %v", err)
 		}
 	}
 	if err := s.MirrorDatabaseToJSON(); err != nil {
 		log.Printf("Warning: failed to refresh recovery snapshot after import: %v", err)
+		return nil
 	}
+	return s.cleanupReplacedArchiveFiles(oldAttachments, oldCVVersions)
+}
+
+type archiveImportStage struct {
+	attachmentsDir string
+	cvDir          string
+	stagingDir     string
+	createdFiles   []string
+	createdCVFiles []string
+	committed      bool
+}
+
+func newArchiveImportStage(cfg *config.Config) (*archiveImportStage, error) {
+	directory, err := os.MkdirTemp(cfg.AttachmentsDir, ".import-")
+	if err != nil {
+		return nil, fmt.Errorf("prepare import staging: %w", err)
+	}
+	return &archiveImportStage{attachmentsDir: cfg.AttachmentsDir, cvDir: cfg.CVDir, stagingDir: directory}, nil
+}
+
+func (stage *archiveImportStage) cleanup() {
+	_ = os.RemoveAll(stage.stagingDir)
+	if stage.committed {
+		return
+	}
+	for _, filename := range stage.createdFiles {
+		_ = os.Remove(filepath.Join(stage.attachmentsDir, filename))
+	}
+	for _, filename := range stage.createdCVFiles {
+		_ = os.Remove(filepath.Join(stage.cvDir, filename))
+	}
+}
+
+func (s *JobService) stageArchiveImport(manifest *backupManifest, files map[string]*zip.File, stage *archiveImportStage) error {
+	usedEntries := map[string]bool{"manifest.json": true}
+	if err := s.stageImportedAttachments(manifest, files, stage.stagingDir, &stage.createdFiles, usedEntries); err != nil {
+		return err
+	}
+	if err := s.stageImportedCVVersions(manifest, files, &stage.createdCVFiles, usedEntries); err != nil {
+		return err
+	}
+	return s.commitImportedArchive(manifest, files, &stage.createdFiles, usedEntries)
+}
+
+func (s *JobService) cleanupReplacedArchiveFiles(oldAttachments []models.Attachment, oldCVVersions []models.CVVersion) error {
+	remaining, err := s.repo.GetAllAttachments()
+	if err != nil {
+		log.Printf("Warning: retained old attachments because references could not be checked: %v", err)
+		return nil
+	}
+	protected := make(map[string]bool, len(remaining))
+	for _, attachment := range remaining {
+		protected[filepath.Base(attachment.StoredFilename)] = true
+	}
+	removeOldAttachments(s.cfg.AttachmentsDir, oldAttachments, protected)
+	removeOldCVBlobs(s.repo, s.cfg.CVDir, oldCVVersions)
 	return nil
+}
+
+func removeOldAttachments(directory string, attachments []models.Attachment, protected map[string]bool) {
+	for _, attachment := range attachments {
+		if protected[filepath.Base(attachment.StoredFilename)] {
+			continue
+		}
+		if filename, err := backupStoredFilename(attachment.StoredFilename); err == nil {
+			_ = os.Remove(filepath.Join(directory, filename))
+		}
+	}
+}
+
+func removeOldCVBlobs(repo *repository.Repository, directory string, versions []models.CVVersion) {
+	for _, version := range versions {
+		var references int
+		if err := repo.CountCVBlobReferences(version.StoredFilename, &references); err != nil || references > 0 {
+			continue
+		}
+		if filename, err := backupStoredFilename(version.StoredFilename); err == nil {
+			_ = os.Remove(filepath.Join(directory, filename))
+		}
+	}
 }
 
 func (s *JobService) commitImportedArchive(manifest *backupManifest, files map[string]*zip.File, createdFiles *[]string, usedEntries map[string]bool) error {
@@ -345,7 +518,19 @@ func (s *JobService) commitImportedArchive(manifest *backupManifest, files map[s
 	if err != nil {
 		return err
 	}
-	if err := s.repo.ReplaceAllJobs(manifest.Jobs); err != nil {
+	versions := make([]models.CVVersion, 0, len(manifest.CVVersions))
+	for _, cvVersion := range manifest.CVVersions {
+		versions = append(versions, cvVersion.CVVersion)
+	}
+	if manifest.NextCVVersion <= 0 {
+		manifest.NextCVVersion = 1
+		for _, version := range versions {
+			if version.Version >= manifest.NextCVVersion {
+				manifest.NextCVVersion = version.Version + 1
+			}
+		}
+	}
+	if err := s.repo.ReplaceAllJobsWithCV(manifest.Jobs, versions, true, manifest.NextCVVersion); err != nil {
 		rollbackImportedLogos(installedLogos)
 		return fmt.Errorf("replace saved processes: %w", err)
 	}
@@ -388,7 +573,7 @@ func decodeBackupManifest(manifestFile *zip.File) (backupManifest, error) {
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		return backupManifest{}, errors.New("backup manifest is invalid JSON")
 	}
-	if manifest.Format != backupFormat || manifest.Version != backupFormatVersion {
+	if manifest.Format != backupFormat || manifest.Version < 1 || manifest.Version > backupFormatVersion {
 		return backupManifest{}, fmt.Errorf("unsupported backup format or version (%q, %d)", manifest.Format, manifest.Version)
 	}
 	if manifest.Jobs == nil {
@@ -454,11 +639,161 @@ func validateArchiveReferences(manifest *backupManifest, files map[string]*zip.F
 	if len(manifest.AttachmentSHA256) != len(*createdFiles) {
 		return errors.New("backup contains inconsistent attachment metadata")
 	}
-	if len(manifest.Logos) != len(usedEntries)-len(*createdFiles)-1 {
+	logoAndCVFileCount := len(usedEntries) - len(*createdFiles) - 1
+	uniqueCVPaths := map[string]bool{}
+	for _, version := range manifest.CVVersions {
+		uniqueCVPaths[version.Path] = true
+	}
+	if len(manifest.Logos) != logoAndCVFileCount-len(uniqueCVPaths) {
 		return errors.New("backup contains inconsistent company logo metadata")
 	}
 	if len(usedEntries) != len(files) {
 		return errors.New("backup contains unreferenced files")
+	}
+	return nil
+}
+
+func (s *JobService) stageImportedCVVersions(manifest *backupManifest, files map[string]*zip.File, createdFiles *[]string, usedEntries map[string]bool) error {
+	if manifest.Version == 1 && len(manifest.CVVersions) > 0 {
+		return errors.New("legacy backup unexpectedly contains CV versions")
+	}
+	versionsByID := make(map[string]models.CVVersion, len(manifest.CVVersions))
+	paths := make(map[string]string)
+	pathSizes := make(map[string]int64)
+	for index := range manifest.CVVersions {
+		if err := s.stageOneImportedCVVersion(&manifest.CVVersions[index], files, createdFiles, usedEntries, versionsByID, paths, pathSizes); err != nil {
+			return err
+		}
+	}
+	return finalizeImportedCVManifest(manifest, versionsByID)
+}
+
+func (s *JobService) stageOneImportedCVVersion(version *backupCVVersion, files map[string]*zip.File, createdFiles *[]string, usedEntries map[string]bool, versionsByID map[string]models.CVVersion, paths map[string]string, pathSizes map[string]int64) error {
+	filename, err := validateImportedCVVersion(version)
+	if err != nil {
+		return err
+	}
+	if _, exists := versionsByID[version.ID]; exists {
+		return errors.New("backup contains duplicate CV version IDs")
+	}
+	if err := registerImportedCVPath(version, filename, paths, pathSizes); err != nil {
+		return err
+	}
+	version.StoredFilename = filename
+	versionsByID[version.ID] = version.CVVersion
+	if usedEntries[version.Path] {
+		return nil
+	}
+	if err := s.installImportedCVBlob(*version, filename, files, createdFiles); err != nil {
+		return err
+	}
+	usedEntries[version.Path] = true
+	return nil
+}
+
+func validateImportedCVVersion(version *backupCVVersion) (string, error) {
+	if invalidImportedCVFields(version) {
+		return "", errors.New("backup contains invalid CV version metadata")
+	}
+	if _, err := hex.DecodeString(version.SHA256); err != nil {
+		return "", errors.New("backup contains invalid CV checksum")
+	}
+	filename, err := backupStoredFilename(strings.TrimPrefix(version.Path, "cvs/"))
+	if err != nil || version.Path != "cvs/"+filename || filename != strings.ToLower(version.SHA256) {
+		return "", errors.New("backup contains an unsafe CV path")
+	}
+	return filename, nil
+}
+
+func invalidImportedCVFields(version *backupCVVersion) bool {
+	return version.ID == "" || version.Version <= 0 || version.OriginalName == "" || version.FileSize < 0 || version.FileSize > maxAttachmentBytes || len(version.SHA256) != 64
+}
+
+func registerImportedCVPath(version *backupCVVersion, filename string, paths map[string]string, pathSizes map[string]int64) error {
+	if prior, exists := paths[version.Path]; exists && (prior != version.SHA256 || pathSizes[version.Path] != version.FileSize) {
+		return errors.New("backup contains conflicting duplicate CV blobs")
+	}
+	paths[version.Path] = version.SHA256
+	pathSizes[version.Path] = version.FileSize
+	return nil
+}
+
+func (s *JobService) installImportedCVBlob(version backupCVVersion, filename string, files map[string]*zip.File, createdFiles *[]string) error {
+	zipFile := files[version.Path]
+	// #nosec G115 -- FileSize is validated as nonnegative and bounded before this call.
+	if zipFile == nil || zipFile.UncompressedSize64 != uint64(version.FileSize) {
+		return fmt.Errorf("CV version %d file is missing or has an invalid size", version.Version)
+	}
+	destination := filepath.Join(s.cfg.CVDir, filename)
+	// #nosec G304 -- filename is validated as a digest basename under configured CVDir.
+	if existing, err := os.Open(destination); err == nil {
+		defer func() { _ = existing.Close() }()
+		if !sameFileHash(existing, version.SHA256) {
+			return errors.New("existing CV blob failed checksum validation")
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return extractAndInstallImportedCV(zipFile, destination, filename, version.FileSize, version.SHA256, createdFiles)
+}
+
+func extractAndInstallImportedCV(zipFile *zip.File, destination, filename string, size int64, digest string, createdFiles *[]string) error {
+	tempPath := filepath.Join(filepath.Dir(destination), ".cv-import-"+uuid.NewString())
+	actualHash, err := extractArchiveAttachment(zipFile, tempPath, size)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		return err
+	}
+	if !strings.EqualFold(actualHash, digest) {
+		_ = os.Remove(tempPath)
+		return errors.New("CV version failed its checksum check")
+	}
+	if err := os.Rename(tempPath, destination); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("install imported CV version: %w", err)
+	}
+	*createdFiles = append(*createdFiles, filename)
+	return nil
+}
+
+func finalizeImportedCVManifest(manifest *backupManifest, versionsByID map[string]models.CVVersion) error {
+	if err := validateImportedCVNumbers(manifest.CVVersions); err != nil {
+		return err
+	}
+	maxVersion := 0
+	for _, version := range manifest.CVVersions {
+		if version.Version > maxVersion {
+			maxVersion = version.Version
+		}
+	}
+	if manifest.NextCVVersion == 0 {
+		manifest.NextCVVersion = maxVersion + 1
+	}
+	if manifest.NextCVVersion < maxVersion+1 {
+		return errors.New("backup CV sequence is lower than its saved versions")
+	}
+	for jobIndex := range manifest.Jobs {
+		job := &manifest.Jobs[jobIndex]
+		if job.SelectedCVVersion == nil {
+			continue
+		}
+		version, ok := versionsByID[job.SelectedCVVersion.ID]
+		if !ok {
+			return fmt.Errorf("job %q references a missing CV version", job.ID)
+		}
+		job.SelectedCVVersion = &version
+	}
+	return nil
+}
+
+func validateImportedCVNumbers(versions []backupCVVersion) error {
+	seenNumbers := make(map[int]bool, len(versions))
+	for _, version := range versions {
+		if seenNumbers[version.Version] {
+			return errors.New("backup contains duplicate CV version numbers")
+		}
+		seenNumbers[version.Version] = true
 	}
 	return nil
 }

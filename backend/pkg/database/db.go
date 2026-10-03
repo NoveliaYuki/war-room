@@ -1,8 +1,12 @@
 package database
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -164,7 +168,11 @@ CREATE INDEX IF NOT EXISTS idx_jobs_order_updated ON jobs(order_index, updated_a
 
 // InitDB opens SQLite, applies versioned schema migrations, and restores seed data.
 func InitDB(cfg *config.Config) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", sqliteDataSource(cfg.DBPath))
+	return initDBWithOpener(cfg, sql.Open)
+}
+
+func initDBWithOpener(cfg *config.Config, openDatabase func(string, string) (*sql.DB, error)) (*sql.DB, error) {
+	db, err := openDatabase("sqlite", sqliteDataSource(cfg.DBPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
@@ -182,7 +190,7 @@ func InitDB(cfg *config.Config) (*sql.DB, error) {
 		return nil, fmt.Errorf("migrate sqlite schema: %w", err)
 	}
 
-	restoreFromBackupIfEmpty(db, cfg.BackupPath, cfg.InitialBackupPath, cfg.AttachmentsDir)
+	restoreFromBackupIfEmpty(db, cfg.BackupPath, cfg.InitialBackupPath, cfg.AttachmentsDir, cfg.CVDir)
 
 	return db, nil
 }
@@ -213,7 +221,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 6
+const latestSchemaVersion = 7
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -251,23 +259,61 @@ func runSchemaMigration(executor schemaExecutor, version int) error {
 	case 1:
 		return applyInitialSchemaMigration(executor)
 	case 2:
-		if _, err := executor.Exec(attachmentOwnershipTriggersSQL); err != nil {
-			return fmt.Errorf("create attachment ownership triggers: %w", err)
-		}
+		return executeMigrationSQL(executor, attachmentOwnershipTriggersSQL, "create attachment ownership triggers")
 	case 3:
-		if _, err := executor.Exec(meetingTypeConstraintsSQL); err != nil {
-			return fmt.Errorf("constrain meeting types: %w", err)
-		}
+		return executeMigrationSQL(executor, meetingTypeConstraintsSQL, "constrain meeting types")
 	case 4:
 		return ensurePreparationColumns(executor)
 	case 5:
 		return ensureWorkArrangementColumns(executor)
 	case 6:
 		return ensureEmploymentTypeColumn(executor)
+	case 7:
+		return migrateCVLibrary(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
+}
+
+func executeMigrationSQL(executor schemaExecutor, statement, operation string) error {
+	if _, err := executor.Exec(statement); err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
 	return nil
+}
+
+func migrateCVLibrary(executor schemaExecutor) error {
+	if err := executeMigrationSQL(executor, `CREATE TABLE IF NOT EXISTS cv_versions (
+			id TEXT PRIMARY KEY,
+			version INTEGER NOT NULL UNIQUE CHECK (version > 0),
+			original_name TEXT NOT NULL,
+			stored_filename TEXT NOT NULL,
+			file_size INTEGER NOT NULL CHECK (file_size >= 0),
+			mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+			sha256 TEXT NOT NULL,
+			uploaded_at INTEGER NOT NULL
+		)`, "create CV versions table"); err != nil {
+		return err
+	}
+	sequenceSQL := `CREATE TABLE IF NOT EXISTS cv_version_sequence (id INTEGER PRIMARY KEY CHECK (id = 1), next_version INTEGER NOT NULL CHECK (next_version > 0)); INSERT INTO cv_version_sequence (id, next_version) VALUES (1, 1) ON CONFLICT(id) DO NOTHING;`
+	if err := executeMigrationSQL(executor, sequenceSQL, "create CV version sequence"); err != nil {
+		return err
+	}
+	if err := addCVVersionJobReference(executor); err != nil {
+		return err
+	}
+	return executeMigrationSQL(executor, "CREATE INDEX IF NOT EXISTS idx_cv_versions_version ON cv_versions(version DESC)", "index CV versions")
+}
+
+func addCVVersionJobReference(executor schemaExecutor) error {
+	exists, err := hasColumn(executor, "jobs", "cv_version_id")
+	if err != nil {
+		return fmt.Errorf("inspect jobs.cv_version_id: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	return executeMigrationSQL(executor, "ALTER TABLE jobs ADD COLUMN cv_version_id TEXT NULL REFERENCES cv_versions(id) ON DELETE RESTRICT", "add jobs.cv_version_id")
 }
 
 func ensureEmploymentTypeColumn(executor schemaExecutor) error {
@@ -461,7 +507,7 @@ func hasColumn(db schemaExecutor, table, column string) (bool, error) {
 	return false, rows.Err()
 }
 
-func restoreFromBackupIfEmpty(db *sql.DB, backupPath, initialBackupPath, attachmentsDir string) {
+func restoreFromBackupIfEmpty(db *sql.DB, backupPath, initialBackupPath, attachmentsDir, cvDirectory string) {
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM jobs").Scan(&count); err != nil || count > 0 {
 		return
@@ -472,45 +518,74 @@ func restoreFromBackupIfEmpty(db *sql.DB, backupPath, initialBackupPath, attachm
 		return
 	}
 
-	jobs, err := loadBackup(backupSource)
+	snapshot, err := loadRecoverySnapshot(backupSource)
 	if err != nil {
 		log.Printf("Warning: Failed to load backup.json: %v", err)
 		return
 	}
-	if len(jobs) == 0 {
+	if len(snapshot.Jobs) == 0 {
 		return
 	}
-	if err := restoreJobs(db, jobs, attachmentsDir); err != nil {
+	if err := restoreRecoverySnapshot(db, snapshot, attachmentsDir, cvDirectory); err != nil {
 		log.Printf("Warning: Failed to restore backup.json atomically: %v", err)
 		return
 	}
-	log.Printf("Restored %d jobs from backup.json into empty database.", len(jobs))
+	log.Printf("Restored %d jobs from backup.json into empty database.", len(snapshot.Jobs))
 }
 
 const maxBackupBytes = 64 << 20
 
 func loadBackup(backupPath string) ([]models.Job, error) {
+	snapshot, err := loadRecoverySnapshot(backupPath)
+	if err != nil {
+		return nil, err
+	}
+	return snapshot.Jobs, nil
+}
+
+func loadRecoverySnapshot(backupPath string) (models.RecoverySnapshot, error) {
 	// backupPath comes from application configuration, not request input.
 	file, err := os.Open(backupPath) // #nosec G304
 	if err != nil {
-		return nil, err
+		return models.RecoverySnapshot{}, err
 	}
 	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, maxBackupBytes+1))
 	if err != nil {
-		return nil, err
+		return models.RecoverySnapshot{}, err
 	}
 	if len(data) > maxBackupBytes {
-		return nil, fmt.Errorf("backup exceeds %d-byte limit", maxBackupBytes)
+		return models.RecoverySnapshot{}, fmt.Errorf("backup exceeds %d-byte limit", maxBackupBytes)
 	}
-	var jobs []models.Job
-	if err := json.Unmarshal(data, &jobs); err != nil {
-		return nil, fmt.Errorf("parse backup: %w", err)
+	var snapshot models.RecoverySnapshot
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		if err := json.Unmarshal(data, &snapshot.Jobs); err != nil {
+			return models.RecoverySnapshot{}, fmt.Errorf("parse backup: %w", err)
+		}
+		snapshot.NextCVVersion = 1
+	} else if err := json.Unmarshal(data, &snapshot); err != nil {
+		return models.RecoverySnapshot{}, fmt.Errorf("parse backup: %w", err)
 	}
-	return jobs, nil
+	if snapshot.Jobs == nil {
+		return models.RecoverySnapshot{}, errors.New("backup snapshot has no job list")
+	}
+	return snapshot, nil
 }
 
 func restoreJobs(db *sql.DB, jobs []models.Job, attachmentsDir string) error {
+	return restoreJobsWithCV(db, jobs, attachmentsDir, nil, "")
+}
+
+func restoreJobsWithCV(db *sql.DB, jobs []models.Job, attachmentsDir string, versions []models.CVVersion, cvDirectory string) error {
+	snapshots := make([]models.CVVersionSnapshot, 0, len(versions))
+	for _, version := range versions {
+		snapshots = append(snapshots, version.Snapshot())
+	}
+	return restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: jobs, CVVersions: snapshots}, attachmentsDir, cvDirectory)
+}
+
+func restoreRecoverySnapshot(db *sql.DB, snapshot models.RecoverySnapshot, attachmentsDir, cvDirectory string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -522,7 +597,10 @@ func restoreJobs(db *sql.DB, jobs []models.Job, attachmentsDir string) error {
 		return err
 	}
 	defer statements.close()
-	for _, job := range jobs {
+	if err := restoreCVSnapshot(tx, statements, snapshot.CVVersions, snapshot.NextCVVersion, cvDirectory); err != nil {
+		return err
+	}
+	for _, job := range snapshot.Jobs {
 		if err := restoreJob(statements, job, attachmentsDir); err != nil {
 			return err
 		}
@@ -530,8 +608,56 @@ func restoreJobs(db *sql.DB, jobs []models.Job, attachmentsDir string) error {
 	return tx.Commit()
 }
 
+func restoreCVSnapshot(tx *sql.Tx, statements *restoreStatements, versions []models.CVVersionSnapshot, nextVersion int, cvDirectory string) error {
+	maxNextVersion := 1
+	for _, version := range versions {
+		if err := verifyRecoveryCVBlob(version, cvDirectory); err != nil {
+			return err
+		}
+		if _, err := statements.cvVersion.Exec(version.ID, version.Version, version.OriginalName, version.StoredFilename, version.FileSize, version.MimeType, version.SHA256, version.UploadedAt); err != nil {
+			return fmt.Errorf("restore CV version %d: %w", version.Version, err)
+		}
+		if version.Version >= maxNextVersion {
+			maxNextVersion = version.Version + 1
+		}
+	}
+	if nextVersion > maxNextVersion {
+		maxNextVersion = nextVersion
+	}
+	if _, err := tx.Exec(`UPDATE cv_version_sequence SET next_version = ? WHERE id = 1`, maxNextVersion); err != nil {
+		return fmt.Errorf("restore CV version sequence: %w", err)
+	}
+	return nil
+}
+
+func verifyRecoveryCVBlob(version models.CVVersionSnapshot, cvDirectory string) error {
+	filename := filepath.Base(version.StoredFilename)
+	if filename != version.StoredFilename || filename == "." {
+		return fmt.Errorf("unsafe CV filename in recovery snapshot")
+	}
+	// #nosec G304 -- filename is reduced to a basename and checked above.
+	blob, err := os.Open(filepath.Join(cvDirectory, filename))
+	if err != nil {
+		return fmt.Errorf("open recovered CV version %d: %w", version.Version, err)
+	}
+	hash := sha256.New()
+	written, copyErr := io.Copy(hash, io.LimitReader(blob, (50<<20)+1))
+	closeErr := blob.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if written != version.FileSize || written > 50<<20 || hex.EncodeToString(hash.Sum(nil)) != version.SHA256 {
+		return fmt.Errorf("CV version %d failed recovery checksum", version.Version)
+	}
+	return nil
+}
+
 type restoreStatements struct {
 	job        *sql.Stmt
+	cvVersion  *sql.Stmt
 	stage      *sql.Stmt
 	question   *sql.Stmt
 	attachment *sql.Stmt
@@ -544,10 +670,15 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
-			is_referral, order_index, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		is_referral, order_index, created_at, updated_at, cv_version_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
+		return nil, err
+	}
+	cvVersion, err := tx.Prepare(`INSERT INTO cv_versions (id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		_ = job.Close()
 		return nil, err
 	}
 
@@ -560,6 +691,7 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 	`)
 	if err != nil {
 		_ = job.Close()
+		_ = cvVersion.Close()
 		return nil, err
 	}
 
@@ -570,6 +702,7 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 	`)
 	if err != nil {
 		_ = job.Close()
+		_ = cvVersion.Close()
 		_ = stageStmt.Close()
 		return nil, err
 	}
@@ -585,11 +718,12 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 		_ = qStmt.Close()
 		return nil, err
 	}
-	return &restoreStatements{job: job, stage: stageStmt, question: qStmt, attachment: attachmentStmt}, nil
+	return &restoreStatements{job: job, cvVersion: cvVersion, stage: stageStmt, question: qStmt, attachment: attachmentStmt}, nil
 }
 
 func (statements *restoreStatements) close() {
 	_ = statements.job.Close()
+	_ = statements.cvVersion.Close()
 	_ = statements.stage.Close()
 	_ = statements.question.Close()
 	_ = statements.attachment.Close()
@@ -673,10 +807,7 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 	currency := defaultString(job.SalaryCurrency, "EUR")
 	interviewers := []byte("[]")
 	if job.Interviewers != nil {
-		encoded, err := json.Marshal(job.Interviewers)
-		if err != nil {
-			return err
-		}
+		encoded, _ := json.Marshal(job.Interviewers)
 		interviewers = encoded
 	}
 	_, err := statement.Exec(job.ID, job.CompanyName, job.PositionTitle, job.Status, salaryType,
@@ -684,8 +815,15 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 		job.RecruiterAgency, job.RecruiterContact, string(interviewers), job.JobPostURL,
 		job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
-		job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt)
+		job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job))
 	return err
+}
+
+func selectedCVVersionID(job models.Job) any {
+	if job.SelectedCVVersion == nil {
+		return nil
+	}
+	return job.SelectedCVVersion.ID
 }
 
 func restoreStage(statements *restoreStatements, jobID string, stage models.Stage) error {
@@ -706,10 +844,7 @@ func restoreStageRow(statement *sql.Stmt, jobID string, stage models.Stage) erro
 	meetingType := defaultString(stage.MeetingType, "video")
 	interviewers := []byte("[]")
 	if stage.Interviewers != nil {
-		encoded, err := json.Marshal(stage.Interviewers)
-		if err != nil {
-			return err
-		}
+		encoded, _ := json.Marshal(stage.Interviewers)
 		interviewers = encoded
 	}
 	_, err := statement.Exec(stage.ID, jobID, stage.OrderIndex, stage.StageType, stage.CustomTitle,

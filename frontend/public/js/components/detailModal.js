@@ -15,6 +15,7 @@ import { enableQuestionReordering } from "./questionList.js";
 import { makeInlineEditable, parseSalaryInput } from "../inlineEdit.js";
 import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
 import { formatSalary } from "../utils/salary.js";
+import { formatCvUploadDate } from "./cvLibrary.js";
 
 const STAGE_TYPE_CLASSES = new Map([
   ["HR", "HR"],
@@ -249,6 +250,15 @@ function renderGeneralAttachments(attachments) {
   </div>`).join("");
 }
 
+/** Renders the selected shared CV version without mixing library management into job details. */
+function renderSelectedCvVersion(job) {
+  const version = job.selected_cv_version;
+  const summary = version
+    ? `<span class="job-cv-version">CV v${escapeHtml(version.version_number)}${version.original_name ? ` · ${escapeHtml(version.original_name)}` : ""}</span>`
+    : '<span class="job-cv-version is-empty">No CV version selected</span>';
+  return `<div class="job-cv-row" id="job-cv-row"><span class="inline-icon-text">${icon("fileText", 13)} CV sent</span>${summary}<button type="button" class="btn-secondary job-cv-change" aria-label="Change CV version">${version ? "Change" : "Select"}</button></div>`;
+}
+
 /** Renders recruiter metadata for the active stage. */
 function renderStageRecruiterDetails(view) {
   const { stageRecruiterType, stageRecruiterName, stageRecruiterAgency, stageRecruiterContact } = view;
@@ -459,6 +469,7 @@ function renderJobDetailsSection(view) {
             <div class="attachments-grid">
               ${renderGeneralAttachments(generalAttachments)}
             </div>
+            ${renderSelectedCvVersion(job)}
           </div>
         </section>
   `;
@@ -709,12 +720,54 @@ function attachModalHandlers(context) {
   bindGeneralAttachmentUpload(handlers);
   bindStageRecruiterFields(handlers);
   bindInterviewerActions(handlers);
+  bindJobCvSelection(handlers);
   bindAttachmentAndStageNavigation(handlers);
   if (activeStage) {
     bindActiveStageActions(handlers);
     bindActiveStageQuestionControls(handlers);
     bindActiveStageInlineEditors(handlers);
   }
+}
+
+/** Binds the compact per-job CV version selector; library management stays in Data & Backups. */
+function bindJobCvSelection({ modalEl, job, refreshModal }) {
+  modalEl.querySelector(".job-cv-change")?.addEventListener("click", async () => {
+    const row = modalEl.querySelector("#job-cv-row");
+    const trigger = row?.querySelector(".job-cv-change");
+    if (!row || !trigger || trigger.disabled) return;
+    trigger.disabled = true;
+    try {
+      const response = await api.getCvVersions();
+      const versions = Array.isArray(response) ? response : response?.versions || [];
+      const currentId = job.selected_cv_version?.id || "";
+      row.innerHTML = `<label class="job-cv-picker-label" for="job-cv-version-select">CV sent</label>
+        <select id="job-cv-version-select" aria-label="CV version sent to this job">
+          <option value="">No CV selected</option>
+          ${versions.map((version) => `<option value="${escapeAttr(version.id)}" ${version.id === currentId ? "selected" : ""}>CV v${escapeHtml(version.version_number)} · ${escapeHtml(version.original_name || "CV")} · ${escapeHtml(formatCvUploadDate(version.uploaded_at))}</option>`).join("")}
+        </select>
+        <button type="button" class="btn-primary job-cv-save">Save</button>
+        <button type="button" class="btn-secondary job-cv-cancel">Cancel</button>
+        <span class="job-cv-picker-status" role="status" aria-live="polite"></span>`;
+      const select = row.querySelector("#job-cv-version-select");
+      select.focus();
+      row.querySelector(".job-cv-cancel").addEventListener("click", refreshModal);
+      row.querySelector(".job-cv-save").addEventListener("click", async (event) => {
+        const saveButton = event.currentTarget;
+        saveButton.disabled = true;
+        const status = row.querySelector(".job-cv-picker-status");
+        try {
+          await api.setJobCvVersion(job.id, select.value || null);
+          await refreshModal();
+        } catch (error) {
+          status.textContent = error.message || "Could not update the CV selection";
+          saveButton.disabled = false;
+        }
+      });
+    } catch (error) {
+      trigger.disabled = false;
+      showToast(error.message || "Could not load CV versions", "error");
+    }
+  });
 }
 
 /** Wires the basicmodal controls. */

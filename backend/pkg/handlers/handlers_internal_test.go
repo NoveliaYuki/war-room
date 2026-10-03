@@ -180,6 +180,15 @@ func TestBoundedWriterPropagatesUnderlyingWriteFailures(t *testing.T) {
 	}
 }
 
+func TestDecodeJSONBodyRejectsTrailingValuesAndJunk(t *testing.T) {
+	for _, body := range []string{`{"value":1} {"value":2}`, `{"value":1} trailing`} {
+		var decoded map[string]int
+		if err := decodeJSONBody(strings.NewReader(body), &decoded); err == nil {
+			t.Errorf("decodeJSONBody(%q) unexpectedly succeeded", body)
+		}
+	}
+}
+
 type alwaysFailWriter struct{ err error }
 
 func (writer alwaysFailWriter) Write([]byte) (int, error) { return 0, writer.err }
