@@ -13,8 +13,10 @@ const BACKUP_FORMAT = "war-room-demo-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024;
+const MAX_ARCHIVE_EXPANDED_BYTES = 1024 * 1024 * 1024;
 const MAX_ARCHIVE_MANIFEST_BYTES = 20 * 1024 * 1024;
 const MAX_ARCHIVE_LOGO_BYTES = 1024 * 1024;
+const MAX_ARCHIVE_ENTRIES = 10001;
 const CV_VERSIONS_KEY = "war-room-demo-cv-versions-v1";
 const NEXT_CV_VERSION_KEY = "war-room-demo-next-cv-version-v1";
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -175,23 +177,16 @@ function validateBackup(value) {
   return { jobs: importedJobs, logos: importedLogos, cvVersions: importedCvVersions, nextCVVersion };
 }
 
-function findZipEntry(view, bytes, entry) {
-  const start = entry.localHeaderOffset;
-  if (start + 30 > bytes.length || view.getUint32(start, true) !== 0x04034b50) {
-    throw new Error("The ZIP backup contains an invalid file entry.");
-  }
-  const nameLength = view.getUint16(start + 26, true);
-  const extraLength = view.getUint16(start + 28, true);
-  const dataStart = start + 30 + nameLength + extraLength;
-  const dataEnd = dataStart + entry.compressedSize;
-  if (dataEnd > bytes.length) throw new Error("The ZIP backup contains a truncated file.");
-  return bytes.subarray(dataStart, dataEnd);
-}
-
 async function readZipEntry(view, bytes, entry, maxOutputBytes) {
-  if (entry.uncompressedSize > maxOutputBytes) throw new Error("A file in the ZIP backup exceeds the demo import size limit.");
+  const outputLimit = Math.min(maxOutputBytes, MAX_ARCHIVE_EXPANDED_BYTES - entry.expandedBefore);
+  if (entry.uncompressedSize > outputLimit) throw new Error("A file in the ZIP backup exceeds the demo import size limit.");
   const compressed = findZipEntry(view, bytes, entry);
-  if (entry.compressionMethod === 0) return compressed;
+  if (entry.compressionMethod === 0) {
+    if (compressed.length !== entry.uncompressedSize || crc32(compressed) !== entry.crc32) {
+      throw new Error("A file in the ZIP backup has invalid contents.");
+    }
+    return compressed;
+  }
   if (entry.compressionMethod !== 8 || typeof DecompressionStream === "undefined") {
     throw new Error("This browser cannot read the compression used by the ZIP backup.");
   }
@@ -201,11 +196,60 @@ async function readZipEntry(view, bytes, entry, maxOutputBytes) {
   } catch {
     throw new Error("This browser cannot read the compression used by the ZIP backup.");
   }
-  const output = new Uint8Array(await new Response(stream).arrayBuffer());
-  if (output.length !== entry.uncompressedSize || output.length > maxOutputBytes) {
-    throw new Error("A file in the ZIP backup has an invalid size.");
+  const output = await readBoundedZipOutput(stream, outputLimit, entry.uncompressedSize);
+  if (crc32(output) !== entry.crc32) {
+    throw new Error("A file in the ZIP backup has an invalid checksum.");
   }
   return output;
+}
+
+async function readBoundedZipOutput(stream, outputLimit, expectedSize) {
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > outputLimit || total > expectedSize) {
+        throw new Error("A file in the ZIP backup exceeds its declared size limit.");
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  if (total !== expectedSize) {
+    throw new Error("A file in the ZIP backup has an invalid size.");
+  }
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return output;
+}
+
+function crc32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function findZipEntry(view, bytes, entry) {
+  const start = entry.localHeaderOffset;
+  const nameLength = view.getUint16(start + 26, true);
+  const extraLength = view.getUint16(start + 28, true);
+  const dataStart = start + 30 + nameLength + extraLength;
+  return bytes.subarray(dataStart, dataStart + entry.compressedSize);
 }
 
 function parseZipDirectory(bytes) {
@@ -219,13 +263,21 @@ function parseZipDirectory(bytes) {
     }
   }
   if (endOffset < 0) throw new Error("The selected file is not a valid War Room ZIP backup.");
+  const diskNumber = view.getUint16(endOffset + 4, true);
+  const directoryDisk = view.getUint16(endOffset + 6, true);
+  const diskEntries = view.getUint16(endOffset + 8, true);
   const entryCount = view.getUint16(endOffset + 10, true);
   const directorySize = view.getUint32(endOffset + 12, true);
   const directoryOffset = view.getUint32(endOffset + 16, true);
-  if (entryCount > 10001 || directoryOffset + directorySize > endOffset) {
+  if (diskNumber !== 0 || directoryDisk !== 0 || diskEntries !== entryCount
+    || entryCount > MAX_ARCHIVE_ENTRIES || directoryOffset + directorySize !== endOffset
+    || endOffset + 22 + view.getUint16(endOffset + 20, true) !== bytes.length) {
     throw new Error("The ZIP backup has an invalid file directory.");
   }
   const entries = new Map();
+  const payloadRanges = [];
+  let expandedSize = 0;
+  let localHeadersValid = true;
   let offset = directoryOffset;
   for (let index = 0; index < entryCount; index += 1) {
     if (offset + 46 > bytes.length || view.getUint32(offset, true) !== 0x02014b50) {
@@ -233,6 +285,7 @@ function parseZipDirectory(bytes) {
     }
     const flags = view.getUint16(offset + 8, true);
     const compressionMethod = view.getUint16(offset + 10, true);
+    const crc32 = view.getUint32(offset + 16, true);
     const compressedSize = view.getUint32(offset + 20, true);
     const uncompressedSize = view.getUint32(offset + 24, true);
     const nameLength = view.getUint16(offset + 28, true);
@@ -241,16 +294,56 @@ function parseZipDirectory(bytes) {
     const localHeaderOffset = view.getUint32(offset + 42, true);
     const nameStart = offset + 46;
     const nameEnd = nameStart + nameLength;
-    if (nameEnd + extraLength + commentLength > bytes.length || flags & 1) {
+    if (nameEnd + extraLength + commentLength > endOffset || flags & 0x0001 || flags & 0x0008
+      || ![0, 8].includes(compressionMethod)) {
       throw new Error("The ZIP backup contains an unsupported or invalid file entry.");
     }
     const name = new TextDecoder().decode(bytes.subarray(nameStart, nameEnd));
-    if (name.startsWith("/") || name.split("/").includes("..")) {
+    if (!name || name.startsWith("/") || name.includes("\\") || name.split("/").includes("..")) {
       throw new Error("The ZIP backup contains an unsafe file path.");
     }
     if (entries.has(name)) throw new Error("The ZIP backup contains duplicate file paths.");
-    entries.set(name, { compressionMethod, compressedSize, uncompressedSize, localHeaderOffset });
+    expandedSize += uncompressedSize;
+    if (expandedSize > MAX_ARCHIVE_EXPANDED_BYTES) {
+      throw new Error("The ZIP backup expands beyond the 1 GiB demo import limit.");
+    }
+    const entry = { name, flags, compressionMethod, crc32, compressedSize, uncompressedSize, localHeaderOffset, directoryOffset, expandedBefore: expandedSize - uncompressedSize };
+    entries.set(name, entry);
+    payloadRanges.push(entry);
+    if (!Number.isSafeInteger(localHeaderOffset) || localHeaderOffset < 0
+      || localHeaderOffset + 30 > directoryOffset
+      || view.getUint32(localHeaderOffset, true) !== 0x04034b50) {
+      localHeadersValid = false;
+    } else {
+      const localNameLength = view.getUint16(localHeaderOffset + 26, true);
+      const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
+      const localNameStart = localHeaderOffset + 30;
+      const localDataStart = localNameStart + localNameLength + localExtraLength;
+      const localName = new TextDecoder().decode(bytes.subarray(localNameStart, localNameStart + localNameLength));
+      if (localName !== name || view.getUint16(localHeaderOffset + 6, true) !== flags
+        || view.getUint16(localHeaderOffset + 8, true) !== compressionMethod
+        || view.getUint32(localHeaderOffset + 14, true) !== crc32
+        || view.getUint32(localHeaderOffset + 18, true) !== compressedSize
+        || view.getUint32(localHeaderOffset + 22, true) !== uncompressedSize
+        || localDataStart > directoryOffset) {
+        localHeadersValid = false;
+      }
+    }
     offset = nameEnd + extraLength + commentLength;
+  }
+  if (offset !== directoryOffset + directorySize || !localHeadersValid) {
+    throw new Error("The ZIP backup has inconsistent file metadata.");
+  }
+  payloadRanges.sort((left, right) => left.localHeaderOffset - right.localHeaderOffset);
+  for (let index = 0; index < payloadRanges.length; index += 1) {
+    const entry = payloadRanges[index];
+    const nextStart = payloadRanges[index + 1]?.localHeaderOffset ?? directoryOffset;
+    const dataStart = entry.localHeaderOffset + 30 + view.getUint16(entry.localHeaderOffset + 26, true)
+      + view.getUint16(entry.localHeaderOffset + 28, true);
+    const dataEnd = dataStart + entry.compressedSize;
+    if (entry.localHeaderOffset < 0 || dataStart > dataEnd || dataEnd > nextStart) {
+      throw new Error("The ZIP backup contains overlapping or invalid file entries.");
+    }
   }
   return { view, entries };
 }

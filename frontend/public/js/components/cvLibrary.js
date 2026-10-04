@@ -19,7 +19,7 @@ function versionsFrom(response) {
 }
 
 /** Renders and wires the standalone shared CV version library. */
-export async function openCvLibrary(modalEl, onBack, onClose) {
+export async function openCvLibrary(modalEl, onClose) {
   const load = async (focusSelector = "#btn-close-cv-library") => {
     modalEl.innerHTML = `
       <div class="modal-header data-transfer-header">
@@ -27,15 +27,13 @@ export async function openCvLibrary(modalEl, onBack, onClose) {
         <button class="btn-secondary" id="btn-close-cv-library" type="button" aria-label="Close">${icon("close", 18)}</button>
       </div>
       <div class="data-transfer-content cv-library-content">
-        <div class="cv-library-toolbar"><button id="btn-cv-library-back" class="cv-library-back" type="button">${icon("chevronLeft", 16)}<span>Back to processes</span></button>
-          <button id="btn-cv-library-upload" class="btn-primary cv-upload-label" type="button">${icon("plus", 15)} Upload new version</button>
+        <div class="cv-library-toolbar"><button id="btn-cv-library-upload" class="btn-primary cv-upload-label" type="button">${icon("plus", 15)} Upload new version</button>
           <input id="cv-library-upload-file" class="cv-library-file-input" type="file" accept="application/pdf,.pdf" aria-label="Choose a new CV version" />
         </div>
         <div class="data-transfer-status" id="cv-library-status" role="status" aria-live="polite"></div>
         <div id="cv-version-list" class="cv-version-list" aria-live="polite"></div>
       </div>`;
     modalEl.querySelector("#btn-close-cv-library").addEventListener("click", onClose);
-    modalEl.querySelector("#btn-cv-library-back").addEventListener("click", onBack);
     const input = modalEl.querySelector("#cv-library-upload-file");
     modalEl.querySelector("#btn-cv-library-upload").addEventListener("click", () => input.click());
     input.addEventListener("change", async () => {

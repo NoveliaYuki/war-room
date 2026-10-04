@@ -249,6 +249,22 @@ func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
 	assertTodayMeetingsStack(t, page)
 }
 
+func TestDemoNvidiaLogoLoads(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	logo := page.Locator(`.process-card[data-id="demo-3"] img.company-logo-img`)
+	if _, err := page.WaitForFunction(`() => {
+		const logo = document.querySelector('.process-card[data-id="demo-3"] img.company-logo-img');
+		return logo?.complete && logo.naturalWidth > 0;
+	}`, nil); err != nil {
+		t.Fatalf("wait for NVIDIA logo to load: %v", err)
+	}
+	source, err := logo.GetAttribute("src")
+	if err != nil || !strings.HasSuffix(source, "/demo/assets/logos/nvidia-eye.png") {
+		t.Fatalf("NVIDIA demo card logo source=%q, want bundled NVIDIA eye mark (err=%v)", source, err)
+	}
+}
+
 func TestKeyboardAccessibilityForNavigation(t *testing.T) {
 	page := newPage(t)
 	assertSkipLinkIsFirstFocus(t, page)
