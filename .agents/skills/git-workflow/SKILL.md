@@ -66,10 +66,16 @@ Never stage `data/`, `backend/data/`, databases, company logos, attachments, or 
 | Push | User explicitly requests a push |
 | Create a branch, issue, or PR | User explicitly asks |
 
-For a requested change, create a topic branch rather than working on `main`.
+For each change, start a topic branch from the latest `main`.
 Before opening a pull request, verify its base is `main`, its branch is not
 `main`, and the working tree contains no local data, build artifacts, secrets,
 or unrelated changes.
+
+Search open and closed issues for an existing issue that the pull request fully
+resolves. Put `Closes #<number>` in the pull request body when there is a matching
+issue; use GitHub's closing keyword so it closes when the PR merges. If no
+matching issue exists, add `NO_ISSUE` as a standalone line in the pull request
+body. Do not close an issue that is only related to the change.
 
 ## 6. Step 2 — Choose Type and Version
 
@@ -83,27 +89,19 @@ Use this order when intent is mixed:
 | Is behavior unchanged? | Choose `refactor`, `test`, `docs`, `build`, `ci`, or `style` by scope |
 | No category fits? | `chore` |
 
-Update `VERSION` in the same pull request as every functional app change, choosing
-the SemVer bump by impact: breaking changes bump major, backward-compatible
-features bump minor, and compatible fixes or maintenance bump patch. Purely
-documentation or repository-workflow changes do not bump the app version. Use
-the root `VERSION` file as the sole application version for frontend and backend;
-do not duplicate it in package metadata or image labels. Bump it at most once per
-PR, then use that resulting version in each commit subject in the PR.
+Update root `VERSION` once per PR with functional app changes. Use the resulting
+version in every commit subject in that PR. Do not duplicate the app version in
+package metadata or image labels.
 
-Publish application releases only for minor or major versions. Patch version
-bumps still merge through normal PRs, but do not create patch release tags or
-GitHub releases. Include all compatible fixes accumulated since the prior
-published release in the next minor or major release's `What changed` notes. A
-minor release increments the minor component and resets patch to zero (for
-example, `1.1.3` → `1.2.0`); a major release increments major and resets minor
-and patch to zero (for example, `1.2.3` → `2.0.0`).
+| Change | `VERSION` update | Publish a release? |
+| --- | --- | --- |
+| Breaking change | Major; `1.2.3` → `2.0.0` | Yes, after merge and passing CI |
+| Backward-compatible feature | Minor; `1.1.3` → `1.2.0` | Yes, after merge and passing CI |
+| Compatible fix or maintenance | Patch; `1.1.0` → `1.1.1` | No; include it in the next minor or major release |
+| Documentation or workflow only | No bump | No |
 
-| Bump | Meaning |
-| --- | --- |
-| Major | Breaking change |
-| Minor | Backward-compatible feature |
-| Patch | Compatible fixes or maintenance; update `VERSION`, but do not publish a release |
+Include all fixes since the last published release in the next minor or major
+release. Never publish a patch release.
 
 ## 7. Step 3 — Write the Commit Subject
 
@@ -118,33 +116,23 @@ Do not use vague summaries such as “fix issues”, “update UI”, or “appl
 
 ## 8. Step 4 — Verify, Merge, and Release
 
-Before an authorized commit, inspect `git diff --cached --check` and the full
-staged file list. Run the complete pre-commit workflow before committing or
-requesting merge; keep commits focused and do not bypass failing checks. Prepare
-pull request text only when requested, and accurately report checks and results.
+Before committing, inspect staged files and run all pre-commit checks. Do not
+commit or request merge if a check fails. Report checks accurately in the PR.
 
-After an authorized minor or major release pull request is merged and CI passes,
-create and push the matching `vX.Y.0` or `vX.0.0` tag, then publish a GitHub
-release for that tag. Do not publish a release from an unmerged branch or before
-CI passes. Release notes use this template; keep each bullet to no more than two
+After the release PR merges and CI passes, tag and publish its minor or major
+version. Use these release-note sections; keep each bullet to at most two
 sentences:
 
 ```markdown
 ## Highlights
-- Summarize the release's most useful new capability or broad improvement.
+- List new features and major improvements.
 
 ## What changed
-- List other shipped changes, including fixes accumulated since the prior release.
+- List other updates and fixes since the previous release.
 
 ```
 
-Use **Highlights** rather than **New features** so the heading also fits major
-improvements and releases whose main value is broader than a single new feature.
-Use **What changed** for the concise change list, including accumulated bug
-fixes. Omit upgrade notes by default for this local app; add an **Upgrade notes**
-section only when a release requires user action or a special manual data or
-compatibility step. Report the release URL, tag, commit, and verified CI result
-when the user authorized those operations.
+Add an **Upgrade notes** section only when users must take a manual action.
 
 ## 9. Red Flags — Never / Always
 
@@ -164,7 +152,7 @@ when the user authorized those operations.
 - Always wait for passing CI before merging or publishing a release.
 - Always choose the type by intent before file scope.
 - Always follow the exact subject format in §2.
-- Always keep `VERSION` unchanged for routine non-release pull requests.
+- Always bump `VERSION` for functional app changes; leave it unchanged for docs-only changes.
 - Always verify staged files and report only completed Git actions.
 
 ## 10. Worked Example
