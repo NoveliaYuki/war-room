@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { deflateRawSync } from "node:zlib";
 import { createZip } from "../../demo/zipWriter.js";
 
 const files = vi.hoisted(() => new Map());
@@ -87,6 +88,78 @@ describe("demo CV library backup", () => {
     const next = await demoApi.uploadCvVersion(new File(["next CV contents"], "new.pdf", { type: "application/pdf" }));
     expect(next.version_number).toBe(8);
   });
+
+  it("rejects inconsistent ZIP local headers without changing saved demo data", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const before = await demoApi.getJobs("all");
+    const archive = await makeBackupZip();
+    const bytes = new Uint8Array(await archive.arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    const central = findCentralEntry(view, bytes, "manifest.json");
+    const local = view.getUint32(central + 42, true);
+    view.setUint32(local + 14, view.getUint32(local + 14, true) ^ 1, true);
+
+    await expect(demoApi.importBackup(new Blob([bytes]))).rejects.toThrow(/inconsistent file metadata/);
+    expect(await demoApi.getJobs("all")).toEqual(before);
+  });
+
+  it("rejects ZIP entries whose expanded sizes exceed the aggregate safety limit", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const archive = await makeBackupZip();
+    const bytes = new Uint8Array(await archive.arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    const central = findCentralEntry(view, bytes, "manifest.json");
+    view.setUint32(central + 24, 1024 * 1024 * 1024 + 1, true);
+
+    await expect(demoApi.importBackup(new Blob([bytes]))).rejects.toThrow(/expands beyond the 1 GiB/);
+  });
+
+  it("rejects overlapping ZIP payloads and filename aliases", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const archive = await makeBackupZip();
+    const bytes = new Uint8Array(await archive.arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    const manifest = findCentralEntry(view, bytes, "manifest.json");
+    const other = findCentralEntry(view, bytes, "unused.bin");
+    view.setUint32(other + 42, view.getUint32(manifest + 42, true), true);
+
+    await expect(demoApi.importBackup(new Blob([bytes]))).rejects.toThrow(/inconsistent file metadata|overlapping or invalid/);
+  });
+
+  it("rejects ZIP payloads with a checksum mismatch", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const archive = await makeBackupZip();
+    const bytes = new Uint8Array(await archive.arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    const central = findCentralEntry(view, bytes, "manifest.json");
+    const local = view.getUint32(central + 42, true);
+    const nameLength = view.getUint16(local + 26, true);
+    const extraLength = view.getUint16(local + 28, true);
+    bytes[local + 30 + nameLength + extraLength] ^= 1;
+
+    await expect(demoApi.importBackup(new Blob([bytes]))).rejects.toThrow(/invalid contents/);
+  });
+
+  it("rejects trailing data after the ZIP end-of-directory record", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const archive = await makeBackupZip();
+    const bytes = new Uint8Array(await archive.arrayBuffer());
+    const corrupted = new Uint8Array(bytes.length + 1);
+    corrupted.set(bytes);
+    corrupted[corrupted.length - 1] = 1;
+
+    await expect(demoApi.importBackup(new Blob([corrupted]))).rejects.toThrow(/invalid file directory/);
+  });
+
+  it("stops inflation when a DEFLATE entry exceeds its declared size", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const manifest = new TextEncoder().encode(JSON.stringify({
+      format: "war-room-backup", version: 2, jobs: [], attachment_sha256: {}, logos: [], cv_versions: [],
+    }));
+    const bomb = makeDeflatedZip("manifest.json", manifest, 8);
+
+    await expect(demoApi.importBackup(bomb)).rejects.toThrow(/declared size limit/);
+  });
 });
 
 async function digest(bytes) {
@@ -119,4 +192,83 @@ async function readManifest(archive) {
     cursor += 46 + nameSize + extraSize + commentSize;
   }
   throw new Error("manifest not found in test archive");
+}
+
+async function makeBackupZip() {
+  const manifest = {
+    format: "war-room-backup", version: 2, exported_at: new Date().toISOString(),
+    jobs: [{ id: "import-job", company_name: "Company", position_title: "Engineer", stages: [], attachments: [], interviewers: [] }],
+    attachment_sha256: {}, logos: [], cv_versions: [],
+  };
+  return createZip([
+    ["manifest.json", new TextEncoder().encode(JSON.stringify(manifest))],
+    ["unused.bin", new Uint8Array([1, 2, 3])],
+  ]);
+}
+
+function findCentralEntry(view, bytes, name) {
+  let end = -1;
+  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) { end = offset; break; }
+  }
+  let cursor = view.getUint32(end + 16, true);
+  const count = view.getUint16(end + 10, true);
+  for (let index = 0; index < count; index += 1) {
+    const nameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const currentName = new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength));
+    if (currentName === name) return cursor;
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+  throw new Error(`ZIP entry not found: ${name}`);
+}
+
+function makeDeflatedZip(name, contents, declaredSize) {
+  const nameBytes = new TextEncoder().encode(name);
+  const compressed = deflateRawSync(contents);
+  const checksum = testCRC32(contents);
+  const local = new Uint8Array(30 + nameBytes.length);
+  const localView = new DataView(local.buffer);
+  localView.setUint32(0, 0x04034b50, true);
+  localView.setUint16(4, 20, true);
+  localView.setUint16(6, 0x0800, true);
+  localView.setUint16(8, 8, true);
+  localView.setUint32(14, checksum, true);
+  localView.setUint32(18, compressed.length, true);
+  localView.setUint32(22, declaredSize, true);
+  localView.setUint16(26, nameBytes.length, true);
+  local.set(nameBytes, 30);
+
+  const central = new Uint8Array(46 + nameBytes.length);
+  const centralView = new DataView(central.buffer);
+  centralView.setUint32(0, 0x02014b50, true);
+  centralView.setUint16(4, 20, true);
+  centralView.setUint16(6, 20, true);
+  centralView.setUint16(8, 0x0800, true);
+  centralView.setUint16(10, 8, true);
+  centralView.setUint32(16, checksum, true);
+  centralView.setUint32(20, compressed.length, true);
+  centralView.setUint32(24, declaredSize, true);
+  centralView.setUint16(28, nameBytes.length, true);
+  central.set(nameBytes, 46);
+
+  const directoryOffset = local.length + compressed.length;
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, 1, true);
+  endView.setUint16(10, 1, true);
+  endView.setUint32(12, central.length, true);
+  endView.setUint32(16, directoryOffset, true);
+  return new Blob([local, compressed, central, end], { type: "application/zip" });
+}
+
+function testCRC32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return (value ^ 0xffffffff) >>> 0;
 }
