@@ -72,10 +72,9 @@ Before opening a pull request, verify its base is `main`, its branch is not
 or unrelated changes.
 
 Search open and closed issues for an existing issue that the pull request fully
-resolves. Put `Closes #<number>` in the pull request body when there is a matching
-issue; use GitHub's closing keyword so it closes when the PR merges. If no
-matching issue exists, add `NO_ISSUE` as a standalone line in the pull request
-body. Do not close an issue that is only related to the change.
+resolves. Always add one `Closes` line to the pull request body: use
+`Closes #<number>` when an issue will be fixed, or `Closes NO_ISSUE` when no
+matching issue exists. Do not close an issue that is only related to the change.
 
 ## 6. Step 2 — Choose Type and Version
 
