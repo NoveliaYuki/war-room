@@ -110,7 +110,8 @@ describe('application entry point', () => {
     document.querySelector('#btn-cv-library').click();
     await flush();
     expect(document.querySelector('.modal-title').textContent).toBe('CV Library');
-    document.querySelector('#btn-cv-library-back').click();
+    expect(document.querySelector('#btn-cv-library-back')).toBeNull();
+    document.querySelector('#btn-close-cv-library').click();
     expect(document.querySelector('.modal-title')).toBeNull();
 
     const moreTrigger = document.querySelector('#toolbar-more-trigger');

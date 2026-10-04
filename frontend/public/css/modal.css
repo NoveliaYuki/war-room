@@ -56,9 +56,6 @@
 .data-transfer-section + .data-transfer-section { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--border-subtle); }
 .cv-library-content { min-height: 220px; }
 .cv-library-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
-.cv-library-back { display: inline-flex; align-items: center; gap: 5px; padding: 8px 0; border: 0; color: var(--text-secondary); background: transparent; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.cv-library-back:hover { color: var(--text-primary); }
-.cv-library-back:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 3px; border-radius: 4px; }
 .cv-upload-label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .cv-library-file-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); border: 0; }
 .cv-version-list { display: grid; gap: 9px; }
