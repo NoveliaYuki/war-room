@@ -83,26 +83,27 @@ Use this order when intent is mixed:
 | Is behavior unchanged? | Choose `refactor`, `test`, `docs`, `build`, `ci`, or `style` by scope |
 | No category fits? | `chore` |
 
-Publish application releases only for minor or major versions. Patch releases
-are not published: accumulate compatible fixes and maintenance with the next
-minor or major release. A minor release increments the minor component and resets
-patch to zero (for example, `1.1.0` → `1.2.0`); a major release increments the
-major component and resets minor and patch to zero (for example, `1.2.0` → `2.0.0`).
-Include the fixes accumulated since the previous release in that release's
-`What changed` notes. Never publish a `1.2.1`-style patch release.
+Update `VERSION` in the same pull request as every functional app change, choosing
+the SemVer bump by impact: breaking changes bump major, backward-compatible
+features bump minor, and compatible fixes or maintenance bump patch. Purely
+documentation or repository-workflow changes do not bump the app version. Use
+the root `VERSION` file as the sole application version for frontend and backend;
+do not duplicate it in package metadata or image labels. Bump it at most once per
+PR, then use that resulting version in each commit subject in the PR.
 
-Only bump the version when the user authorizes a minor or major release. Use the
-root `VERSION` file as the sole application release version for frontend and
-backend. Do not duplicate it in package metadata or image labels. A release pull
-request contains at most one version bump; subsequent commits in that PR use the
-same release version in their subjects. Non-release pull requests use the current
-`VERSION` value in commit subjects.
+Publish application releases only for minor or major versions. Patch version
+bumps still merge through normal PRs, but do not create patch release tags or
+GitHub releases. Include all compatible fixes accumulated since the prior
+published release in the next minor or major release's `What changed` notes. A
+minor release increments the minor component and resets patch to zero (for
+example, `1.1.3` → `1.2.0`); a major release increments major and resets minor
+and patch to zero (for example, `1.2.3` → `2.0.0`).
 
 | Bump | Meaning |
 | --- | --- |
 | Major | Breaking change |
 | Minor | Backward-compatible feature |
-| Patch | Internal version component only; never a published release |
+| Patch | Compatible fixes or maintenance; update `VERSION`, but do not publish a release |
 
 ## 7. Step 3 — Write the Commit Subject
 
@@ -168,7 +169,7 @@ when the user authorized those operations.
 
 ## 10. Worked Example
 
-Authorized fix, no release bump at `VERSION` `1.1.0`:
-`fix: [v1.1.0] - preserve search focus in compact toolbar`.
-For a release PR that bumps `VERSION` to `1.2.0`, use `[v1.2.0]` for each commit
-in that PR and publish `v1.2.0` only after merge and passing CI.
+Authorized compatible fix that bumps `VERSION` from `1.1.0` to `1.1.1`:
+`fix: [v1.1.1] - preserve search focus in compact toolbar`.
+Publish no patch release for `1.1.1`; include it in the next minor or major
+release, such as `1.2.0`, after that release PR merges and CI passes.
