@@ -380,7 +380,7 @@ function openCvLibraryModal() {
   resetModalAnimation();
   modalEl.classList.add("data-transfer-modal");
   backdropEl.classList.add("active");
-  openCvLibrary(modalEl, closeCvLibraryModal, closeCvLibraryModal);
+  openCvLibrary(modalEl, closeCvLibraryModal);
 }
 
 /** Downloads the generated ZIP archive. */
