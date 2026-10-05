@@ -4,11 +4,13 @@ import { saveFile, readFile, deleteFile, replaceFiles } from "./fileStore.js";
 import { createZip } from "./zipWriter.js";
 import { formatLocalDate, getDemoMeetingDayOffset, setDemoMeetingDate } from "./data/meetingDates.js";
 import { migrateLegacyDemoJob } from "../public/js/utils/demoMigration.js";
+import { initialTechnologies } from "./data/technologies.js";
 
 const STORAGE_KEY = "war-room-demo-data-v13";
+const TECHNOLOGY_STORAGE_KEY = "war-room-demo-technologies-v1";
 const SCHEDULE_DATE_KEY = "war-room-demo-schedule-date";
 const DEMO_SEED_VERSION_KEY = "war-room-demo-seed-version";
-const DEMO_SEED_VERSION = "4";
+const DEMO_SEED_VERSION = "5";
 const BACKUP_FORMAT = "war-room-demo-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
@@ -73,6 +75,8 @@ function loadJobs() {
     const today = formatLocalDate(new Date());
     const seedChanged = window.localStorage.getItem(DEMO_SEED_VERSION_KEY) !== DEMO_SEED_VERSION;
     if (seedChanged) migrateLegacyDemoJob(records, initialJobs.find((record) => record.id === "demo-3"));
+    const seededJobs = new Map(initialJobs.map((job) => [job.id, job]));
+    records.forEach((job) => { if (!Array.isArray(job.technologies)) job.technologies = clone(seededJobs.get(job.id)?.technologies || []); });
     if (seedChanged || window.localStorage.getItem(SCHEDULE_DATE_KEY) !== today) {
       refreshDemoMeetingDates(records, today);
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
@@ -86,6 +90,25 @@ function loadJobs() {
 }
 
 let jobs = loadJobs();
+
+function loadTechnologies() {
+  try {
+    const stored = window.localStorage.getItem(TECHNOLOGY_STORAGE_KEY);
+    if (stored !== null) {
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : clone(initialTechnologies);
+    }
+  } catch { /* Use the built-in demo catalog when browser storage is unavailable. */ }
+  const seeded = clone(initialTechnologies);
+  try { window.localStorage.setItem(TECHNOLOGY_STORAGE_KEY, JSON.stringify(seeded)); } catch { /* The catalog remains available for this tab. */ }
+  return seeded;
+}
+
+let technologies = loadTechnologies();
+
+function saveTechnologies() {
+  try { window.localStorage.setItem(TECHNOLOGY_STORAGE_KEY, JSON.stringify(technologies)); } catch { /* The demo remains usable in this tab. */ }
+}
 
 function save() {
   try {
@@ -101,6 +124,21 @@ function validateBackup(value) {
   }
   if (value.jobs.length > 10000) throw new Error("The backup contains too many processes.");
   const importedJobs = clone(value.jobs);
+  const importedTechnologies = Array.isArray(value.technologies) ? clone(value.technologies) : [];
+  const technologyIds = new Set();
+  const technologyTerms = new Set();
+  for (const item of importedTechnologies) {
+    const key = (term) => String(term || "").trim().toLowerCase().replace(/\s+/g, " ");
+    if (!item || typeof item.id !== "string" || !item.id.trim() || technologyIds.has(item.id) || typeof item.name !== "string" || !item.name.trim() || !Array.isArray(item.aliases)) {
+      throw new Error("The backup contains an invalid technology catalog.");
+    }
+    technologyIds.add(item.id);
+    for (const term of [item.name, ...item.aliases]) {
+      const normalized = key(term);
+      if (!normalized || technologyTerms.has(normalized)) throw new Error("The backup contains duplicate technology names or aliases.");
+      technologyTerms.add(normalized);
+    }
+  }
   const ids = new Set();
   const addId = (record) => {
     if (!record || typeof record !== "object" || typeof record.id !== "string" || !record.id.trim() || ids.has(record.id)) {
@@ -116,6 +154,8 @@ function validateBackup(value) {
     addId(job);
     job.attachments = Array.isArray(job.attachments) ? job.attachments : [];
     job.interviewers = Array.isArray(job.interviewers) ? job.interviewers : [];
+    job.technologies = Array.isArray(job.technologies) ? job.technologies : [];
+    if (job.technologies.some((item) => !item || !technologyIds.has(item.id))) throw new Error("A process refers to a technology missing from the backup catalog.");
     for (const stage of job.stages) {
       if (!stage || typeof stage !== "object" || !Array.isArray(stage.questions)) {
         throw new Error("The backup contains an invalid interview stage.");
@@ -174,7 +214,7 @@ function validateBackup(value) {
     logoBytes += dataUrl.length;
     if (logoBytes > MAX_BACKUP_BYTES) throw new Error("Company icons exceed the demo backup size limit.");
   }
-  return { jobs: importedJobs, logos: importedLogos, cvVersions: importedCvVersions, nextCVVersion };
+  return { jobs: importedJobs, technologies: importedTechnologies, logos: importedLogos, cvVersions: importedCvVersions, nextCVVersion };
 }
 
 async function readZipEntry(view, bytes, entry, maxOutputBytes) {
@@ -372,7 +412,7 @@ async function readApplicationZip(file) {
   } catch {
     throw new Error("The ZIP backup manifest is not valid JSON.");
   }
-  if (manifest?.format !== "war-room-backup" || ![1, 2].includes(manifest.version) || !Array.isArray(manifest.jobs)) {
+  if (manifest?.format !== "war-room-backup" || ![1, 2, 3].includes(manifest.version) || !Array.isArray(manifest.jobs)) {
     throw new Error("The ZIP is not a supported War Room backup.");
   }
   if (manifest.version === 1 && Array.isArray(manifest.cv_versions) && manifest.cv_versions.length) {
@@ -448,7 +488,7 @@ async function readApplicationZip(file) {
     version.stored_file_id = checksum;
     files.set(checksum, new Blob([fileBytes], { type: version.mime_type || "application/pdf" }));
   }
-  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, jobs, company_logos: companyLogos, files, cv_versions: cvVersions, next_cv_version: manifest.next_cv_version };
+  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, jobs, technologies: Array.isArray(manifest.technologies) ? manifest.technologies : [], company_logos: companyLogos, files, cv_versions: cvVersions, next_cv_version: manifest.next_cv_version };
 }
 
 async function sha256(bytes) {
@@ -528,7 +568,7 @@ async function makeZipBackup() {
     seenDomains.add(domain);
   }
   const publicCvVersions = backupCvVersions.map(({ stored_file_id, stored_filename, ...version }) => version);
-  const manifest = { format: "war-room-backup", version: 2, exported_at: new Date().toISOString(), jobs: backupJobs, attachment_sha256: attachmentSHA256, cv_versions: publicCvVersions, next_cv_version: getDemoNextCvVersion(backupCvVersions), logos };
+  const manifest = { format: "war-room-backup", version: 3, exported_at: new Date().toISOString(), jobs: backupJobs, technologies: clone(technologies), attachment_sha256: attachmentSHA256, cv_versions: publicCvVersions, next_cv_version: getDemoNextCvVersion(backupCvVersions), logos };
   entries.push(["manifest.json", new TextEncoder().encode(JSON.stringify(manifest))]);
   return createZip(entries);
 }
@@ -591,6 +631,30 @@ function refreshDerived(job) {
   job.current_stage_title = index >= 0 ? job.stages[index].custom_title || job.stages[index].stage_type : undefined;
 }
 
+function technologyKey(value) { return String(value || "").trim().toLowerCase().replace(/\s+/g, " "); }
+
+function validateDemoTechnology(name, aliases, excludeID = "") {
+  const cleanName = String(name || "").trim();
+  const cleanAliases = [...new Set((aliases || []).map((alias) => String(alias || "").trim()).filter(Boolean))];
+  if (!cleanName || cleanName.length > 80 || cleanAliases.length > 20 || cleanAliases.some((alias) => alias.length > 80)) throw new Error("Enter a technology name up to 80 characters and no more than 20 aliases.");
+  const terms = [cleanName, ...cleanAliases].map(technologyKey);
+  if (new Set(terms).size !== terms.length) throw new Error("Technology names and aliases must be unique.");
+  for (const item of technologies) {
+    if (item.id === excludeID) continue;
+    const existing = [item.name, ...(item.aliases || [])].map(technologyKey);
+    if (terms.some((term) => existing.includes(term))) throw new Error("That technology name or alias already exists in the catalog.");
+  }
+  return { name: cleanName, aliases: cleanAliases };
+}
+
+function jobWithCurrentTechnologies(job) {
+  return { ...job, technologies: (job.technologies || []).map((item) => technologies.find((technology) => technology.id === item.id) || item).map((item) => ({ id: item.id, name: item.name })) };
+}
+
+function listDemoTechnologies() {
+  return clone(technologies.map((item) => ({ ...item, jobs: jobs.filter((job) => (job.technologies || []).some((entry) => entry.id === item.id)).map((job) => ({ id: job.id, company_name: job.company_name, position_title: job.position_title })) })));
+}
+
 function makeStage(jobId, payload, orderIndex) {
   const id = `demo-stage-${crypto.randomUUID()}`;
   return {
@@ -620,6 +684,7 @@ function makeJob(payload) {
     work_arrangement: payload.work_arrangement || "unknown", employment_type: payload.employment_type || "unknown",
     is_referral: Boolean(payload.is_referral), order_index: jobs.length, created_at: now, updated_at: now,
     interviewers: [], stages: [], attachments: [],
+    technologies: [],
   };
   if (payload.create_default_stages) {
     ["HR", "Technical", "Cultural", "Offer & Decision"].forEach((type, index) => job.stages.push(makeStage(id, { stage_type: type }, index)));
@@ -651,7 +716,7 @@ export const demoApi = {
   async exportBackup() { return makeZipBackup(); },
   async importBackup(file, allowEmpty = false) {
     const backup = await readApplicationZip(file);
-    const { jobs: importedJobs, logos, cvVersions, nextCVVersion } = validateBackup(backup);
+    const { jobs: importedJobs, technologies: importedTechnologies, logos, cvVersions, nextCVVersion } = validateBackup(backup);
     const files = backup.files;
     if (importedJobs.length === 0 && !allowEmpty) {
       const error = new Error("The backup contains no saved demo processes.");
@@ -659,12 +724,14 @@ export const demoApi = {
       throw error;
     }
     const previousJobs = window.localStorage.getItem(STORAGE_KEY);
+    const previousTechnologies = window.localStorage.getItem(TECHNOLOGY_STORAGE_KEY);
     const previousLogos = window.localStorage.getItem(DEMO_LOGOS_STORAGE_KEY);
     const previousCvVersions = window.localStorage.getItem(CV_VERSIONS_KEY);
     const previousNextCVVersion = window.localStorage.getItem(NEXT_CV_VERSION_KEY);
     try {
       window.localStorage.setItem(DEMO_LOGOS_STORAGE_KEY, JSON.stringify(logos));
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(importedJobs));
+      window.localStorage.setItem(TECHNOLOGY_STORAGE_KEY, JSON.stringify(importedTechnologies));
       saveDemoCvVersions(cvVersions);
       saveDemoNextCvVersion(nextCVVersion);
       await replaceFiles(files);
@@ -672,6 +739,8 @@ export const demoApi = {
       try {
         if (previousJobs === null) window.localStorage.removeItem(STORAGE_KEY);
         else window.localStorage.setItem(STORAGE_KEY, previousJobs);
+        if (previousTechnologies === null) window.localStorage.removeItem(TECHNOLOGY_STORAGE_KEY);
+        else window.localStorage.setItem(TECHNOLOGY_STORAGE_KEY, previousTechnologies);
         if (previousLogos === null) window.localStorage.removeItem(DEMO_LOGOS_STORAGE_KEY);
         else window.localStorage.setItem(DEMO_LOGOS_STORAGE_KEY, previousLogos);
         if (previousCvVersions === null) window.localStorage.removeItem(CV_VERSIONS_KEY);
@@ -685,16 +754,17 @@ export const demoApi = {
     }
     cacheDemoLogos(logos);
     jobs = importedJobs;
+    technologies = importedTechnologies;
     return { success: true };
   },
   async getJobs(status = "all", search = "") {
-    return clone(jobs.filter((job) => (status === "all" || job.status === status) && meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index));
+    return clone(jobs.filter((job) => (status === "all" || job.status === status) && meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index).map(jobWithCurrentTechnologies));
   },
   async getJobCounts() {
     return { all: jobs.length, ongoing: jobs.filter((job) => job.status === "ongoing").length, accepted: jobs.filter((job) => job.status === "accepted").length, rejected: jobs.filter((job) => job.status === "rejected").length };
   },
   async getJob(id) {
-    const job = clone(getJob(id));
+    const job = clone(jobWithCurrentTechnologies(getJob(id)));
     for (const attachment of job.attachments || []) {
       const blob = await readFile(attachment.id);
       if (blob) attachment.download_url = URL.createObjectURL(blob);
@@ -744,8 +814,44 @@ export const demoApi = {
     save();
     return { success: true, selected_cv_version: clone(job.selected_cv_version) };
   },
+  async getTechnologies() { return listDemoTechnologies(); },
+  async createTechnology(payload) {
+    const normalized = validateDemoTechnology(payload.name, payload.aliases || []);
+    const item = { id: `tech-${crypto.randomUUID()}`, ...normalized };
+    technologies.push(item); saveTechnologies(); return clone(item);
+  },
+  async updateTechnology(id, payload) {
+    const item = technologies.find((technology) => technology.id === String(id));
+    if (!item) throw new Error("Technology not found");
+    Object.assign(item, validateDemoTechnology(payload.name, payload.aliases || [], item.id));
+    jobs.forEach((job) => (job.technologies || []).forEach((entry) => { if (entry.id === item.id) entry.name = item.name; }));
+    saveTechnologies(); save(); return clone(item);
+  },
+  async removeTechnologyAssignments(id) {
+    const item = technologies.find((technology) => technology.id === String(id));
+    if (!item) throw new Error("Technology not found");
+    let removed = 0;
+    jobs.forEach((job) => { const before = (job.technologies || []).length; job.technologies = (job.technologies || []).filter((entry) => entry.id !== item.id); removed += before - job.technologies.length; });
+    save(); return { removed };
+  },
+  async deleteTechnology(id) {
+    const item = technologies.find((technology) => technology.id === String(id));
+    if (!item) throw new Error("Technology not found");
+    if (jobs.some((job) => (job.technologies || []).some((entry) => entry.id === item.id))) throw new Error("Technology is assigned to one or more processes; remove its assignments first.");
+    technologies = technologies.filter((technology) => technology.id !== item.id); saveTechnologies(); return { success: true };
+  },
   async createJob(payload) { const job = makeJob(payload); jobs.push(job); save(); return clone(job); },
-  async updateJob(id, payload) { const job = getJob(id); Object.assign(job, payload, { updated_at: Date.now() }); refreshDerived(job); save(); return clone(job); },
+  async updateJob(id, payload) {
+    const job = getJob(id);
+    if (Object.hasOwn(payload, "technology_ids")) {
+      const ids = payload.technology_ids;
+      if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some((technologyID) => !technologies.some((item) => item.id === technologyID))) throw new Error("Choose technologies from the catalog.");
+      job.technologies = ids.map((technologyID) => { const item = technologies.find((technology) => technology.id === technologyID); return { id: item.id, name: item.name }; });
+      const { technology_ids: _technologyIDs, ...fields } = payload;
+      Object.assign(job, fields, { updated_at: Date.now() });
+    } else Object.assign(job, payload, { updated_at: Date.now() });
+    refreshDerived(job); save(); return clone(jobWithCurrentTechnologies(job));
+  },
   async deleteJob(id) {
     const job = getJob(id);
     for (const attachment of job.attachments || []) await deleteFile(attachment.id);

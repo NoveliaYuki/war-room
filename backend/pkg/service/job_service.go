@@ -105,6 +105,11 @@ func getFullJobDetails(repo *repository.Repository, id string) (*models.Job, err
 
 // CreateJob validates and persists a job and its default stages.
 func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error) {
+	if input.TechnologyIDs != nil {
+		if err := s.validateJobTechnologyIDs(input.TechnologyIDs); err != nil {
+			return nil, err
+		}
+	}
 	job, err := buildJob(input)
 	if err != nil {
 		return nil, err
@@ -112,6 +117,12 @@ func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error)
 	job.ID = uuid.NewString()
 	if err := s.repo.InsertJob(job); err != nil {
 		return nil, err
+	}
+	if input.TechnologyIDs != nil {
+		if err := s.repo.SetJobTechnologies(job.ID, input.TechnologyIDs); err != nil {
+			_ = s.repo.DeleteJob(job.ID)
+			return nil, fmt.Errorf("%w: %v", ErrInvalidField, err)
+		}
 	}
 	if input.CreateDefaultStages == nil || *input.CreateDefaultStages {
 		if err := s.createDefaultStages(job, input); err != nil {
@@ -168,6 +179,7 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 		WorkArrangement: workArrangement,
 		EmploymentType:  employmentType,
 		IsReferral:      referral,
+		Technologies:    []models.Technology{},
 	}, nil
 }
 
@@ -294,6 +306,9 @@ func (s *JobService) createDefaultStages(job *models.Job, input models.CreateJob
 
 // UpdateJob applies the supplied fields to an existing job.
 func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.Job, error) {
+	if err := s.validateTechnologyUpdate(input.TechnologyIDs); err != nil {
+		return nil, err
+	}
 	if input.PositionTitle != nil && strings.TrimSpace(*input.PositionTitle) == "" {
 		return nil, ErrPositionTitleRequired
 	}
@@ -313,9 +328,150 @@ func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.
 	if err := s.repo.UpdateJob(id, fields); err != nil {
 		return nil, err
 	}
+	if input.TechnologyIDs != nil {
+		if err := s.repo.SetJobTechnologies(id, input.TechnologyIDs); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidField, err)
+		}
+	}
 
 	s.mirrorAfterMutation()
 	return s.GetFullJobDetails(id)
+}
+
+func (s *JobService) validateTechnologyUpdate(ids []string) error {
+	if ids == nil {
+		return nil
+	}
+	return s.validateJobTechnologyIDs(ids)
+}
+
+func (s *JobService) validateJobTechnologyIDs(ids []string) error {
+	catalog, err := s.repo.ListTechnologies()
+	if err != nil {
+		return err
+	}
+	known := make(map[string]bool, len(catalog))
+	for _, item := range catalog {
+		known[item.ID] = true
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if strings.TrimSpace(id) == "" || seen[id] || !known[id] {
+			return fmt.Errorf("%w: invalid or duplicate technology ID", ErrInvalidField)
+		}
+		seen[id] = true
+	}
+	return nil
+}
+
+// ListTechnologies returns catalog entries and their assigned processes.
+func (s *JobService) ListTechnologies() ([]models.Technology, error) {
+	return s.repo.ListTechnologies()
+}
+
+// CreateTechnology adds a canonical catalog entry and aliases.
+func (s *JobService) CreateTechnology(name string, aliases []string) (models.Technology, error) {
+	item := models.Technology{ID: uuid.NewString(), Name: strings.TrimSpace(name), Aliases: aliases}
+	if err := normalizeTechnologyInput(&item); err != nil {
+		return models.Technology{}, err
+	}
+	if err := s.validateTechnologyTerms(item, ""); err != nil {
+		return models.Technology{}, err
+	}
+	if err := s.repo.CreateTechnology(item); err != nil {
+		return models.Technology{}, fmt.Errorf("%w: %v", ErrInvalidField, err)
+	}
+	s.mirrorAfterMutation()
+	return item, nil
+}
+
+// UpdateTechnology replaces a canonical name and its aliases.
+func (s *JobService) UpdateTechnology(id, name string, aliases []string) (models.Technology, error) {
+	item := models.Technology{ID: id, Name: strings.TrimSpace(name), Aliases: aliases}
+	if err := normalizeTechnologyInput(&item); err != nil {
+		return models.Technology{}, err
+	}
+	if err := s.validateTechnologyTerms(item, id); err != nil {
+		return models.Technology{}, err
+	}
+	if err := s.repo.UpdateTechnology(item); err != nil {
+		return models.Technology{}, err
+	}
+	s.mirrorAfterMutation()
+	return item, nil
+}
+
+func normalizeTechnologyInput(item *models.Technology) error {
+	if item.Name == "" || len(item.Name) > 80 || len(item.Aliases) > 20 {
+		return fmt.Errorf("%w: technology name is required and limited to 80 characters; at most 20 aliases are allowed", ErrInvalidField)
+	}
+	aliases := make([]string, 0, len(item.Aliases))
+	seen := map[string]bool{}
+	for _, raw := range item.Aliases {
+		alias := strings.TrimSpace(raw)
+		key := technologyTermKey(alias)
+		if alias == "" {
+			continue
+		}
+		if len(alias) > 80 || key == technologyTermKey(item.Name) || seen[key] {
+			return fmt.Errorf("%w: technology aliases must be unique and different from the canonical name", ErrInvalidField)
+		}
+		seen[key] = true
+		aliases = append(aliases, alias)
+	}
+	item.Aliases = aliases
+	return nil
+}
+
+func (s *JobService) validateTechnologyTerms(item models.Technology, excludeID string) error {
+	existing, err := s.repo.ListTechnologies()
+	if err != nil {
+		return err
+	}
+	terms := map[string]bool{technologyTermKey(item.Name): true}
+	for _, alias := range item.Aliases {
+		key := technologyTermKey(alias)
+		if terms[key] {
+			return fmt.Errorf("%w: duplicate technology alias", ErrInvalidField)
+		}
+		terms[key] = true
+	}
+	for _, current := range existing {
+		if current.ID == excludeID {
+			continue
+		}
+		if terms[technologyTermKey(current.Name)] {
+			return fmt.Errorf("%w: technology name or alias already exists", ErrInvalidField)
+		}
+		for _, alias := range current.Aliases {
+			if terms[technologyTermKey(alias)] {
+				return fmt.Errorf("%w: technology name or alias already exists", ErrInvalidField)
+			}
+		}
+	}
+	return nil
+}
+
+func technologyTermKey(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+}
+
+// DeleteTechnology removes an unused catalog entry.
+func (s *JobService) DeleteTechnology(id string) error {
+	if err := s.repo.DeleteTechnology(id); err != nil {
+		return err
+	}
+	s.mirrorAfterMutation()
+	return nil
+}
+
+// RemoveTechnologyAssignments unassigns a technology from every process.
+func (s *JobService) RemoveTechnologyAssignments(id string) (int64, error) {
+	count, err := s.repo.RemoveTechnologyAssignments(id)
+	if err == nil {
+		s.mirrorAfterMutation()
+	}
+	return count, err
 }
 
 func validateUpdateJobEnums(input models.UpdateJobInput) error {
@@ -946,11 +1102,15 @@ func (s *JobService) MirrorDatabaseToJSON() error {
 	defer s.mirrorLock.Unlock()
 
 	var fullJobs []models.Job
+	var technologies []models.Technology
 	var cvVersions []models.CVVersion
 	var nextCVVersion int
 	err := s.repo.WithReadSnapshot(func(snapshot *repository.Repository) error {
 		var snapshotErr error
 		fullJobs, snapshotErr = loadFullJobSnapshot(snapshot)
+		if snapshotErr == nil {
+			technologies, snapshotErr = snapshot.ListTechnologies()
+		}
 		if snapshotErr == nil {
 			cvVersions, snapshotErr = snapshot.ListCVVersions()
 		}
@@ -967,7 +1127,7 @@ func (s *JobService) MirrorDatabaseToJSON() error {
 	for _, version := range cvVersions {
 		snapshotVersions = append(snapshotVersions, version.Snapshot())
 	}
-	data, err := json.MarshalIndent(models.RecoverySnapshot{Jobs: fullJobs, CVVersions: snapshotVersions, NextCVVersion: nextCVVersion}, "", "  ")
+	data, err := json.MarshalIndent(models.RecoverySnapshot{Jobs: fullJobs, Technologies: technologies, CVVersions: snapshotVersions, NextCVVersion: nextCVVersion}, "", "  ")
 	if err != nil {
 		return err
 	}

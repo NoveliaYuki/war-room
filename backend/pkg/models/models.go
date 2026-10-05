@@ -148,6 +148,22 @@ type Job struct {
 	Stages            []Stage       `json:"stages,omitempty"`
 	Attachments       []Attachment  `json:"attachments,omitempty"`
 	SelectedCVVersion *CVVersion    `json:"selected_cv_version"`
+	Technologies      []Technology  `json:"technologies,omitempty"`
+}
+
+// Technology represents a canonical technology and its searchable aliases.
+type Technology struct {
+	ID      string          `json:"id"`
+	Name    string          `json:"name"`
+	Aliases []string        `json:"aliases"`
+	Jobs    []TechnologyJob `json:"jobs,omitempty"`
+}
+
+// TechnologyJob identifies a process that uses a technology.
+type TechnologyJob struct {
+	ID            string `json:"id"`
+	CompanyName   string `json:"company_name"`
+	PositionTitle string `json:"position_title"`
 }
 
 // CVVersion represents one upload in the single CV version history.
@@ -187,6 +203,7 @@ func (snapshot CVVersionSnapshot) CVVersion() CVVersion {
 // RecoverySnapshot atomically stores the job state and CV library metadata.
 type RecoverySnapshot struct {
 	Jobs          []Job               `json:"jobs"`
+	Technologies  []Technology        `json:"technologies,omitempty"`
 	CVVersions    []CVVersionSnapshot `json:"cv_versions,omitempty"`
 	NextCVVersion int                 `json:"next_cv_version"`
 }
@@ -358,6 +375,7 @@ type CreateJobInput struct {
 	EmploymentType      *EmploymentType  `json:"employment_type"`
 	IsReferral          *bool            `json:"is_referral"`
 	CreateDefaultStages *bool            `json:"create_default_stages"`
+	TechnologyIDs       []string         `json:"technology_ids"`
 }
 
 // UpdateJobInput contains optional fields accepted when updating a job.
@@ -388,6 +406,7 @@ type UpdateJobInput struct {
 	EmploymentType   *EmploymentType  `json:"employment_type"`
 	IsReferral       *bool            `json:"is_referral"`
 	OrderIndex       *int             `json:"order_index"`
+	TechnologyIDs    []string         `json:"technology_ids"`
 }
 
 // CreateStageInput contains fields accepted when creating a stage.

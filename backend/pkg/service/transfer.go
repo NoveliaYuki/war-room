@@ -23,7 +23,7 @@ import (
 
 const (
 	backupFormat          = "war-room-backup"
-	backupFormatVersion   = 2
+	backupFormatVersion   = 3
 	maxImportArchiveBytes = 500 << 20
 	maxExpandedBytes      = 1 << 30
 	maxManifestBytes      = 100 << 20
@@ -36,14 +36,15 @@ const (
 var ErrEmptyBackupRequiresConfirmation = errors.New("empty backup import requires confirmation")
 
 type backupManifest struct {
-	Format           string            `json:"format"`
-	Version          int               `json:"version"`
-	ExportedAt       time.Time         `json:"exported_at"`
-	Jobs             []models.Job      `json:"jobs"`
-	NextCVVersion    int               `json:"next_cv_version,omitempty"`
-	AttachmentSHA256 map[string]string `json:"attachment_sha256"`
-	Logos            []backupLogo      `json:"logos,omitempty"`
-	CVVersions       []backupCVVersion `json:"cv_versions,omitempty"`
+	Format           string              `json:"format"`
+	Version          int                 `json:"version"`
+	ExportedAt       time.Time           `json:"exported_at"`
+	Jobs             []models.Job        `json:"jobs"`
+	Technologies     []models.Technology `json:"technologies,omitempty"`
+	NextCVVersion    int                 `json:"next_cv_version,omitempty"`
+	AttachmentSHA256 map[string]string   `json:"attachment_sha256"`
+	Logos            []backupLogo        `json:"logos,omitempty"`
+	CVVersions       []backupCVVersion   `json:"cv_versions,omitempty"`
 }
 
 type backupCVVersion struct {
@@ -64,11 +65,15 @@ func (s *JobService) ExportArchive(output io.Writer) error {
 	cvUploadLock.Lock()
 	defer cvUploadLock.Unlock()
 	var jobs []models.Job
+	var technologies []models.Technology
 	var versions []models.CVVersion
 	var nextCVVersion int
 	if err := s.repo.WithReadSnapshot(func(snapshot *repository.Repository) error {
 		var err error
 		jobs, err = loadFullJobSnapshot(snapshot)
+		if err == nil {
+			technologies, err = snapshot.ListTechnologies()
+		}
 		if err == nil {
 			versions, err = snapshot.ListCVVersions()
 		}
@@ -91,7 +96,7 @@ func (s *JobService) ExportArchive(output io.Writer) error {
 	}
 
 	archive := zip.NewWriter(output)
-	manifest := backupManifest{Format: backupFormat, Version: backupFormatVersion, ExportedAt: time.Now().UTC(), Jobs: jobs, NextCVVersion: nextCVVersion, AttachmentSHA256: make(map[string]string), Logos: logos}
+	manifest := backupManifest{Format: backupFormat, Version: backupFormatVersion, ExportedAt: time.Now().UTC(), Jobs: jobs, Technologies: technologies, NextCVVersion: nextCVVersion, AttachmentSHA256: make(map[string]string), Logos: logos}
 	for _, version := range versions {
 		manifest.CVVersions = append(manifest.CVVersions, backupCVVersion{CVVersion: version, Path: "cvs/" + version.StoredFilename})
 	}
@@ -530,7 +535,7 @@ func (s *JobService) commitImportedArchive(manifest *backupManifest, files map[s
 			}
 		}
 	}
-	if err := s.repo.ReplaceAllJobsWithCV(manifest.Jobs, versions, true, manifest.NextCVVersion); err != nil {
+	if err := s.repo.ReplaceAllWithTechnologyCatalog(manifest.Jobs, manifest.Technologies, versions, true, manifest.NextCVVersion); err != nil {
 		rollbackImportedLogos(installedLogos)
 		return fmt.Errorf("replace saved processes: %w", err)
 	}

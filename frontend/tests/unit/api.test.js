@@ -19,7 +19,7 @@ describe('api', () => {
     });
   };
 
-  const methods = ['getJobs', 'getJobCounts', 'getJob', 'createJob', 'updateJob', 'deleteJob', 'reorderJobs', 'createStage', 'updateStage', 'setCurrentStage', 'getMeetings', 'scheduleMeeting', 'deleteStage', 'reorderStages', 'createQuestion', 'reorderQuestions', 'updateQuestion', 'deleteQuestion', 'uploadAttachment', 'deleteAttachment'];
+  const methods = ['getJobs', 'getJobCounts', 'getJob', 'createJob', 'updateJob', 'deleteJob', 'getTechnologies', 'createTechnology', 'updateTechnology', 'removeTechnologyAssignments', 'deleteTechnology', 'reorderJobs', 'createStage', 'updateStage', 'setCurrentStage', 'getMeetings', 'scheduleMeeting', 'deleteStage', 'reorderStages', 'createQuestion', 'reorderQuestions', 'updateQuestion', 'deleteQuestion', 'uploadAttachment', 'deleteAttachment'];
 
   methods.forEach(method => {
     it(`${method} success`, async () => {
@@ -27,9 +27,9 @@ describe('api', () => {
       let res;
       if (['getJobs', 'getJobCounts', 'getMeetings'].includes(method)) {
          res = await api[method]();
-      } else if (['getJob', 'deleteJob', 'deleteStage', 'deleteQuestion', 'deleteAttachment', 'setCurrentStage'].includes(method)) {
+      } else if (['getJob', 'deleteJob', 'deleteTechnology', 'removeTechnologyAssignments', 'deleteStage', 'deleteQuestion', 'deleteAttachment', 'setCurrentStage'].includes(method)) {
          res = await api[method]('id123');
-      } else if (['createJob', 'createStage', 'createQuestion', 'uploadAttachment'].includes(method)) {
+      } else if (['createJob', 'createTechnology', 'createStage', 'createQuestion', 'uploadAttachment'].includes(method)) {
          res = await api[method]({});
       } else if (['reorderJobs'].includes(method)) {
          res = await api[method]([]);
@@ -50,9 +50,9 @@ describe('api', () => {
       let p;
       if (['getJobs', 'getJobCounts', 'getMeetings'].includes(method)) {
          p = api[method]();
-      } else if (['getJob', 'deleteJob', 'deleteStage', 'deleteQuestion', 'deleteAttachment', 'setCurrentStage'].includes(method)) {
+      } else if (['getJob', 'deleteJob', 'deleteTechnology', 'removeTechnologyAssignments', 'deleteStage', 'deleteQuestion', 'deleteAttachment', 'setCurrentStage'].includes(method)) {
          p = api[method]('id123');
-      } else if (['createJob', 'createStage', 'createQuestion', 'uploadAttachment'].includes(method)) {
+      } else if (['createJob', 'createTechnology', 'createStage', 'createQuestion', 'uploadAttachment'].includes(method)) {
          p = api[method]({});
       } else if (['reorderJobs'].includes(method)) {
          p = api[method]([]);
