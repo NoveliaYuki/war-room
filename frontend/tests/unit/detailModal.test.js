@@ -95,6 +95,45 @@ describe('detail modal', () => {
     expect(modal.querySelector('.job-cv-row').textContent).toContain('CV v2');
   });
 
+  it('searches catalog aliases and updates the assigned tech stack without closing the editor', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.getTechnologies.mockResolvedValue([{ id: 'kubernetes', name: 'Kubernetes', aliases: ['K8s'] }]);
+    api.updateJob.mockResolvedValue({ technologies: [{ id: 'kubernetes', name: 'Kubernetes' }] });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    const input = modal.querySelector('#technology-assignment-search');
+    input.value = 'K8s';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    expect(modal.querySelector('#technology-assignment-options').textContent).toContain('Kubernetes');
+    modal.querySelector('[data-technology-id="kubernetes"]').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { technology_ids: ['kubernetes'] });
+    expect(modal.querySelector('.technology-assigned-chip').textContent).toContain('Kubernetes');
+    expect(modal.querySelector('#technology-assignment-search')).toBe(input);
+    api.updateJob.mockResolvedValueOnce({ technologies: [] });
+    modal.querySelector('[data-remove-technology="kubernetes"]').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', { technology_ids: [] });
+    expect(modal.querySelector('.technology-assigned-list').textContent).toContain('No technologies assigned');
+  });
+
+  it('restores selection and reports a failed stack update', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.getTechnologies.mockResolvedValue([{ id: 'react', name: 'React', aliases: [] }]);
+    api.updateJob.mockRejectedValue(new Error('save failed'));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    const input = modal.querySelector('#technology-assignment-search');
+    input.focus();
+    await tick();
+    modal.querySelector('[data-technology-id="react"]').click();
+    await tick();
+    expect(modal.querySelector('.technology-assigned-list').textContent).toContain('No technologies assigned');
+    expect(modal.querySelector('.technology-option').textContent).toContain('Add');
+    expect(toast).toHaveBeenCalledWith('save failed', 'error');
+  });
+
   it('supports keyboard and pointer resizing and remembers the pane ratio', async () => {
     api.getJob.mockResolvedValue(job());
     const modal = document.querySelector('#detail-modal');

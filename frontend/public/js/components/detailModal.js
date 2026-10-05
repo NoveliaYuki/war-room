@@ -438,6 +438,15 @@ function renderJobDetailsSection(view) {
             </div>
           </div>
 
+          <div class="detail-section technology-detail-section">
+            <div class="section-title"><span class="inline-icon-text">${icon("fileText", 13)} Tech Stack</span><span class="technology-count">${(job.technologies || []).length}</span></div>
+            <div class="technology-assigned-list">${renderTechnologyChips(job.technologies || [])}</div>
+            <label class="technology-search-label" for="technology-assignment-search">Add technologies from the catalog</label>
+            <input id="technology-assignment-search" class="technology-assignment-search" type="search" autocomplete="off" placeholder="Search technologies…" aria-controls="technology-assignment-options" />
+            <div id="technology-assignment-options" class="technology-assignment-options" role="listbox" aria-label="Available technologies" hidden></div>
+            <p class="technology-catalog-hint">Manage the catalog from More options.</p>
+          </div>
+
           <div class="detail-section">
             <div class="section-title">
               <span class="inline-icon-text">${icon("building", 13)} Company & Role Overview</span>
@@ -473,6 +482,11 @@ function renderJobDetailsSection(view) {
           </div>
         </section>
   `;
+}
+
+function renderTechnologyChips(technologies) {
+  if (!technologies.length) return '<span class="technology-empty">No technologies assigned yet.</span>';
+  return technologies.map((technology) => `<button type="button" class="technology-assigned-chip" data-remove-technology="${escapeAttr(technology.id)}" aria-label="Remove ${escapeAttr(technology.name)} from this process">${escapeHtml(technology.name)} <span aria-hidden="true">×</span></button>`).join("");
 }
 
 /** Renders personal preparation notes within the general process section. */
@@ -717,6 +731,7 @@ function attachModalHandlers(context) {
   const handlers = { ...context, refreshModal, closeAction };
   bindBasicModalActions(handlers);
   bindJobInlineEditors(handlers);
+  bindTechnologyAssignmentEditor(handlers);
   bindGeneralAttachmentUpload(handlers);
   bindStageRecruiterFields(handlers);
   bindInterviewerActions(handlers);
@@ -727,6 +742,49 @@ function attachModalHandlers(context) {
     bindActiveStageQuestionControls(handlers);
     bindActiveStageInlineEditors(handlers);
   }
+}
+
+function bindTechnologyAssignmentEditor(context) {
+  const { modalEl, job, onGlobalRefresh } = context;
+  const input = modalEl.querySelector("#technology-assignment-search");
+  const options = modalEl.querySelector("#technology-assignment-options");
+  const assigned = modalEl.querySelector(".technology-assigned-list");
+  const count = modalEl.querySelector(".technology-count");
+  if (!input || !options || !assigned) return;
+  let catalog = [];
+  const selectedIDs = new Set((job.technologies || []).map((item) => item.id));
+  const renderOptions = () => {
+    const query = input.value.trim().toLowerCase();
+    const matches = catalog.filter((item) => !query || [item.name, ...(item.aliases || [])].some((term) => term.toLowerCase().includes(query)));
+    options.hidden = false;
+    options.innerHTML = matches.length ? matches.map((item) => `<button type="button" class="technology-option ${selectedIDs.has(item.id) ? "is-selected" : ""}" role="option" aria-selected="${selectedIDs.has(item.id)}" data-technology-id="${escapeAttr(item.id)}"><span>${escapeHtml(item.name)}</span><span>${selectedIDs.has(item.id) ? "Added" : "Add"}</span></button>`).join("") : '<div class="technology-empty">No matching technologies.</div>';
+  };
+  const saveAssignments = async (id, shouldAdd) => {
+    if (shouldAdd) selectedIDs.add(id); else selectedIDs.delete(id);
+    try {
+      const updated = await api.updateJob(job.id, { technology_ids: [...selectedIDs] });
+      job.technologies = updated.technologies || [];
+      assigned.innerHTML = renderTechnologyChips(job.technologies);
+      count.textContent = String(job.technologies.length);
+      renderOptions();
+      if (onGlobalRefresh) await onGlobalRefresh();
+    } catch (error) {
+      if (shouldAdd) selectedIDs.delete(id); else selectedIDs.add(id);
+      showToast(error.message || "Could not update tech stack", "error");
+      renderOptions();
+    }
+  };
+  void Promise.resolve().then(() => api.getTechnologies()).then((items) => { catalog = items || []; renderOptions(); options.hidden = true; }).catch((error) => showToast(error.message || "Could not load technology catalog", "error"));
+  input.addEventListener("focus", renderOptions);
+  input.addEventListener("input", renderOptions);
+  options.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-technology-id]");
+    if (button) void saveAssignments(button.dataset.technologyId, !selectedIDs.has(button.dataset.technologyId));
+  });
+  assigned.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-technology]");
+    if (button) void saveAssignments(button.dataset.removeTechnology, false);
+  });
 }
 
 /** Binds the compact per-job CV version selector; library management stays in Data & Backups. */

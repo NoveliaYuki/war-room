@@ -222,6 +222,123 @@ func TestRunCVSchemaMigrationReportsStepFailures(t *testing.T) {
 	}
 }
 
+func TestTechnologyCatalogMigrationPreservesExistingJobs(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY); INSERT INTO jobs (id) VALUES ('existing-job')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateTechnologyCatalog(db); err != nil {
+		t.Fatalf("migrate technology catalog: %v", err)
+	}
+	var jobCount, tableCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&jobCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('technologies', 'technology_aliases', 'job_technologies')`).Scan(&tableCount); err != nil {
+		t.Fatal(err)
+	}
+	if jobCount != 1 || tableCount != 3 {
+		t.Fatalf("preserved jobs=%d new tables=%d", jobCount, tableCount)
+	}
+}
+
+func TestTechnologyCatalogMigrationReportsSQLFailure(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	executor := migrationTestExecutor{db: db, failExec: "technology_aliases"}
+	if err := runSchemaMigration(executor, 8); err == nil {
+		t.Fatal("catalog migration SQL failure should be returned")
+	}
+}
+
+func TestRecoverySnapshotRestoresTechnologyCatalogAndAssignments(t *testing.T) {
+	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "technology-recovery.db")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	technology := models.Technology{ID: "tech-kubernetes", Name: "Kubernetes", Aliases: []string{"K8s"}}
+	job := models.Job{ID: "job-1", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed",
+		WorkArrangement: models.WorkArrangementUnknown, EmploymentType: models.EmploymentTypeUnknown,
+		Technologies: []models.Technology{technology}}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: []models.Job{job}, Technologies: []models.Technology{technology}}, "", ""); err != nil {
+		t.Fatalf("restore recovery snapshot: %v", err)
+	}
+	var alias, canonical string
+	if err := db.QueryRow(`SELECT t.name, a.alias FROM technologies t JOIN technology_aliases a ON a.technology_id = t.id JOIN job_technologies jt ON jt.technology_id = t.id WHERE jt.job_id = ?`, job.ID).Scan(&canonical, &alias); err != nil {
+		t.Fatal(err)
+	}
+	if canonical != "Kubernetes" || alias != "K8s" {
+		t.Fatalf("restored canonical=%q alias=%q", canonical, alias)
+	}
+}
+
+func TestRecoverySnapshotRollsBackInvalidTechnologyReferences(t *testing.T) {
+	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "invalid-technology-recovery.db")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	technology := models.Technology{ID: "tech-one", Name: "One", Aliases: []string{"Same"}}
+	duplicateAlias := models.Technology{ID: "tech-two", Name: "Two", Aliases: []string{"Same"}}
+	err = restoreRecoverySnapshot(db, models.RecoverySnapshot{Technologies: []models.Technology{technology, duplicateAlias}}, "", "")
+	if err == nil {
+		t.Fatal("duplicate alias should fail recovery")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM technologies`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("rolled back technology count=%d err=%v", count, err)
+	}
+}
+
+func TestRecoverySnapshotRejectsDuplicateCatalogIDs(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "duplicate-technology.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	technologies := []models.Technology{{ID: "same", Name: "One"}, {ID: "same", Name: "Two"}}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Technologies: technologies}, "", ""); err == nil {
+		t.Fatal("duplicate catalog IDs should fail recovery")
+	}
+}
+
+func TestRecoverySnapshotRejectsUnknownJobTechnology(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "unknown-job-technology.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	job := models.Job{ID: "job-1", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed",
+		WorkArrangement: models.WorkArrangementUnknown, EmploymentType: models.EmploymentTypeUnknown,
+		Technologies: []models.Technology{{ID: "missing-tech", Name: "Missing"}}}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: []models.Job{job}}, "", ""); err == nil {
+		t.Fatal("unknown technology assignment should fail recovery")
+	}
+}
+
+func TestPrepareRestoreStatementsReportsMissingTechnologyRelation(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "prepare-technology-statements.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`DROP TABLE job_technologies`); err != nil {
+		t.Fatal(err)
+	}
+	tx := mustBegin(t, db)
+	defer func() { _ = tx.Rollback() }()
+	if _, err := prepareRestoreStatements(tx); err == nil {
+		t.Fatal("missing job technology relation should fail restore preparation")
+	}
+}
+
 func TestInitDBRejectsConnectionSchemaAndVersionErrors(t *testing.T) {
 	root := t.TempDir()
 	assertInitDBFailure(t, root, "database path that is a directory should fail to connect")

@@ -17,6 +17,7 @@ import (
 
 	"war-room/backend/pkg/config"
 	"war-room/backend/pkg/models"
+	"war-room/backend/pkg/repository"
 	"war-room/backend/pkg/service"
 )
 
@@ -109,6 +110,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/jobs/{id}", h.handleGetJob)
 	mux.HandleFunc("PUT /api/jobs/{id}", h.handleUpdateJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", h.handleDeleteJob)
+	mux.HandleFunc("GET /api/technologies", h.handleListTechnologies)
+	mux.HandleFunc("POST /api/technologies", h.handleCreateTechnology)
+	mux.HandleFunc("PUT /api/technologies/{id}", h.handleUpdateTechnology)
+	mux.HandleFunc("DELETE /api/technologies/{id}", h.handleDeleteTechnology)
+	mux.HandleFunc("DELETE /api/technologies/{id}/assignments", h.handleRemoveTechnologyAssignments)
 
 	mux.HandleFunc("POST /api/stages", h.handleCreateStage)
 	mux.HandleFunc("PUT /api/stages/reorder", h.handleReorderStages)
@@ -149,6 +155,93 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 			fs.ServeHTTP(w, r)
 		})
 	}
+}
+
+func (h *Handler) handleListTechnologies(w http.ResponseWriter, _ *http.Request) {
+	items, err := h.jobs.ListTechnologies()
+	if err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if items == nil {
+		items = []models.Technology{}
+	}
+	JSON(w, http.StatusOK, items)
+}
+
+func (h *Handler) handleCreateTechnology(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Name    string   `json:"name"`
+		Aliases []string `json:"aliases"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16384)
+	if err := decodeJSONBody(r.Body, &payload); err != nil {
+		writeTechnologyPayloadError(w, err)
+		return
+	}
+	item, err := h.jobs.CreateTechnology(payload.Name, payload.Aliases)
+	if err != nil {
+		writeTechnologyServiceError(w, err)
+		return
+	}
+	JSON(w, http.StatusCreated, item)
+}
+
+func (h *Handler) handleUpdateTechnology(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Name    string   `json:"name"`
+		Aliases []string `json:"aliases"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16384)
+	if err := decodeJSONBody(r.Body, &payload); err != nil {
+		writeTechnologyPayloadError(w, err)
+		return
+	}
+	item, err := h.jobs.UpdateTechnology(r.PathValue("id"), payload.Name, payload.Aliases)
+	if err != nil {
+		writeTechnologyServiceError(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, item)
+}
+
+func writeTechnologyPayloadError(w http.ResponseWriter, err error) {
+	ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+}
+
+func writeTechnologyServiceError(w http.ResponseWriter, err error) {
+	if errors.Is(err, service.ErrInvalidField) {
+		ErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		ErrorJSON(w, http.StatusNotFound, "Technology not found")
+		return
+	}
+	ErrorJSON(w, http.StatusInternalServerError, err.Error())
+}
+
+func (h *Handler) handleDeleteTechnology(w http.ResponseWriter, r *http.Request) {
+	if err := h.jobs.DeleteTechnology(r.PathValue("id")); err != nil {
+		if errors.Is(err, repository.ErrTechnologyInUse) {
+			ErrorJSON(w, http.StatusConflict, "Technology is assigned to one or more processes; remove its assignments first")
+		} else if errors.Is(err, sql.ErrNoRows) {
+			ErrorJSON(w, http.StatusNotFound, "Technology not found")
+		} else {
+			ErrorJSON(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (h *Handler) handleRemoveTechnologyAssignments(w http.ResponseWriter, r *http.Request) {
+	count, err := h.jobs.RemoveTechnologyAssignments(r.PathValue("id"))
+	if err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]int64{"removed": count})
 }
 
 func (h *Handler) handleListCVVersions(w http.ResponseWriter, _ *http.Request) {

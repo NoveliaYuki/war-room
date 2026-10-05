@@ -101,6 +101,17 @@ describe('cardGrid', () => {
     delete window.showToast;
   });
 
+  it('shows every canonical technology as an individually readable card chip', () => {
+    const { card } = setup([makeJob({ technologies: [
+      { id: 'react', name: 'React' },
+      { id: 'kubernetes', name: 'Kubernetes' },
+      { id: 'typescript', name: 'TypeScript' },
+    ] })]);
+    expect(card.querySelector('.card-summary-label').textContent).toContain('Role highlights');
+    expect([...card.querySelectorAll('.card-technology-chip')].map((chip) => chip.textContent)).toEqual(['React', 'Kubernetes', 'TypeScript']);
+    expect(card.querySelector('.card-tech-count').textContent).toBe('3');
+  });
+
   it('reserves the touch gesture for card drag and manually managed page scrolling', () => {
     const { card } = setup();
 
