@@ -137,7 +137,7 @@ describe('enableQuestionReordering', () => {
 
     startDrag(handles[0], 5);
     expect(list.querySelector('.question-drop-placeholder')).not.toBeNull();
-    expect(list.querySelector('.question-item.is-dragging')).toBe(handles[0].closest('.question-item'));
+    expect(document.body.querySelector('.question-item.is-dragging')).toBe(handles[0].closest('.question-item'));
     window.dispatchEvent(new PointerEvent('pointerup'));
   });
 
@@ -159,7 +159,7 @@ describe('enableQuestionReordering', () => {
     const multiMove = touchEvent('touchmove', twoTouches);
     window.dispatchEvent(multiMove);
     expect(multiMove.defaultPrevented).toBe(false);
-    expect(list.querySelector('.question-item.is-dragging')).not.toBeNull();
+    expect(document.body.querySelector('.question-item.is-dragging')).not.toBeNull();
     window.dispatchEvent(touchEvent('touchcancel', []));
     expect(list.querySelector('.question-item.is-dragging')).toBeNull();
     expect(list.querySelector('.question-drop-placeholder')).toBeNull();

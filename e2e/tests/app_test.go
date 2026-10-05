@@ -161,6 +161,13 @@ func newPage(t *testing.T) playwright.Page {
 	return page
 }
 
+func setPageViewport(t *testing.T, page playwright.Page, width, height int) {
+	t.Helper()
+	if err := page.SetViewportSize(width, height); err != nil {
+		t.Fatalf("set %dx%d viewport: %v", width, height, err)
+	}
+}
+
 func selectFilter(t *testing.T, page playwright.Page, filter string) {
 	t.Helper()
 	if filter == "schedule" {
@@ -780,6 +787,43 @@ func TestInterviewQuestionsCanBeAddedReorderedAndDeleted(t *testing.T) {
 	reopenQuestionProcess(t, page, card)
 	waitForQuestionOrder(t, page, questionA, questionB, expectedOrder, "question order did not survive reload")
 	deleteQuestionAndVerify(t, page, itemA, itemB, questionA)
+}
+
+func TestQuestionDragOverlayStaysAlignedWithItsCard(t *testing.T) {
+	page := newPage(t)
+	title := fmt.Sprintf("E2E Question Drag Alignment %d", time.Now().UnixNano())
+	openQuestionProcess(t, page, title)
+	setPageViewport(t, page, 390, 844)
+	question := fmt.Sprintf("E2E Question Alignment %d", time.Now().UnixNano())
+	addInterviewQuestion(t, page, question)
+	item := page.Locator(fmt.Sprintf(`.questions-workspace .question-item:has-text("%s")`, question))
+	itemBox, err := item.BoundingBox()
+	if err != nil || itemBox == nil {
+		t.Fatalf("read question bounds: box=%v err=%v", itemBox, err)
+	}
+	handle := item.Locator(".question-drag-handle")
+	handleBox, err := handle.BoundingBox()
+	if err != nil || handleBox == nil {
+		t.Fatalf("read question handle bounds: box=%v err=%v", handleBox, err)
+	}
+	mouse := page.Mouse()
+	if err := mouse.Move(handleBox.X+handleBox.Width/2, handleBox.Y+handleBox.Height/2); err != nil {
+		t.Fatalf("move to question handle: %v", err)
+	}
+	if err := mouse.Down(); err != nil {
+		t.Fatalf("press question handle: %v", err)
+	}
+	defer func() { _ = mouse.Up() }()
+	if err := mouse.Move(handleBox.X+handleBox.Width/2, handleBox.Y+handleBox.Height/2+40); err != nil {
+		t.Fatalf("move dragged question: %v", err)
+	}
+	aligned, err := page.Evaluate(`(expectedLeft) => {
+		const item = document.querySelector(".question-item.is-dragging");
+		return Boolean(item) && Math.abs(item.getBoundingClientRect().left - expectedLeft) < 1;
+	}`, itemBox.X)
+	if err != nil || aligned != true {
+		t.Fatalf("dragged question shifted horizontally from its card (aligned=%v err=%v)", aligned, err)
+	}
 }
 
 func TestInvalidBackupImportPreservesExistingProcesses(t *testing.T) {

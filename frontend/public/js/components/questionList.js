@@ -210,6 +210,7 @@ export function enableQuestionReordering(listEl, stageId, onReordered) {
       item.style.margin = "0";
       item.style.pointerEvents = "none";
       item.style.boxSizing = "border-box";
+      document.body.appendChild(item);
 
       // Detect active scroll container
       const scrollContainer = listEl.scrollHeight > listEl.clientHeight ? listEl : listEl.closest(".split-pane-right");
