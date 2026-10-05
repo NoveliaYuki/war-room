@@ -52,6 +52,38 @@ func TestReplaceAllJobsRollsBackInvalidImportedCVLibrary(t *testing.T) {
 	}
 }
 
+func TestReplaceAllWithTechnologyCatalogReturnsCommitConstraintFailure(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	repo.db.SetMaxOpenConns(1)
+	if _, err := repo.db.Exec(`PRAGMA defer_foreign_keys = ON`); err != nil {
+		t.Fatal(err)
+	}
+	job := models.Job{ID: "invalid-cv-reference", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SelectedCVVersion: &models.CVVersion{ID: "missing-cv"}}
+	if err := repo.ReplaceAllWithTechnologyCatalog([]models.Job{job}, []models.Technology{{ID: "tech", Name: "Go"}}, nil, false, 1); err == nil {
+		t.Fatal("commit should reject the missing CV version reference")
+	}
+	catalog, err := repo.ListTechnologies()
+	if err != nil || len(catalog) != 0 {
+		t.Fatalf("failed import left technology catalog=%+v err=%v", catalog, err)
+	}
+}
+
+func TestReplaceAllWithTechnologyCatalogReportsCatalogDeleteFailure(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "preserved")
+	if _, err := repo.db.Exec(`DROP TABLE technologies`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReplaceAllWithTechnologyCatalog(nil, nil, nil, false, 1); err == nil {
+		t.Fatal("import should report a missing technology table")
+	}
+	var count int
+	if err := repo.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE id='preserved'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("failed import did not preserve existing job: count=%d err=%v", count, err)
+	}
+}
+
 func TestRepositorySurfacesCorruptDatabaseValues(t *testing.T) {
 	repo := newImportRepositoryFixture(t)
 	insertRepositoryTestJob(t, repo, "corrupt-job")

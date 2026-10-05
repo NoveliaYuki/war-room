@@ -45,6 +45,180 @@ func TestCVRepositoryVersionLifecycle(t *testing.T) {
 	assertCVAssignmentAndDelete(t, repo, version.ID)
 }
 
+func TestCreateTechnologyAliasFailureRollsBack(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	if _, err := repo.db.Exec(`CREATE TRIGGER fail_alias BEFORE INSERT ON technology_aliases BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CreateTechnology(models.Technology{ID: "failed-create", Name: "Failed", Aliases: []string{"alias"}}); err == nil {
+		t.Fatal("create should surface alias storage failure")
+	}
+	assertTechnologyNotStored(t, repo, "failed-create")
+}
+
+func TestUpdateTechnologyAliasFailureRollsBack(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	if err := repo.CreateTechnology(models.Technology{ID: "existing", Name: "Original", Aliases: []string{"old"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER fail_alias BEFORE INSERT ON technology_aliases BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateTechnology(models.Technology{ID: "existing", Name: "Changed", Aliases: []string{"new"}}); err == nil {
+		t.Fatal("update should surface alias storage failure")
+	}
+	var name string
+	var alias string
+	if err := repo.db.QueryRow(`SELECT name FROM technologies WHERE id='existing'`).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.QueryRow(`SELECT alias FROM technology_aliases WHERE technology_id='existing'`).Scan(&alias); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Original" || alias != "old" {
+		t.Fatalf("failed update left name=%q alias=%q", name, alias)
+	}
+}
+
+func TestUpdateTechnologyAliasDeletionFailureRollsBack(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	if err := repo.CreateTechnology(models.Technology{ID: "existing", Name: "Original", Aliases: []string{"old"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER fail_alias_delete BEFORE DELETE ON technology_aliases BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateTechnology(models.Technology{ID: "existing", Name: "Changed", Aliases: []string{"new"}}); err == nil {
+		t.Fatal("update should surface alias deletion failure")
+	}
+	var name, alias string
+	if err := repo.db.QueryRow(`SELECT name FROM technologies WHERE id='existing'`).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.QueryRow(`SELECT alias FROM technology_aliases WHERE technology_id='existing'`).Scan(&alias); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Original" || alias != "old" {
+		t.Fatalf("failed update left name=%q alias=%q", name, alias)
+	}
+}
+
+func assertTechnologyNotStored(t *testing.T, repo *Repository, id string) {
+	t.Helper()
+	var count int
+	if err := repo.db.QueryRow(`SELECT COUNT(*) FROM technologies WHERE id=?`, id).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed create left %d catalog entries: %v", count, err)
+	}
+}
+
+func TestTechnologyMutationsReportMissingStorage(t *testing.T) {
+	for _, operation := range []string{"create", "update", "delete", "remove assignments"} {
+		t.Run(operation, func(t *testing.T) {
+			repo := newImportRepositoryFixture(t)
+			if _, err := repo.db.Exec(`DROP TABLE technologies`); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			switch operation {
+			case "create":
+				err = repo.CreateTechnology(models.Technology{ID: "one", Name: "One"})
+			case "update":
+				err = repo.UpdateTechnology(models.Technology{ID: "one", Name: "One"})
+			case "delete":
+				err = repo.DeleteTechnology("one")
+			default:
+				_, err = repo.RemoveTechnologyAssignments("one")
+			}
+			if err == nil {
+				t.Fatal("missing catalog storage should return an error")
+			}
+		})
+	}
+}
+
+func TestTechnologyAssignmentMutationFailuresPreserveExistingStack(t *testing.T) {
+	for _, test := range []struct {
+		name, trigger string
+	}{
+		{name: "delete", trigger: `CREATE TRIGGER fail_assignment_delete BEFORE DELETE ON job_technologies BEGIN SELECT RAISE(ABORT, 'injected failure'); END`},
+		{name: "insert", trigger: `CREATE TRIGGER fail_assignment_insert BEFORE INSERT ON job_technologies BEGIN SELECT RAISE(ABORT, 'injected failure'); END`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newImportRepositoryFixture(t)
+			insertRepositoryTestJob(t, repo, "stack-job")
+			if err := repo.CreateTechnology(models.Technology{ID: "old-tech", Name: "Old"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.CreateTechnology(models.Technology{ID: "new-tech", Name: "New"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.SetJobTechnologies("stack-job", []string{"old-tech"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.db.Exec(test.trigger); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.SetJobTechnologies("stack-job", []string{"new-tech"}); err == nil {
+				t.Fatal("injected assignment failure should be returned")
+			}
+			assigned, err := repo.JobTechnologies("stack-job")
+			if err != nil || len(assigned) != 1 || assigned[0].ID != "old-tech" {
+				t.Fatalf("failed assignment changed stack=%+v err=%v", assigned, err)
+			}
+		})
+	}
+}
+
+func TestTechnologyCatalogSurfacesMalformedStoredRows(t *testing.T) {
+	for _, test := range []struct {
+		name, setup string
+	}{
+		{name: "catalog name", setup: `PRAGMA foreign_keys=OFF; DROP TABLE technologies; CREATE TABLE technologies (id TEXT, name TEXT, normalized_name TEXT); INSERT INTO technologies VALUES ('one', NULL, NULL);`},
+		{name: "alias", setup: `PRAGMA foreign_keys=OFF; DROP TABLE technology_aliases; CREATE TABLE technology_aliases (technology_id TEXT, alias TEXT, normalized_alias TEXT); INSERT INTO technology_aliases VALUES ('one', NULL, NULL);`},
+		{name: "assigned job", setup: `PRAGMA foreign_keys=OFF; DROP TABLE jobs; CREATE TABLE jobs (id TEXT, company_name TEXT, position_title TEXT); INSERT INTO jobs VALUES ('job', NULL, 'Engineer'); INSERT INTO job_technologies VALUES ('job', 'one');`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newImportRepositoryFixture(t)
+			repo.db.SetMaxOpenConns(1)
+			if _, err := repo.db.Exec(test.setup); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.ListTechnologies(); err == nil {
+				t.Fatal("malformed catalog row should fail listing")
+			}
+		})
+	}
+}
+
+func TestJobTechnologiesRejectsMalformedStoredName(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	repo.db.SetMaxOpenConns(1)
+	insertRepositoryTestJob(t, repo, "stack-job")
+	if err := repo.CreateTechnology(models.Technology{ID: "one", Name: "One"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetJobTechnologies("stack-job", []string{"one"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`PRAGMA foreign_keys=OFF; DROP TABLE technologies; CREATE TABLE technologies (id TEXT, name TEXT, normalized_name TEXT); INSERT INTO technologies VALUES ('one', NULL, NULL);`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.JobTechnologies("stack-job"); err == nil {
+		t.Fatal("NULL technology name should fail job stack loading")
+	}
+}
+
+func TestTechnologyAssignmentValidationReportsStorageFailure(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "stack-job")
+	if _, err := repo.db.Exec(`DROP TABLE technologies`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetJobTechnologies("stack-job", []string{"tech"}); err == nil {
+		t.Fatal("missing catalog table should fail technology validation")
+	}
+}
+
 func assertCVInsertAndRead(t *testing.T, repo *Repository, version *models.CVVersion) {
 	t.Helper()
 	if err := repo.InsertCVVersion(version); err != nil || version.Version != 1 {
