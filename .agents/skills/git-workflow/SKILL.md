@@ -27,6 +27,9 @@ Choose the type by intent, not by files changed.
 | `chore` | Other maintenance or version-only changes |
 
 Commit subject: `<type>: [vX.Y.Z] - <imperative summary>`.
+Pull request title: use the same format and exact wording as the PR's primary
+commit subject: `<type>: [vX.Y.Z] - <imperative summary>`. When a PR contains
+multiple commits, title it to match the commit that best represents the PR.
 
 ## 3. Branch and Pull Request Workflow
 
@@ -107,6 +110,8 @@ release. Never publish a patch release.
 Use lowercase type, `[vX.Y.Z]`, ` - `, and an imperative, concrete summary.
 Keep the subject specific and at most 72 characters where practical.
 Do not use vague summaries such as “fix issues”, “update UI”, or “apply feedback”.
+Use this subject as the pull request title too, with matching type, version,
+imperative summary, and wording.
 
 | Avoid | Prefer |
 | --- | --- |
