@@ -25,6 +25,21 @@ describe("demo CV library backup", () => {
     window.localStorage.setItem("war-room-demo-schedule-date", localToday);
   });
 
+  it("manages canonical technologies, aliases, and assignments in demo storage", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const catalog = await demoApi.getTechnologies();
+    const kubernetes = catalog.find((item) => item.name === "Kubernetes");
+    expect(kubernetes.aliases).toContain("K8s");
+    await expect(demoApi.createTechnology({ name: "K8s", aliases: [] })).rejects.toThrow("already exists");
+    const rust = await demoApi.createTechnology({ name: "Rust", aliases: ["rs"] });
+    await demoApi.updateJob("demo-cv-job", { technology_ids: [rust.id] });
+    expect((await demoApi.getJob("demo-cv-job")).technologies).toEqual([{ id: rust.id, name: "Rust" }]);
+    await expect(demoApi.deleteTechnology(rust.id)).rejects.toThrow("remove its assignments first");
+    expect(await demoApi.removeTechnologyAssignments(rust.id)).toEqual({ removed: 1 });
+    await demoApi.deleteTechnology(rust.id);
+    expect((await demoApi.getTechnologies()).some((item) => item.id === rust.id)).toBe(false);
+  });
+
   it("reuses identical file bytes while retaining version events and backup assignments", async () => {
     const { demoApi } = await import("../../demo/demoStore.js");
     const first = await demoApi.uploadCvVersion(new File(["same cv bytes"], "resume.pdf", { type: "application/pdf" }));
@@ -41,7 +56,7 @@ describe("demo CV library backup", () => {
 
     const archive = await demoApi.exportBackup();
     const manifest = await readManifest(archive);
-    expect(manifest.version).toBe(2);
+    expect(manifest.version).toBe(3);
     expect(manifest.cv_versions).toHaveLength(1);
     expect(manifest.cv_versions[0].path).toBe(`cvs/${second.sha256}`);
     expect(manifest.cv_versions[0]).not.toHaveProperty("stored_file_id");

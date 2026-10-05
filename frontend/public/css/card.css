@@ -333,6 +333,52 @@
   font-style: italic;
 }
 
+.card-tech-stack {
+  margin-top: 10px;
+  padding: 9px 10px 10px;
+  border: 1px solid color-mix(in srgb, var(--text-info) 30%, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-info) 6%, var(--bg-surface-elevated));
+}
+
+.card-tech-stack .card-summary-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-info);
+}
+
+.card-tech-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--text-info) 14%, transparent);
+  font-size: 9px;
+}
+
+.card-technology-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 5px;
+}
+
+.card-technology-chip {
+  max-width: 100%;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--text-info) 24%, var(--border-subtle));
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 10px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .card-stage-indicator {
   display: flex;
   align-items: center;

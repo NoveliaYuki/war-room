@@ -53,6 +53,21 @@ func TestRecoveryRestoreSkipsNonemptyDatabase(t *testing.T) {
 	assertRecoveryCoverageJobCount(t, db, 1)
 }
 
+func TestRecoveryRestoreSkipsCatalogOnlyDatabase(t *testing.T) {
+	db, cfg := recoveryCoverageDB(t)
+	if _, err := db.Exec(`INSERT INTO technologies (id, name, normalized_name) VALUES ('existing-tech', 'Go', 'go')`); err != nil {
+		t.Fatal(err)
+	}
+	job := models.Job{ID: "backup-job", CompanyName: "Example", PositionTitle: "Role", Status: models.StatusOngoing, AvatarSeed: "other"}
+	writeRecoveryCoverageBackup(t, cfg.BackupPath, []models.Job{job})
+	restoreFromBackupIfEmpty(db, cfg.BackupPath, cfg.InitialBackupPath, cfg.AttachmentsDir, cfg.CVDir)
+	assertRecoveryCoverageJobCount(t, db, 0)
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM technologies`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("catalog count=%d err=%v", count, err)
+	}
+}
+
 func TestRecoverySnapshotAcceptsLegacyArrayAndRejectsMissingJobs(t *testing.T) {
 	backup := filepath.Join(t.TempDir(), "legacy.json")
 	writeRecoveryCoverageBackup(t, backup, []models.Job{})

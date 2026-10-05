@@ -54,7 +54,37 @@ func (r *Repository) GetAllJobs(status, search string) ([]models.Job, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := populateJobTechnologies(r.reader, jobs); err != nil {
+		return nil, err
+	}
 	return jobs, rows.Err()
+}
+
+func populateJobTechnologies(reader readQueryer, jobs []models.Job) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	byID := make(map[string]int, len(jobs))
+	for index := range jobs {
+		jobs[index].Technologies = []models.Technology{}
+		byID[jobs[index].ID] = index
+	}
+	rows, err := reader.Query(`SELECT jt.job_id, t.id, t.name FROM job_technologies jt JOIN technologies t ON t.id = jt.technology_id ORDER BY t.name COLLATE NOCASE`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var jobID string
+		var item models.Technology
+		if err := rows.Scan(&jobID, &item.ID, &item.Name); err != nil {
+			return err
+		}
+		if index, exists := byID[jobID]; exists {
+			jobs[index].Technologies = append(jobs[index].Technologies, item)
+		}
+	}
+	return rows.Err()
 }
 
 func buildJobsQuery(status, search string) (string, []interface{}) {
@@ -169,6 +199,11 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 			return nil, fmt.Errorf("load selected CV version: %w", err)
 		}
 	}
+	jobTechnologies, err := r.JobTechnologies(j.ID)
+	if err != nil {
+		return nil, err
+	}
+	j.Technologies = jobTechnologies
 	return &j, nil
 }
 

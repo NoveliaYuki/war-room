@@ -10,6 +10,7 @@ import (
 
 type importStatements struct {
 	job        *sql.Stmt
+	technology *sql.Stmt
 	stage      *sql.Stmt
 	question   *sql.Stmt
 	attachment *sql.Stmt
@@ -22,18 +23,26 @@ func (r *Repository) ReplaceAllJobs(jobs []models.Job) error {
 
 // ReplaceAllJobsWithCV replaces jobs and, for a current-format backup, its CV library.
 func (r *Repository) ReplaceAllJobsWithCV(jobs []models.Job, versions []models.CVVersion, replaceCV bool, nextCVVersion int) error {
+	return r.ReplaceAllWithTechnologyCatalog(jobs, nil, versions, replaceCV, nextCVVersion)
+}
+
+// ReplaceAllWithTechnologyCatalog atomically replaces jobs, their technology catalog, and optional CV data.
+func (r *Repository) ReplaceAllWithTechnologyCatalog(jobs []models.Job, technologies []models.Technology, versions []models.CVVersion, replaceCV bool, nextCVVersion int) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec("DELETE FROM jobs"); err != nil {
-		return fmt.Errorf("clear existing processes: %w", err)
+	if err := clearImportedData(tx); err != nil {
+		return err
 	}
 	if replaceCV {
 		if err := replaceImportedCVLibrary(tx, versions, nextCVVersion); err != nil {
 			return err
 		}
+	}
+	if err := insertImportedTechnologies(tx, technologies); err != nil {
+		return err
 	}
 	statements, err := prepareImportStatements(tx)
 	if err != nil {
@@ -45,6 +54,37 @@ func (r *Repository) ReplaceAllJobsWithCV(jobs []models.Job, versions []models.C
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit imported processes: %w", err)
+	}
+	return nil
+}
+
+func clearImportedData(tx *sql.Tx) error {
+	if _, err := tx.Exec("DELETE FROM jobs"); err != nil {
+		return fmt.Errorf("clear existing processes: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM technologies"); err != nil {
+		return fmt.Errorf("clear technology catalog: %w", err)
+	}
+	return nil
+}
+
+func insertImportedTechnologies(tx *sql.Tx, technologies []models.Technology) error {
+	for _, item := range technologies {
+		if _, err := tx.Exec(`INSERT INTO technologies (id, name, normalized_name) VALUES (?, ?, ?)`, item.ID, item.Name, normalizeCatalogName(item.Name)); err != nil {
+			return fmt.Errorf("import technology %q: %w", item.Name, err)
+		}
+		if err := insertImportedTechnologyAliases(tx, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertImportedTechnologyAliases(tx *sql.Tx, item models.Technology) error {
+	for _, alias := range item.Aliases {
+		if _, err := tx.Exec(`INSERT INTO technology_aliases (technology_id, alias, normalized_alias) VALUES (?, ?, ?)`, item.ID, alias, normalizeCatalogName(alias)); err != nil {
+			return fmt.Errorf("import technology alias %q: %w", alias, err)
+		}
 	}
 	return nil
 }
@@ -108,6 +148,10 @@ func prepareImportStatements(tx *sql.Tx) (*importStatements, error) {
 		return nil, err
 	}
 	statements := &importStatements{job: job}
+	if statements.technology, err = tx.Prepare(`INSERT INTO job_technologies (job_id, technology_id) VALUES (?, ?)`); err != nil {
+		statements.close()
+		return nil, err
+	}
 	if statements.stage, err = tx.Prepare(`INSERT INTO stages (
 		id, job_id, order_index, stage_type, custom_title, description, status,
 		scheduled_at, meeting_date, meeting_time, meeting_url, meeting_type, notes,
@@ -135,6 +179,9 @@ func (s *importStatements) close() {
 	if s.job != nil {
 		_ = s.job.Close()
 	}
+	if s.technology != nil {
+		_ = s.technology.Close()
+	}
 	if s.stage != nil {
 		_ = s.stage.Close()
 	}
@@ -158,6 +205,11 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary, defaultValue(string(job.WorkArrangement), "unknown"),
 		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt, cvVersionID); err != nil {
 		return err
+	}
+	for _, technology := range job.Technologies {
+		if _, err := statements.technology.Exec(job.ID, technology.ID); err != nil {
+			return fmt.Errorf("import technology assignment %q: %w", technology.ID, err)
+		}
 	}
 	for _, stage := range job.Stages {
 		if err := insertImportedStage(statements, stage, job.ID); err != nil {

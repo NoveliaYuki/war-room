@@ -157,6 +157,36 @@ const backendApi = {
     return res.json();
   },
 
+  async getTechnologies() {
+    const res = await fetch("/api/technologies");
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.json();
+  },
+
+  async createTechnology(payload) {
+    const res = await fetch("/api/technologies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) { const error = await res.json().catch(() => ({ error: "Failed to create technology" })); throw new Error(error.error || "Failed to create technology"); }
+    return res.json();
+  },
+
+  async updateTechnology(id, payload) {
+    const res = await fetch(`/api/technologies/${pathSegment(id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) { const error = await res.json().catch(() => ({ error: "Failed to update technology" })); throw new Error(error.error || "Failed to update technology"); }
+    return res.json();
+  },
+
+  async removeTechnologyAssignments(id) {
+    const res = await fetch(`/api/technologies/${pathSegment(id)}/assignments`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.json();
+  },
+
+  async deleteTechnology(id) {
+    const res = await fetch(`/api/technologies/${pathSegment(id)}`, { method: "DELETE" });
+    if (!res.ok) { const error = await res.json().catch(() => ({ error: "Failed to delete technology" })); throw new Error(error.error || "Failed to delete technology"); }
+    return res.json();
+  },
+
   /**
    * Reorders selection processes cards in the grid.
    */
