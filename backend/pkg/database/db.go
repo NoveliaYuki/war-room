@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 	"war-room/backend/pkg/config"
@@ -221,7 +222,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 7
+const latestSchemaVersion = 8
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -270,9 +271,26 @@ func runSchemaMigration(executor schemaExecutor, version int) error {
 		return ensureEmploymentTypeColumn(executor)
 	case 7:
 		return migrateCVLibrary(executor)
+	case 8:
+		return migrateTechnologyCatalog(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
+}
+
+func migrateTechnologyCatalog(executor schemaExecutor) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS technologies (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL UNIQUE)`,
+		`CREATE TABLE IF NOT EXISTS technology_aliases (technology_id TEXT NOT NULL REFERENCES technologies(id) ON DELETE CASCADE, alias TEXT NOT NULL, normalized_alias TEXT NOT NULL UNIQUE, PRIMARY KEY (technology_id, normalized_alias))`,
+		`CREATE TABLE IF NOT EXISTS job_technologies (job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE, technology_id TEXT NOT NULL REFERENCES technologies(id) ON DELETE RESTRICT, PRIMARY KEY (job_id, technology_id))`,
+		`CREATE INDEX IF NOT EXISTS idx_job_technologies_technology ON job_technologies(technology_id, job_id)`,
+	}
+	for _, statement := range statements {
+		if err := executeMigrationSQL(executor, statement, "create technology catalog"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func executeMigrationSQL(executor schemaExecutor, statement, operation string) error {
@@ -512,6 +530,9 @@ func restoreFromBackupIfEmpty(db *sql.DB, backupPath, initialBackupPath, attachm
 	if err := db.QueryRow("SELECT COUNT(*) FROM jobs").Scan(&count); err != nil || count > 0 {
 		return
 	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM technologies").Scan(&count); err != nil || count > 0 {
+		return
+	}
 
 	backupSource := findBackupSource(backupPath, initialBackupPath)
 	if backupSource == "" {
@@ -523,7 +544,7 @@ func restoreFromBackupIfEmpty(db *sql.DB, backupPath, initialBackupPath, attachm
 		log.Printf("Warning: Failed to load backup.json: %v", err)
 		return
 	}
-	if len(snapshot.Jobs) == 0 {
+	if len(snapshot.Jobs) == 0 && len(snapshot.Technologies) == 0 {
 		return
 	}
 	if err := restoreRecoverySnapshot(db, snapshot, attachmentsDir, cvDirectory); err != nil {
@@ -600,12 +621,33 @@ func restoreRecoverySnapshot(db *sql.DB, snapshot models.RecoverySnapshot, attac
 	if err := restoreCVSnapshot(tx, statements, snapshot.CVVersions, snapshot.NextCVVersion, cvDirectory); err != nil {
 		return err
 	}
+	if err := restoreTechnologyCatalog(tx, snapshot.Technologies); err != nil {
+		return err
+	}
 	for _, job := range snapshot.Jobs {
 		if err := restoreJob(statements, job, attachmentsDir); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+func restoreTechnologyCatalog(tx *sql.Tx, technologies []models.Technology) error {
+	for _, item := range technologies {
+		if _, err := tx.Exec(`INSERT INTO technologies (id, name, normalized_name) VALUES (?, ?, ?)`, item.ID, item.Name, normalizeTechnologyName(item.Name)); err != nil {
+			return fmt.Errorf("restore technology %q: %w", item.Name, err)
+		}
+		for _, alias := range item.Aliases {
+			if _, err := tx.Exec(`INSERT INTO technology_aliases (technology_id, alias, normalized_alias) VALUES (?, ?, ?)`, item.ID, alias, normalizeTechnologyName(alias)); err != nil {
+				return fmt.Errorf("restore technology alias %q: %w", alias, err)
+			}
+		}
+	}
+	return nil
+}
+
+func normalizeTechnologyName(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
 func restoreCVSnapshot(tx *sql.Tx, statements *restoreStatements, versions []models.CVVersionSnapshot, nextVersion int, cvDirectory string) error {
@@ -656,11 +698,12 @@ func verifyRecoveryCVBlob(version models.CVVersionSnapshot, cvDirectory string) 
 }
 
 type restoreStatements struct {
-	job        *sql.Stmt
-	cvVersion  *sql.Stmt
-	stage      *sql.Stmt
-	question   *sql.Stmt
-	attachment *sql.Stmt
+	job           *sql.Stmt
+	jobTechnology *sql.Stmt
+	cvVersion     *sql.Stmt
+	stage         *sql.Stmt
+	question      *sql.Stmt
+	attachment    *sql.Stmt
 }
 
 func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
@@ -676,9 +719,15 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 	if err != nil {
 		return nil, err
 	}
+	jobTechnology, err := tx.Prepare(`INSERT INTO job_technologies (job_id, technology_id) VALUES (?, ?)`)
+	if err != nil {
+		_ = job.Close()
+		return nil, err
+	}
 	cvVersion, err := tx.Prepare(`INSERT INTO cv_versions (id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		_ = job.Close()
+		_ = jobTechnology.Close()
 		return nil, err
 	}
 
@@ -691,6 +740,7 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 	`)
 	if err != nil {
 		_ = job.Close()
+		_ = jobTechnology.Close()
 		_ = cvVersion.Close()
 		return nil, err
 	}
@@ -702,6 +752,7 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 	`)
 	if err != nil {
 		_ = job.Close()
+		_ = jobTechnology.Close()
 		_ = cvVersion.Close()
 		_ = stageStmt.Close()
 		return nil, err
@@ -714,15 +765,17 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 	`)
 	if err != nil {
 		_ = job.Close()
+		_ = jobTechnology.Close()
 		_ = stageStmt.Close()
 		_ = qStmt.Close()
 		return nil, err
 	}
-	return &restoreStatements{job: job, cvVersion: cvVersion, stage: stageStmt, question: qStmt, attachment: attachmentStmt}, nil
+	return &restoreStatements{job: job, jobTechnology: jobTechnology, cvVersion: cvVersion, stage: stageStmt, question: qStmt, attachment: attachmentStmt}, nil
 }
 
 func (statements *restoreStatements) close() {
 	_ = statements.job.Close()
+	_ = statements.jobTechnology.Close()
 	_ = statements.cvVersion.Close()
 	_ = statements.stage.Close()
 	_ = statements.question.Close()
@@ -732,6 +785,11 @@ func (statements *restoreStatements) close() {
 func restoreJob(statements *restoreStatements, job models.Job, attachmentsDir string) error {
 	if err := restoreJobRow(statements.job, job); err != nil {
 		return fmt.Errorf("restore job %q: %w", job.ID, err)
+	}
+	for _, technology := range job.Technologies {
+		if _, err := statements.jobTechnology.Exec(job.ID, technology.ID); err != nil {
+			return fmt.Errorf("restore technology assignment %q: %w", technology.ID, err)
+		}
 	}
 	for _, stage := range job.Stages {
 		if err := restoreStage(statements, job.ID, stage); err != nil {

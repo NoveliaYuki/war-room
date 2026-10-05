@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"os"
@@ -36,6 +37,108 @@ func TestJobStageAndQuestionServiceCRUD(t *testing.T) {
 	assertJobQueries(t, fixture.service)
 	assertJobUpdates(t, fixture.service)
 	assertStageQuestionLifecycle(t, fixture.service)
+}
+
+func TestTechnologyCatalogAndJobAssignments(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	item := createTechnologyForTest(t, fixture.service)
+	assertInvalidTechnologyUpdates(t, fixture.service, item.ID)
+	assignTechnologyToOwner(t, fixture.service, item.ID)
+	assertTechnologyJobDetails(t, fixture.service)
+	assertTechnologyCatalogUsage(t, fixture.service)
+	assertTechnologyRemoval(t, fixture.service, item.ID)
+}
+
+func assertInvalidTechnologyUpdates(t *testing.T, service *JobService, knownID string) {
+	t.Helper()
+	for _, ids := range [][]string{{"missing"}, {knownID, knownID}, {" "}} {
+		if _, err := service.UpdateJob("owner-a", models.UpdateJobInput{TechnologyIDs: ids}); !errors.Is(err, ErrInvalidField) {
+			t.Errorf("invalid technology IDs %v error=%v", ids, err)
+		}
+	}
+}
+
+func assignTechnologyToOwner(t *testing.T, service *JobService, id string) {
+	t.Helper()
+	if _, err := service.UpdateJob("owner-a", models.UpdateJobInput{TechnologyIDs: []string{id}}); err != nil {
+		t.Fatalf("assign technology: %v", err)
+	}
+}
+
+func assertTechnologyJobDetails(t *testing.T, service *JobService) {
+	t.Helper()
+	job, err := service.GetFullJobDetails("owner-a")
+	if err != nil || len(job.Technologies) != 1 || job.Technologies[0].Name != "Kubernetes" {
+		t.Fatalf("job technology stack=%+v err=%v", job, err)
+	}
+}
+
+func assertTechnologyCatalogUsage(t *testing.T, service *JobService) {
+	t.Helper()
+	catalog, err := service.ListTechnologies()
+	if err != nil || len(catalog) != 1 || len(catalog[0].Jobs) != 1 || catalog[0].Jobs[0].ID != "owner-a" {
+		t.Fatalf("catalog assignments=%+v err=%v", catalog, err)
+	}
+}
+
+func assertTechnologyRemoval(t *testing.T, service *JobService, id string) {
+	t.Helper()
+	if err := service.DeleteTechnology(id); !errors.Is(err, repository.ErrTechnologyInUse) {
+		t.Fatalf("delete in-use technology error=%v", err)
+	}
+	removed, err := service.RemoveTechnologyAssignments(id)
+	if err != nil || removed != 1 {
+		t.Fatalf("remove assignments count=%d err=%v", removed, err)
+	}
+	if err := service.DeleteTechnology(id); err != nil {
+		t.Fatalf("delete unused technology: %v", err)
+	}
+}
+
+func createTechnologyForTest(t *testing.T, service *JobService) models.Technology {
+	t.Helper()
+	item, err := service.CreateTechnology("Kubernetes", []string{"K8s"})
+	if err != nil {
+		t.Fatalf("create catalog entry: %v", err)
+	}
+	if _, err := service.CreateTechnology("K8s", nil); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("alias collision error=%v", err)
+	}
+	updated, err := service.UpdateTechnology(item.ID, "Kubernetes", []string{"K8s", "Kube"})
+	if err != nil || len(updated.Aliases) != 2 {
+		t.Fatalf("update technology=%+v err=%v", updated, err)
+	}
+	return item
+}
+
+func TestTechnologyCatalogBackupRoundTrip(t *testing.T) {
+	source := newAttachmentOwnerFixture(t)
+	item, err := source.service.CreateTechnology("Kubernetes", []string{"K8s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assignTechnologyToOwner(t, source.service, item.ID)
+	var archive bytes.Buffer
+	if err := source.service.ExportArchive(&archive); err != nil {
+		t.Fatalf("export archive: %v", err)
+	}
+	target := newAttachmentOwnerFixture(t)
+	if err := target.service.ImportArchive(bytes.NewReader(archive.Bytes()), int64(archive.Len()), true); err != nil {
+		t.Fatalf("import archive: %v", err)
+	}
+	assertImportedTechnologyStack(t, target.service, item.ID)
+}
+
+func assertImportedTechnologyStack(t *testing.T, service *JobService, id string) {
+	t.Helper()
+	catalog, err := service.ListTechnologies()
+	if err != nil || len(catalog) != 1 || len(catalog[0].Aliases) != 1 || catalog[0].Aliases[0] != "K8s" {
+		t.Fatalf("restored catalog=%+v err=%v", catalog, err)
+	}
+	job, err := service.GetFullJobDetails("owner-a")
+	if err != nil || len(job.Technologies) != 1 || job.Technologies[0].ID != id {
+		t.Fatalf("restored stack=%+v err=%v", job, err)
+	}
 }
 
 func assertJobQueries(t *testing.T, service *JobService) {

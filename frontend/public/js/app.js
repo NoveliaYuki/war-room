@@ -7,6 +7,7 @@ import { api } from "./api.js";
 import { renderCardGrid } from "./components/cardGrid.js";
 import { renderScheduleView } from "./components/scheduleView.js";
 import { openCvLibrary } from "./components/cvLibrary.js";
+import { openTechnologyLibrary } from "./components/technologyLibrary.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, trapModalTab } from "./modalA11y.js";
@@ -71,6 +72,7 @@ const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 const dataManagementButton = document.querySelector("#btn-data-management");
 const cvLibraryButton = document.querySelector("#btn-cv-library");
+const technologyLibraryButton = document.querySelector("#btn-technology-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
 
 /** Returns the selected theme, falling back to the current system preference. */
@@ -306,9 +308,15 @@ function closeCvLibraryModal() {
   closeManagementModal(moreActionsTrigger);
 }
 
+/** Closes the technology catalog and returns focus to its trigger. */
+function closeTechnologyLibraryModal() {
+  closeManagementModal(moreActionsTrigger);
+}
+
 /** Closes whichever data or CV view is currently in the shared dialog. */
 function closeTransferModal() {
   if (modalEl.querySelector("#btn-close-cv-library")) closeCvLibraryModal();
+  else if (modalEl.querySelector("#btn-close-technology-library")) closeTechnologyLibraryModal();
   else closeDataModal();
 }
 
@@ -337,7 +345,7 @@ function openDataModal() {
     <div class="data-transfer-content">
       <section class="data-transfer-section">
         <h3>Export backup</h3>
-        <p>Download your processes, company logos, and uploaded files in one portable ZIP archive.</p>
+        <p>Download your processes, technology catalog, company logos, and uploaded files in one portable ZIP archive.</p>
         <button class="btn-primary" id="btn-export-backup" type="button">${icon("download", 15)} Export ZIP backup</button>
       </section>
       <section class="data-transfer-section">
@@ -349,7 +357,7 @@ function openDataModal() {
           <button id="backup-import-choose" class="data-transfer-choose" type="button">Choose file</button>
           <span id="backup-import-file-name" class="data-transfer-file-name">No file selected</span>
         </div>
-        <div class="data-transfer-warning">Import replaces all processes, company logos, and uploaded files currently saved in this War Room.</div>
+        <div class="data-transfer-warning">Import replaces all processes, the technology catalog, company logos, and uploaded files currently saved in this War Room.</div>
         <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" /> I understand this replaces the current data</label>
         <button class="btn-danger" id="btn-import-backup" type="button" disabled>Import and replace data</button>
         <div class="data-transfer-status" id="backup-import-status" aria-live="polite"></div>
@@ -381,6 +389,17 @@ function openCvLibraryModal() {
   modalEl.classList.add("data-transfer-modal");
   backdropEl.classList.add("active");
   openCvLibrary(modalEl, closeCvLibraryModal);
+}
+
+/** Opens shared technology catalog management from the secondary actions menu. */
+function openTechnologyLibraryModal() {
+  closeMoreActionsMenu();
+  closeMobileMenu();
+  cancelPendingFlipClose(true);
+  resetModalAnimation();
+  modalEl.classList.add("data-transfer-modal");
+  backdropEl.classList.add("active");
+  openTechnologyLibrary(modalEl, closeTechnologyLibraryModal);
 }
 
 /** Downloads the generated ZIP archive. */
@@ -725,6 +744,7 @@ searchFocusButton?.addEventListener("click", () => searchInput.focus());
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
 dataManagementButton?.addEventListener("click", openDataModal);
 cvLibraryButton?.addEventListener("click", openCvLibraryModal);
+technologyLibraryButton?.addEventListener("click", openTechnologyLibraryModal);
 menuToggle?.addEventListener("click", () => {
   const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
   menuToggle.setAttribute("aria-expanded", String(!isOpen));
