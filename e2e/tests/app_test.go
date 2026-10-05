@@ -483,6 +483,24 @@ func TestNarrowViewportNavigation(t *testing.T) {
 	}
 }
 
+func TestDemoTechnologyStacksFitNarrowCards(t *testing.T) {
+	page := newPage(t)
+	if err := page.SetViewportSize(390, 844); err != nil {
+		t.Fatalf("set phone viewport: %v", err)
+	}
+	openDemoPage(t, page)
+	valid, err := page.Evaluate(`() => {
+		const stacks = [...document.querySelectorAll('.card-tech-stack')];
+		return stacks.length > 0 && document.documentElement.scrollWidth <= window.innerWidth && stacks.every(stack => {
+			const bounds = stack.getBoundingClientRect();
+			return bounds.left >= 0 && bounds.right <= window.innerWidth;
+		});
+	}`, nil)
+	if err != nil || valid != true {
+		t.Fatalf("technology stack cards exceed the phone viewport (valid=%v, err=%v)", valid, err)
+	}
+}
+
 func TestIntermediateViewportUsesOpenSearchMenu(t *testing.T) {
 	page := newPage(t)
 	if err := page.SetViewportSize(780, 850); err != nil {

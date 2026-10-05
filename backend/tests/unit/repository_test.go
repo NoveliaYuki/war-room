@@ -27,8 +27,48 @@ func TestTechnologyRepositoryCRUDAndAssignmentValidation(t *testing.T) {
 	job := createTechnologyJob(t, repo)
 	assertInvalidTechnologyAssignments(t, repo, job.ID, item.ID)
 	assertTechnologyAssignments(t, repo, job.ID, item.ID)
+	assertJobListIncludesTechnologies(t, repo)
 	assertTechnologyUpdateRollback(t, repo, item.ID)
 	assertTechnologyRepositoryRemoval(t, repo, item.ID)
+}
+
+func assertJobListIncludesTechnologies(t *testing.T, repo *repository.Repository) {
+	t.Helper()
+	jobs, err := repo.GetAllJobs(string(models.StatusOngoing), "")
+	if err != nil || len(jobs) != 1 || len(jobs[0].Technologies) != 1 || jobs[0].Technologies[0].Name != "Kubernetes" {
+		t.Fatalf("job list technologies=%+v err=%v", jobs, err)
+	}
+}
+
+func TestJobTechnologyReadFailuresAreReturned(t *testing.T) {
+	for _, operation := range []string{"list", "details"} {
+		t.Run(operation, func(t *testing.T) {
+			dir := t.TempDir()
+			db, err := database.InitDB(&config.Config{DBPath: dir + "/test.db"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			repo := repository.New(db)
+			if err := repo.CreateTechnology(models.Technology{ID: "tech-kubernetes", Name: "Kubernetes"}); err != nil {
+				t.Fatal(err)
+			}
+			job := createTechnologyJob(t, repo)
+			// The missing relation simulates a damaged or incomplete database schema.
+			if _, err := db.Exec("DROP TABLE job_technologies"); err != nil {
+				t.Fatal(err)
+			}
+			if operation == "list" {
+				if _, err := repo.GetAllJobs(string(models.StatusOngoing), ""); err == nil {
+					t.Fatal("job list should report missing technology assignments table")
+				}
+				return
+			}
+			if _, err := repo.GetJobByID(job.ID); err == nil {
+				t.Fatal("job details should report missing technology assignments table")
+			}
+		})
+	}
 }
 
 func createTechnologyJob(t *testing.T, repo *repository.Repository) *models.Job {

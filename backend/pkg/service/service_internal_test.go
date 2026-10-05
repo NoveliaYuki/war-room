@@ -49,6 +49,24 @@ func TestTechnologyCatalogAndJobAssignments(t *testing.T) {
 	assertTechnologyRemoval(t, fixture.service, item.ID)
 }
 
+func TestCreateJobPersistsValidatedTechnologyStack(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	technology := createTechnologyForTest(t, fixture.service)
+	createDefaultStages := false
+	created, err := fixture.service.CreateJob(models.CreateJobInput{
+		CompanyName: "Stacked Co", PositionTitle: "Platform Engineer",
+		TechnologyIDs: []string{technology.ID}, CreateDefaultStages: &createDefaultStages,
+	})
+	if err != nil || created == nil || len(created.Technologies) != 1 || created.Technologies[0].ID != technology.ID {
+		t.Fatalf("created job=%+v err=%v", created, err)
+	}
+	if _, err := fixture.service.CreateJob(models.CreateJobInput{
+		CompanyName: "Invalid Co", PositionTitle: "Engineer", TechnologyIDs: []string{"missing"},
+	}); !errors.Is(err, ErrInvalidField) {
+		t.Fatalf("unknown technology create error=%v", err)
+	}
+}
+
 func assertInvalidTechnologyUpdates(t *testing.T, service *JobService, knownID string) {
 	t.Helper()
 	for _, ids := range [][]string{{"missing"}, {knownID, knownID}, {" "}} {
