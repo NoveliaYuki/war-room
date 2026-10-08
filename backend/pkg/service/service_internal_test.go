@@ -67,6 +67,22 @@ func TestCreateJobPersistsValidatedTechnologyStack(t *testing.T) {
 	}
 }
 
+func TestCreatingFirstStageMovesJobToOngoing(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	job := &models.Job{ID: "cv-only-job", CompanyName: "Waiting Co", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}
+	if err := fixture.repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.CreateStage(models.CreateStageInput{JobID: job.ID, StageType: models.StageHR}); err != nil {
+		t.Fatalf("create first stage: %v", err)
+	}
+	updated, err := fixture.repo.GetJobByID(job.ID)
+	if err != nil || updated.Status != models.StatusOngoing {
+		t.Fatalf("job status=%q err=%v, want ongoing", updated.Status, err)
+	}
+}
+
 func assertInvalidTechnologyUpdates(t *testing.T, service *JobService, knownID string) {
 	t.Helper()
 	for _, ids := range [][]string{{"missing"}, {knownID, knownID}, {" "}} {
@@ -342,7 +358,7 @@ func TestValidateModelEnums(t *testing.T) {
 		valid   func() error
 		invalid func() error
 	}{
-		{"job status", func() error { return validateJobStatus(models.StatusOngoing) }, func() error { return validateJobStatus("unknown") }},
+		{"job status", func() error { return validateJobStatus(models.StatusWaiting) }, func() error { return validateJobStatus("unknown") }},
 		{"recruiter type", func() error { return validateRecruiterType(models.RecruiterExternal) }, func() error { return validateRecruiterType("unknown") }},
 		{"salary type", func() error { return validateSalaryType(models.SalaryUnknown) }, func() error { return validateSalaryType("bogus") }},
 		{"stage type", func() error { return validateStageType(models.StageTechnical) }, func() error { return validateStageType("unknown") }},
