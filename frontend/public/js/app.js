@@ -12,6 +12,9 @@ import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, trapModalTab } from "./modalA11y.js";
 import { showToast } from "./utils/toast.js";
+import { escapeHtml } from "./utils/sanitize.js";
+import { filterJobs } from "./utils/processFilters.js";
+import { readSavedSortMode, sortJobsForDisplay } from "./utils/processOrdering.js";
 
 if (typeof window !== "undefined") {
   window.showToast = showToast;
@@ -29,6 +32,7 @@ function handleAvatarImageError(event) {
 document.addEventListener("error", handleAvatarImageError, true);
 
 const FILTER_STORAGE_KEY = "war-room.active-filter";
+const PROCESS_FILTER_STORAGE_KEY = "war-room.process.filters.v1";
 const THEME_STORAGE_KEY = "war-room.theme";
 const validFilters = new Set(["waiting", "ongoing", "accepted", "rejected", "all", "schedule"]);
 
@@ -46,6 +50,9 @@ let currentFilter = getSavedFilter();
 let currentStatusFilter = currentFilter === "schedule" ? "ongoing" : currentFilter;
 let currentSearch = "";
 let searchDebounceTimer = null;
+let processFilters = loadProcessFilters();
+let availableTechnologies = [];
+let technologiesLoaded = false;
 
 /** Infers the salary type from entered range bounds. */
 function resolveSalaryType(minimum, maximum) {
@@ -74,6 +81,24 @@ const dataManagementButton = document.querySelector("#btn-data-management");
 const cvLibraryButton = document.querySelector("#btn-cv-library");
 const technologyLibraryButton = document.querySelector("#btn-technology-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
+const processFilterTrigger = document.querySelector("#process-filter-trigger");
+const processFilterPanel = document.querySelector("#process-filter-panel");
+const processFilterArrangements = document.querySelectorAll('input[name="process-filter-arrangement"]');
+const processFilterPostedSalaryMin = document.querySelector("#process-filter-posted-salary-min");
+const processFilterPostedSalaryMax = document.querySelector("#process-filter-posted-salary-max");
+const processFilterExpectedSalary = document.querySelector("#process-filter-expected-salary");
+const processFilterCurrency = document.querySelector("#process-filter-currency");
+const processFilterReferral = document.querySelector("#process-filter-referral");
+const processFilterNoReferral = document.querySelector("#process-filter-no-referral");
+const processFilterTechnologySearch = document.querySelector("#process-filter-technology-search");
+const processFilterTechnologyOptions = document.querySelector("#process-filter-technology-options");
+const processFilterClear = document.querySelector("#process-filter-clear");
+const processFilterChips = document.querySelector("#process-filter-chips");
+const processSortTrigger = document.querySelector("#process-sort-trigger");
+const processSortCurrent = document.querySelector("#process-sort-current");
+const processSortMenu = document.querySelector("#process-sort-menu");
+const processSortOptions = document.querySelectorAll("[data-sort-mode]");
+const processFilterAnyReferral = document.querySelector("#process-filter-any-referral");
 
 /** Returns the selected theme, falling back to the current system preference. */
 function getActiveTheme() {
@@ -165,6 +190,8 @@ async function refreshApp() {
       countMeetingsEl.textContent = meetings.length;
     }
     updateFilterSummary();
+    updateSortControl();
+    await loadAvailableTechnologies();
 
     if (currentFilter === "schedule") {
       cardGridEl.classList.add("schedule-mode");
@@ -174,11 +201,192 @@ async function refreshApp() {
 
     cardGridEl.classList.remove("schedule-mode");
     const jobs = await api.getJobs(currentFilter, currentSearch);
-    renderCardGrid(cardGridEl, jobs, modalEl, backdropEl, refreshApp);
+    const filteredJobs = filterJobs(jobs, processFilters);
+    const sortMode = currentFilter === "all" ? "manual" : readSavedSortMode(window.localStorage, currentFilter);
+    renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode);
   } catch (err) {
     console.error("Failed to load jobs data:", err);
   }
 }
+
+/** Restores validated card filter choices from browser storage. */
+function loadProcessFilters() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(PROCESS_FILTER_STORAGE_KEY) || "{}");
+    return {
+      arrangements: readSavedArrangements(saved),
+      expectedSalaryQuery: typeof saved.expectedSalaryQuery === "string" ? saved.expectedSalaryQuery : "",
+      postedSalaryMin: parseFilterNumber(saved.postedSalaryMin ?? saved.salaryMin),
+      postedSalaryMax: parseFilterNumber(saved.postedSalaryMax ?? saved.salaryMax),
+      currency: readSavedCurrency(saved.currency),
+      referral: readSavedReferral(saved.referral),
+      technologies: readSavedTechnologies(saved.technologies),
+    };
+  } catch {
+    return { arrangements: [], expectedSalaryQuery: "", postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [] };
+  }
+}
+
+function readSavedArrangements(saved) {
+  const accepted = ["remote", "hybrid", "on_site"];
+  if (Array.isArray(saved.arrangements)) return saved.arrangements.filter((item) => accepted.includes(item));
+  return accepted.includes(saved.arrangement) ? [saved.arrangement] : [];
+}
+
+function readSavedCurrency(currency) {
+  return ["EUR", "USD", "GBP"].includes(currency) ? currency : "";
+}
+
+function readSavedReferral(referral) {
+  return ["yes", "no"].includes(referral) ? referral : "";
+}
+
+function readSavedTechnologies(technologies) {
+  return Array.isArray(technologies) ? technologies.filter((id) => typeof id === "string") : [];
+}
+
+function parseFilterNumber(value) {
+  return value !== null && value !== "" && Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
+async function loadAvailableTechnologies() {
+  if (!processFilterTechnologyOptions || technologiesLoaded) return;
+  try {
+    availableTechnologies = await api.getTechnologies();
+    technologiesLoaded = true;
+    renderTechnologyFilterOptions();
+    updateProcessFilterSummary();
+  } catch (error) {
+    console.error("Failed to load technologies for filters:", error);
+  }
+}
+
+function renderTechnologyFilterOptions() {
+  if (!processFilterTechnologyOptions) return;
+  const query = (processFilterTechnologySearch?.value || "").trim().toLocaleLowerCase();
+  const technologies = availableTechnologies.filter((technology) => technology.name.toLocaleLowerCase().includes(query));
+  processFilterTechnologyOptions.innerHTML = technologies.map((technology) => `
+    <label><input type="checkbox" name="process-filter-technology" value="${escapeHtml(technology.id)}" ${processFilters.technologies.includes(technology.id) ? "checked" : ""} />${escapeHtml(technology.name)}</label>
+  `).join("");
+}
+
+/** Updates the compact filter count and active filter summary. */
+function updateProcessFilterSummary() {
+  const count = Number(processFilters.arrangements.length > 0)
+    + Number(Boolean(processFilters.expectedSalaryQuery))
+    + Number(processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null)
+    + Number(Boolean(processFilters.currency))
+    + Number(Boolean(processFilters.referral))
+    + Number(processFilters.technologies.length > 0);
+  const badge = document.querySelector("#process-filter-count");
+  const summary = document.querySelector("#process-filter-summary");
+  if (badge) {
+    badge.textContent = String(count);
+    badge.hidden = count === 0;
+  }
+  const chips = getProcessFilterChips();
+  if (processFilterChips) {
+    processFilterChips.innerHTML = chips.map(({ category, label, value = "" }) => `
+      <button type="button" class="process-filter-chip" data-remove-filter="${category}" ${value ? `data-filter-value="${escapeHtml(value)}"` : ""} aria-label="Remove ${escapeHtml(label)} filter">
+        <span>${escapeHtml(label)}</span><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m3 3 6 6m0-6L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    `).join("");
+  }
+  if (processFilterClear) processFilterClear.hidden = chips.length === 0;
+  if (summary) summary.textContent = "";
+}
+
+function getProcessFilterChips() {
+  const chips = processFilters.arrangements.map((value) => ({ category: "arrangement", value, label: ({ remote: "Remote", hybrid: "Hybrid", on_site: "On-site" })[value] || value }));
+  if (processFilters.referral) chips.push({ category: "referral", label: processFilters.referral === "yes" ? "Referral" : "No referral" });
+  if (processFilters.expectedSalaryQuery) chips.push({ category: "expectedSalary", label: `Target: ${processFilters.expectedSalaryQuery}` });
+  if (processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null || processFilters.currency) {
+    const lower = processFilters.postedSalaryMin === null ? "Any" : processFilters.postedSalaryMin.toLocaleString();
+    const upper = processFilters.postedSalaryMax === null ? "Any" : processFilters.postedSalaryMax.toLocaleString();
+    chips.push({ category: "postingSalary", label: `Posting ${lower}–${upper}${processFilters.currency ? ` ${processFilters.currency}` : ""}` });
+  }
+  processFilters.technologies.forEach((id) => {
+    const name = availableTechnologies.find((item) => item.id === id)?.name;
+    if (name) chips.push({ category: "technology", value: id, label: name });
+  });
+  return chips;
+}
+
+function initializeProcessFilterControls() {
+  processFilterArrangements.forEach((control) => { control.checked = processFilters.arrangements.includes(control.value); });
+  if (processFilterAnyReferral) processFilterAnyReferral.checked = !processFilters.referral;
+  if (processFilterReferral) processFilterReferral.checked = processFilters.referral === "yes";
+  if (processFilterNoReferral) processFilterNoReferral.checked = processFilters.referral === "no";
+  if (processFilterExpectedSalary) processFilterExpectedSalary.value = processFilters.expectedSalaryQuery;
+  if (processFilterPostedSalaryMin) processFilterPostedSalaryMin.value = processFilters.postedSalaryMin ?? "";
+  if (processFilterPostedSalaryMax) processFilterPostedSalaryMax.value = processFilters.postedSalaryMax ?? "";
+  if (processFilterCurrency) processFilterCurrency.value = processFilters.currency;
+  updateProcessFilterSummary();
+}
+
+function saveProcessFilters() {
+  const visibleTechnologyControls = [...(processFilterTechnologyOptions?.querySelectorAll('input[name="process-filter-technology"]') || [])];
+  const visibleTechnologyIds = visibleTechnologyControls.map((control) => control.value);
+  const hiddenSelectedTechnologies = processFilters.technologies.filter((id) => !visibleTechnologyIds.includes(id));
+  processFilters = {
+    arrangements: [...processFilterArrangements].filter((control) => control.checked).map((control) => control.value),
+    expectedSalaryQuery: processFilterExpectedSalary?.value.trim() || "",
+    postedSalaryMin: parseFilterNumber(processFilterPostedSalaryMin?.value),
+    postedSalaryMax: parseFilterNumber(processFilterPostedSalaryMax?.value),
+    currency: processFilterCurrency?.value || "",
+    referral: processFilterReferral?.checked ? "yes" : processFilterNoReferral?.checked ? "no" : "",
+    technologies: [...hiddenSelectedTechnologies, ...visibleTechnologyControls.filter((control) => control.checked).map((control) => control.value)],
+  };
+  try { window.localStorage.setItem(PROCESS_FILTER_STORAGE_KEY, JSON.stringify(processFilters)); } catch { /* Filters remain active until this page closes. */ }
+  updateProcessFilterSummary();
+  void refreshApp();
+}
+
+/** Updates the visible order selector and explains the active status order. */
+function updateSortControl() {
+  const row = document.querySelector("#process-toolbar");
+  if (!row || !processSortTrigger || !processSortCurrent) return;
+  const isStatusTab = ["waiting", "ongoing", "accepted", "rejected"].includes(currentFilter);
+  row.hidden = !isStatusTab;
+  if (!isStatusTab) return;
+  const mode = readSavedSortMode(window.localStorage, currentFilter);
+  const labels = { "added-newest": "Added · Newest", "added-oldest": "Added · Oldest", "status-newest": "Status · Newest", "status-oldest": "Status · Oldest", advanced: "Advanced", early: "Least advanced", manual: "Manual" };
+  const fullLabels = { "added-newest": "newest added first", "added-oldest": "oldest added first", "status-newest": "most recently changed first", "status-oldest": "least recently changed first", advanced: "most advanced stage first", early: "least advanced stage first", manual: "manual order" };
+  processSortCurrent.textContent = labels[mode];
+  processSortTrigger.setAttribute("aria-label", `Sort processes: ${fullLabels[mode]}`);
+  processSortOptions.forEach((option) => option.setAttribute("aria-checked", String(option.dataset.sortMode === mode)));
+}
+
+function closeSortMenu() {
+  if (!processSortMenu || !processSortTrigger) return;
+  processSortMenu.hidden = true;
+  processSortTrigger.setAttribute("aria-expanded", "false");
+}
+
+processSortTrigger?.addEventListener("click", () => {
+  if (!processSortMenu) return;
+  const willOpen = processSortMenu.hidden;
+  processSortMenu.hidden = !willOpen;
+  processSortTrigger.setAttribute("aria-expanded", String(willOpen));
+});
+
+processSortMenu?.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-sort-mode]");
+  if (!option) return;
+  try {
+    window.localStorage.setItem(`war-room.process.sort.${currentFilter}`, option.dataset.sortMode);
+  } catch {
+    // Sorting remains available for the current render when browser storage is unavailable.
+  }
+  closeSortMenu();
+  void refreshApp();
+});
+
+processSortMenu?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  closeSortMenu();
+  processSortTrigger?.focus();
+});
 
 /** Derives a salary type from submitted bounds or keeps the selected type. */
 function resolveSubmittedSalaryType(data, minValue, maxValue) {
@@ -675,6 +883,76 @@ filterCurrentAction?.addEventListener("click", () => {
   if (window.matchMedia("(max-width: 800px)").matches) menuToggle?.focus();
 });
 
+processFilterTrigger?.addEventListener("click", () => {
+  if (!processFilterPanel) return;
+  const willOpen = processFilterPanel.hidden;
+  processFilterPanel.hidden = !willOpen;
+  processFilterTrigger.setAttribute("aria-expanded", String(willOpen));
+});
+
+[...processFilterArrangements, processFilterCurrency, processFilterAnyReferral, processFilterReferral, processFilterNoReferral].forEach((control) => control?.addEventListener("change", saveProcessFilters));
+[processFilterPostedSalaryMin, processFilterPostedSalaryMax].forEach((control) => control?.addEventListener("change", saveProcessFilters));
+processFilterExpectedSalary?.addEventListener("change", saveProcessFilters);
+processFilterTechnologySearch?.addEventListener("input", renderTechnologyFilterOptions);
+processFilterTechnologyOptions?.addEventListener("change", saveProcessFilters);
+
+processFilterChips?.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-remove-filter]");
+  if (chip) clearProcessFilterCategory(chip.dataset.removeFilter, chip.dataset.filterValue);
+});
+
+function clearProcessFilterCategory(category, value = "") {
+  switch (category) {
+    case "arrangement": clearArrangementFilter(value); break;
+    case "referral": clearReferralFilter(); break;
+    case "expectedSalary": clearExpectedSalaryFilter(); break;
+    case "postingSalary": clearPostingSalaryFilter(); break;
+    case "technology": {
+      processFilters.technologies = processFilters.technologies.filter((id) => id !== value);
+      renderTechnologyFilterOptions();
+      break;
+    }
+    default: return;
+  }
+  saveProcessFilters();
+}
+
+function clearArrangementFilter(value = "") {
+  processFilterArrangements.forEach((control) => {
+    if (!value || control.value === value) control.checked = false;
+  });
+}
+
+function clearReferralFilter() {
+  if (processFilterReferral) processFilterReferral.checked = false;
+  if (processFilterNoReferral) processFilterNoReferral.checked = false;
+  if (processFilterAnyReferral) processFilterAnyReferral.checked = true;
+}
+
+function clearExpectedSalaryFilter() {
+  if (processFilterExpectedSalary) processFilterExpectedSalary.value = "";
+}
+
+function clearPostingSalaryFilter() {
+  if (processFilterPostedSalaryMin) processFilterPostedSalaryMin.value = "";
+  if (processFilterPostedSalaryMax) processFilterPostedSalaryMax.value = "";
+  if (processFilterCurrency) processFilterCurrency.value = "";
+}
+
+processFilterClear?.addEventListener("click", () => {
+  processFilterArrangements.forEach((control) => { control.checked = false; });
+  if (processFilterExpectedSalary) processFilterExpectedSalary.value = "";
+  if (processFilterPostedSalaryMin) processFilterPostedSalaryMin.value = "";
+  if (processFilterPostedSalaryMax) processFilterPostedSalaryMax.value = "";
+  if (processFilterCurrency) processFilterCurrency.value = "";
+  if (processFilterReferral) processFilterReferral.checked = false;
+  if (processFilterNoReferral) processFilterNoReferral.checked = false;
+  if (processFilterTechnologySearch) processFilterTechnologySearch.value = "";
+  processFilters.technologies = [];
+  renderTechnologyFilterOptions();
+  saveProcessFilters();
+});
+
 filterMenuTrigger?.addEventListener("click", () => {
   const willOpen = filterMenu?.hidden;
   if (!filterMenu) return;
@@ -730,6 +1008,11 @@ moreActionsMenu?.addEventListener("keydown", (event) => {
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".filter-tabs")) closeFilterMenu();
   if (!event.target.closest(".more-actions-menu")) closeMoreActionsMenu();
+  if (!event.target.closest(".process-filter-control") && processFilterPanel && !processFilterPanel.hidden) {
+    processFilterPanel.hidden = true;
+    processFilterTrigger?.setAttribute("aria-expanded", "false");
+  }
+  if (!event.target.closest(".process-sort-control")) closeSortMenu();
 });
 
 searchInput.addEventListener("input", () => {
@@ -769,6 +1052,8 @@ filterTabs.forEach((tab) => {
   tab.classList.toggle("active", isActive);
   tab.setAttribute("aria-checked", String(isActive));
 });
+
+initializeProcessFilterControls();
 scheduleButton?.classList.toggle("active", currentFilter === "schedule");
 scheduleButton?.setAttribute("aria-pressed", String(currentFilter === "schedule"));
 updateFilterSummary();

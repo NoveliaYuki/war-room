@@ -96,7 +96,8 @@ func buildJobsQuery(status, search string) (string, []interface{}) {
 			jobs.interviewers_json, jobs.job_post_url, jobs.avatar_seed, jobs.keyword_note,
 			jobs.description, jobs.company_overview, jobs.company_domain, jobs.interview_notes,
 			jobs.reasons_to_change, jobs.experience_notes, jobs.expected_salary, jobs.work_arrangement,
-			jobs.employment_type, jobs.is_referral, jobs.order_index, jobs.created_at, jobs.updated_at, jobs.cv_version_id,
+			jobs.employment_type, jobs.is_referral, jobs.order_index, jobs.status_changed_at,
+			jobs.application_sent_date, jobs.recruiter_first_contact_date, jobs.created_at, jobs.updated_at, jobs.cv_version_id,
 			(SELECT COALESCE(custom_title, stage_type) FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_title,
 			(SELECT order_index + 1 FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_index,
 			(SELECT COUNT(*) FROM stages WHERE job_id = jobs.id) as total_stages_count
@@ -116,7 +117,7 @@ func buildJobsQuery(status, search string) (string, []interface{}) {
 		args = append(args, wildcard, wildcard, wildcard, wildcard, wildcard)
 	}
 
-	query += " ORDER BY order_index ASC, updated_at DESC, created_at DESC"
+	query += " ORDER BY jobs.status_changed_at DESC, jobs.created_at DESC, jobs.order_index DESC"
 
 	return query, args
 }
@@ -127,6 +128,7 @@ func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 		var j models.Job
 		var ijJSON sql.NullString
 		var cvVersionID sql.NullString
+		var applicationSentDate, recruiterFirstContactDate sql.NullString
 		err := rows.Scan(
 			&j.ID, &j.CompanyName, &j.PositionTitle, &j.Status, &j.SalaryType,
 			&j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency, &j.RecruiterType,
@@ -134,7 +136,7 @@ func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 			&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 			&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 			&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
+			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
 			&j.CurrentStageTitle, &j.CurrentStageIndex, &j.TotalStagesCount,
 		)
 		if err != nil {
@@ -152,9 +154,18 @@ func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 				return nil, fmt.Errorf("load selected CV version: %w", err)
 			}
 		}
+		j.ApplicationSentDate = nullableStringPointer(applicationSentDate)
+		j.RecruiterFirstContactDate = nullableStringPointer(recruiterFirstContactDate)
 		jobs = append(jobs, j)
 	}
 	return jobs, nil
+}
+
+func nullableStringPointer(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	return &value.String
 }
 
 // GetJobByID returns the job identified by id.
@@ -165,13 +176,15 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
-			employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
+			employment_type, is_referral, order_index, status_changed_at, application_sent_date,
+			recruiter_first_contact_date, created_at, updated_at, cv_version_id
 		FROM jobs WHERE id = ?
 	`, id)
 
 	var j models.Job
 	var ijJSON sql.NullString
 	var cvVersionID sql.NullString
+	var applicationSentDate, recruiterFirstContactDate sql.NullString
 	err := row.Scan(
 		&j.ID, &j.CompanyName, &j.PositionTitle, &j.Status, &j.SalaryType,
 		&j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency, &j.RecruiterType,
@@ -179,7 +192,7 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 		&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 		&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 		&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
+		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -199,6 +212,8 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 			return nil, fmt.Errorf("load selected CV version: %w", err)
 		}
 	}
+	j.ApplicationSentDate = nullableStringPointer(applicationSentDate)
+	j.RecruiterFirstContactDate = nullableStringPointer(recruiterFirstContactDate)
 	jobTechnologies, err := r.JobTechnologies(j.ID)
 	if err != nil {
 		return nil, err
@@ -396,6 +411,7 @@ func (r *Repository) InsertJob(job *models.Job) error {
 	}
 	now := time.Now().Unix()
 	job.CreatedAt = now
+	job.StatusChangedAt = now
 	job.UpdatedAt = now
 
 	ijBytes, _ := json.Marshal(job.Interviewers)
@@ -407,8 +423,9 @@ func (r *Repository) InsertJob(job *models.Job) error {
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
-			employment_type, is_referral, order_index, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			employment_type, is_referral, order_index, status_changed_at, application_sent_date,
+			recruiter_first_contact_date, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		job.ID, job.CompanyName, job.PositionTitle, job.Status, job.SalaryType,
 		job.SalaryMin, job.SalaryMax, job.SalaryCurrency, job.RecruiterType,
@@ -416,7 +433,8 @@ func (r *Repository) InsertJob(job *models.Job) error {
 		job.InterviewersJSON, job.JobPostURL, job.AvatarSeed, job.KeywordNote,
 		job.Description, job.CompanyOverview, job.CompanyDomain, job.InterviewNotes,
 		job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
-		job.WorkArrangement, job.EmploymentType, job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt,
+		job.WorkArrangement, job.EmploymentType, job.IsReferral, job.OrderIndex, job.StatusChangedAt,
+		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt,
 	)
 	return err
 }
@@ -431,7 +449,8 @@ func (r *Repository) UpdateJob(id string, fields map[string]interface{}) error {
 		"description": true, "company_overview": true, "company_domain": true,
 		"interview_notes": true, "reasons_to_change": true, "experience_notes": true,
 		"expected_salary": true, "work_arrangement": true, "employment_type": true,
-		"is_referral": true, "order_index": true,
+		"is_referral": true, "order_index": true, "application_sent_date": true,
+		"recruiter_first_contact_date": true,
 	}
 
 	var clauses []string
@@ -470,6 +489,10 @@ func normalizeJobUpdateValue(key string, value interface{}) interface{} {
 	case "keyword_note":
 		if text, ok := value.(string); ok && len(text) > 100 {
 			return text[:100]
+		}
+	case "application_sent_date", "recruiter_first_contact_date":
+		if text, ok := value.(*string); ok && text != nil && strings.TrimSpace(*text) == "" {
+			return nil
 		}
 	}
 	return value

@@ -142,8 +142,9 @@ func prepareImportStatements(tx *sql.Tx) (*importStatements, error) {
 		salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 		interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
-		work_arrangement, employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		work_arrangement, employment_type, is_referral, order_index, status_changed_at,
+		application_sent_date, recruiter_first_contact_date, created_at, updated_at, cv_version_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +196,10 @@ func (s *importStatements) close() {
 
 func insertImportedJob(statements *importStatements, job models.Job) error {
 	interviewers := marshalInterviewers(job.Interviewers)
+	statusChangedAt := job.StatusChangedAt
+	if statusChangedAt == 0 {
+		statusChangedAt = job.CreatedAt
+	}
 	var cvVersionID any
 	if job.SelectedCVVersion != nil {
 		cvVersionID = job.SelectedCVVersion.ID
@@ -203,7 +208,8 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 		defaultValue(job.SalaryCurrency, "EUR"), defaultValue(string(job.RecruiterType), "none"), job.RecruiterName, job.RecruiterAgency, job.RecruiterContact,
 		interviewers, job.JobPostURL, job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary, defaultValue(string(job.WorkArrangement), "unknown"),
-		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt, cvVersionID); err != nil {
+		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, statusChangedAt,
+		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, cvVersionID); err != nil {
 		return err
 	}
 	for _, technology := range job.Technologies {

@@ -12,6 +12,12 @@ const suites = [
     cwd: root,
   },
   {
+    name: 'EPSS vulnerability gate policy tests',
+    command: process.execPath,
+    args: ['--test', 'scripts/epss-policy.test.mjs'],
+    cwd: root,
+  },
+  {
     name: 'Frontend dependency vulnerability audit (high severity)',
     command: npm,
     args: ['audit', '--prefix', 'frontend', '--audit-level=high'],

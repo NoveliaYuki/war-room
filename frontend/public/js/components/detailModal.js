@@ -229,6 +229,29 @@ function renderJobPostLink(value) {
   return value ? escapeHtml(value) : '<span style="color: var(--text-muted); font-style: italic; font-size: 12px;">No job post link recorded</span>';
 }
 
+/** Formats a UTC timestamp as a calendar date in the viewer's locale. */
+function formatProcessAddedDate(timestamp) {
+  if (!Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0) return "Date unavailable";
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", year: "numeric" }).format(new Date(Number(timestamp) * 1000));
+}
+
+/** Renders process creation, application, and first recruiter contact dates. */
+function renderProcessTimeline(job) {
+  const createdAt = Number(job.created_at);
+  const addedDate = Number.isFinite(createdAt) && createdAt > 0
+    ? `<time datetime="${escapeAttr(new Date(createdAt * 1000).toISOString())}">${escapeHtml(formatProcessAddedDate(createdAt))}</time>`
+    : `<span>${escapeHtml(formatProcessAddedDate(job.created_at))}</span>`;
+  return `<div class="detail-section process-timeline-section">
+    <div class="section-title"><span>Process Dates</span></div>
+    <div class="process-timeline-list">
+      <div class="process-timeline-item"><span>Added to War Room</span>${addedDate}</div>
+      <label class="process-timeline-item" for="application-sent-date"><span>Application / CV sent</span><input id="application-sent-date" type="date" data-process-date="application_sent_date" value="${escapeAttr(job.application_sent_date || "")}" /></label>
+      <label class="process-timeline-item" for="recruiter-first-contact-date"><span>First recruiter contact</span><input id="recruiter-first-contact-date" type="date" data-process-date="recruiter_first_contact_date" value="${escapeAttr(job.recruiter_first_contact_date || "")}" /></label>
+    </div>
+    <p class="process-timeline-hint">Add the dates that apply; leave the others blank.</p>
+  </div>`;
+}
+
 /** Renders the optional original job description section. */
 function renderJobDescription(job) {
   return `<div class="detail-section">
@@ -434,6 +457,8 @@ function renderJobDetailsSection(view) {
   return `
         <section class="process-subsection job-details-group">
           <div class="process-subsection-header"><span class="group-title inline-icon-text">${icon("building", 13)} Job Details</span></div>
+
+          ${renderProcessTimeline(job)}
 
           <div class="detail-section">
             <div class="section-title">
@@ -966,6 +991,7 @@ function bindMetadataCycle(modalEl, job, field, values, refreshModal) {
 /** Wires bindJobTextEditors fields. */
 function bindJobTextEditors(context) {
   const { modalEl, job, refreshModal } = context;
+  bindProcessDateFields(context);
   const elKeywords = modalEl.querySelector(".editable-keywords");
   if (elKeywords) {
     makeInlineEditable(elKeywords, {
@@ -1014,6 +1040,24 @@ function bindJobTextEditors(context) {
       },
     });
   }
+}
+
+/** Saves editable application and first-contact dates when their date picker changes. */
+function bindProcessDateFields({ modalEl, job, refreshModal }) {
+  modalEl.querySelectorAll("[data-process-date]").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const field = input.dataset.processDate;
+      input.disabled = true;
+      try {
+        await api.updateJob(job.id, { [field]: input.value });
+        refreshModal();
+      } catch (error) {
+        input.value = job[field] || "";
+        input.disabled = false;
+        showToast(error.message || "Could not save process date", "error");
+      }
+    });
+  });
 }
 
 /** Binds Markdown editing to the overview, notes, and original description fields. */

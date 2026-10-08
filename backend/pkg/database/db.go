@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     work_arrangement TEXT NOT NULL DEFAULT 'unknown' CHECK (work_arrangement IN ('unknown', 'remote', 'hybrid', 'on_site')),
     is_referral INTEGER NOT NULL DEFAULT 0 CHECK (is_referral IN (0, 1)),
     order_index INTEGER NOT NULL DEFAULT 0,
+    status_changed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    application_sent_date TEXT NULL,
+    recruiter_first_contact_date TEXT NULL,
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
     CHECK (salary_min IS NULL OR salary_max IS NULL OR salary_min <= salary_max)
@@ -223,7 +226,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 9
+const latestSchemaVersion = 11
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -295,26 +298,96 @@ func runSchemaMigration(executor schemaExecutor, version int) error {
 }
 
 func runLaterSchemaMigration(executor schemaExecutor, version int) error {
+	if version >= 2 && version <= 3 {
+		return runConstraintSchemaMigration(executor, version)
+	}
+	if version >= 4 && version <= 6 {
+		return runJobColumnsMigration(executor, version)
+	}
+	if version >= 7 && version <= 9 {
+		return runDataSchemaMigration(executor, version)
+	}
 	switch version {
-	case 2:
+	case 10:
+		return migrateJobStatusChangedAt(executor)
+	case 11:
+		return migrateJobProcessDates(executor)
+	default:
+		return fmt.Errorf("unknown migration version %d", version)
+	}
+}
+
+func runConstraintSchemaMigration(executor schemaExecutor, version int) error {
+	if version == 2 {
 		return executeMigrationSQL(executor, attachmentOwnershipTriggersSQL, "create attachment ownership triggers")
-	case 3:
-		return executeMigrationSQL(executor, meetingTypeConstraintsSQL, "constrain meeting types")
+	}
+	return executeMigrationSQL(executor, meetingTypeConstraintsSQL, "constrain meeting types")
+}
+
+func runJobColumnsMigration(executor schemaExecutor, version int) error {
+	switch version {
 	case 4:
 		return ensurePreparationColumns(executor)
 	case 5:
 		return ensureWorkArrangementColumns(executor)
-	case 6:
+	default:
 		return ensureEmploymentTypeColumn(executor)
+	}
+}
+
+func runDataSchemaMigration(executor schemaExecutor, version int) error {
+	switch version {
 	case 7:
 		return migrateCVLibrary(executor)
 	case 8:
 		return migrateTechnologyCatalog(executor)
-	case 9:
-		return migrateJobWaitingStatus(executor)
 	default:
-		return fmt.Errorf("unknown migration version %d", version)
+		return migrateJobWaitingStatus(executor)
 	}
+}
+
+func migrateJobProcessDates(executor schemaExecutor) error {
+	for _, column := range []string{"application_sent_date", "recruiter_first_contact_date"} {
+		exists, err := hasColumn(executor, "jobs", column)
+		if err != nil {
+			return fmt.Errorf("inspect jobs.%s: %w", column, err)
+		}
+		if exists {
+			continue
+		}
+		statement := fmt.Sprintf("ALTER TABLE jobs ADD COLUMN %s TEXT NULL", column)
+		if err := executeMigrationSQL(executor, statement, "add jobs."+column); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateJobStatusChangedAt(executor schemaExecutor) error {
+	exists, err := hasColumn(executor, "jobs", "status_changed_at")
+	if err != nil {
+		return fmt.Errorf("inspect jobs.status_changed_at: %w", err)
+	}
+	if !exists {
+		if err := executeMigrationSQL(executor, "ALTER TABLE jobs ADD COLUMN status_changed_at INTEGER NOT NULL DEFAULT 0", "add jobs.status_changed_at"); err != nil {
+			return err
+		}
+	}
+	updatedAtExists, err := hasColumn(executor, "jobs", "updated_at")
+	if err != nil {
+		return fmt.Errorf("inspect jobs.updated_at: %w", err)
+	}
+	if updatedAtExists {
+		if err := executeMigrationSQL(executor, "UPDATE jobs SET status_changed_at = updated_at WHERE status_changed_at = 0", "initialize job status timestamps"); err != nil {
+			return err
+		}
+	}
+	return executeMigrationSQL(executor, `CREATE TRIGGER IF NOT EXISTS update_job_status_changed_at
+AFTER UPDATE OF status ON jobs
+WHEN NEW.status <> OLD.status
+BEGIN
+    UPDATE jobs SET status_changed_at = unixepoch() WHERE id = NEW.id;
+END`, "track job status changes")
 }
 
 func migrateJobWaitingStatus(executor schemaExecutor) error {
@@ -360,6 +433,9 @@ func migrateJobWaitingStatus(executor schemaExecutor) error {
 			employment_type TEXT NOT NULL DEFAULT 'unknown' CHECK (employment_type IN ('unknown', 'permanent', 'b2b', 'permanent_b2b')),
 			is_referral INTEGER NOT NULL DEFAULT 0 CHECK (is_referral IN (0, 1)),
 			order_index INTEGER NOT NULL DEFAULT 0,
+			status_changed_at INTEGER NOT NULL DEFAULT 0,
+			application_sent_date TEXT NULL,
+			recruiter_first_contact_date TEXT NULL,
 			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
 			updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
 			cv_version_id TEXT NULL REFERENCES cv_versions(id) ON DELETE RESTRICT,
@@ -370,13 +446,15 @@ func migrateJobWaitingStatus(executor schemaExecutor) error {
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
-			work_arrangement, employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
+			work_arrangement, employment_type, is_referral, order_index, status_changed_at,
+			application_sent_date, recruiter_first_contact_date, created_at, updated_at, cv_version_id
 		)
 		SELECT id, company_name, position_title, status, salary_type, salary_min, salary_max,
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
-			work_arrangement, employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
+			work_arrangement, employment_type, is_referral, order_index, status_changed_at,
+			application_sent_date, recruiter_first_contact_date, created_at, updated_at, cv_version_id
 		FROM jobs`,
 		`DROP TABLE jobs`,
 		`ALTER TABLE jobs_with_waiting RENAME TO jobs`,
@@ -828,9 +906,10 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 			id, company_name, position_title, status, salary_type, salary_min, salary_max,
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
-			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
-		is_referral, order_index, created_at, updated_at, cv_version_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
+		is_referral, order_index, status_changed_at, application_sent_date, recruiter_first_contact_date,
+		created_at, updated_at, cv_version_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, err
@@ -980,6 +1059,10 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 	salaryType := defaultString(string(job.SalaryType), string(models.SalaryUnknown))
 	currency := defaultString(job.SalaryCurrency, "EUR")
 	interviewers := []byte("[]")
+	statusChangedAt := job.StatusChangedAt
+	if statusChangedAt == 0 {
+		statusChangedAt = job.CreatedAt
+	}
 	if job.Interviewers != nil {
 		encoded, _ := json.Marshal(job.Interviewers)
 		interviewers = encoded
@@ -989,7 +1072,8 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 		job.RecruiterAgency, job.RecruiterContact, string(interviewers), job.JobPostURL,
 		job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
-		job.IsReferral, job.OrderIndex, job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job))
+		job.IsReferral, job.OrderIndex, statusChangedAt, job.ApplicationSentDate, job.RecruiterFirstContactDate,
+		job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job))
 	return err
 }
 
