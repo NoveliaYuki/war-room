@@ -1,5 +1,5 @@
 # Build the static Go binaries and ship them in a minimal runtime image.
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk --no-cache add ca-certificates tzdata
 

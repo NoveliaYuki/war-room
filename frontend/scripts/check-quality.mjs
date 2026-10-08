@@ -2,11 +2,13 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
+import { resolveLocalImport } from "./moduleResolution.js";
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const roots = ["public/js", "tests", "scripts", "../scripts"].map((directory) => path.join(frontendRoot, directory));
-const standaloneSourceModules = ["demo/zipWriter.js"];
 const root = frontendRoot;
+const standaloneSourceModules = ["demo/zipWriter.js"];
+const resolutionOnlyModules = ["demo/demoStore.js"];
 const MAX_COMPLEXITY = 10;
 const FUNCTION_TYPES = new Set([
   "FunctionDeclaration",
@@ -197,13 +199,6 @@ function collectLocalImports(ast) {
   return imports;
 }
 
-/** Resolves a local import to one of the frontend's JavaScript modules. */
-function resolveLocalImport(sourceFile, specifier, sourceFiles) {
-  const target = path.resolve(path.dirname(sourceFile), specifier);
-  const candidates = path.extname(target) ? [target] : [ `${target}.js`, path.join(target, "index.js") ];
-  return candidates.find((candidate) => sourceFiles.has(candidate));
-}
-
 /** Reports cycles in the frontend's directed module dependency graph. */
 function findImportCycles(graph) {
   const states = new Map();
@@ -237,7 +232,10 @@ async function main() {
   files.push(...standaloneSourceModules.map((modulePath) => path.join(frontendRoot, modulePath)));
   files.push(path.join(frontendRoot, "vitest.config.js"));
   files.sort();
-  const sourceFiles = new Set(files);
+  const sourceFiles = new Set([
+    ...files,
+    ...resolutionOnlyModules.map((modulePath) => path.join(frontendRoot, modulePath)),
+  ]);
   const graph = new Map();
   for (const file of files) {
     const relativePath = path.relative(root, file);
