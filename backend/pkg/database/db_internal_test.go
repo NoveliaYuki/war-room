@@ -536,6 +536,9 @@ func TestApplySchemaMigrationReportsBeginAndRecordErrors(t *testing.T) {
 	if err := applySchemaMigration(closedDB, 2); err == nil {
 		t.Fatal("closed database should fail migration transaction creation")
 	}
+	if err := applyWaitingStatusMigration(closedDB, 9); err == nil {
+		t.Fatal("closed database should fail acquiring the waiting migration connection")
+	}
 
 	db := openMigrationTestDB(t)
 	if _, err := db.Exec(schemaSQL); err != nil {
@@ -579,9 +582,6 @@ func TestColumnMigrationsReturnQueryAndAlterErrors(t *testing.T) {
 
 func TestSchemaMigrationDispatchReportsFailures(t *testing.T) {
 	db := openMigrationTestDB(t)
-	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
-		t.Fatal(err)
-	}
 	executor := migrationTestExecutor{db: db, failExec: "CREATE TRIGGER"}
 	for _, version := range []int{2, 3} {
 		if err := runSchemaMigration(executor, version); err == nil {
@@ -591,11 +591,88 @@ func TestSchemaMigrationDispatchReportsFailures(t *testing.T) {
 	if err := runSchemaMigration(executor, 99); err == nil || !strings.Contains(err.Error(), "unknown migration") {
 		t.Fatalf("unknown migration error=%v", err)
 	}
-	if _, err := db.Exec(schemaSQL); err != nil {
-		t.Fatal(err)
-	}
 	if err := applyInitialSchemaMigration(migrationTestExecutor{db: db, failExec: "CREATE INDEX"}); err == nil {
 		t.Fatal("initial migration should report index creation failure")
+	}
+	dispatchDB := openMigrationTestDB(t)
+	if _, err := dispatchDB.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []int{4, 5, 6, 7, 8, 9, 10, 11} {
+		if err := runSchemaMigration(dispatchDB, version); err != nil {
+			t.Errorf("migration %d dispatch failed: %v", version, err)
+		}
+	}
+	if err := applyWaitingStatusMigration(dispatchDB, 9); err != nil {
+		t.Fatalf("waiting status migration transaction: %v", err)
+	}
+}
+
+func TestStatusTimestampMigrationPreservesLegacyUpdateTime(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, updated_at INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO jobs (id, status, updated_at) VALUES ('legacy', 'waiting', 123)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(db); err != nil {
+		t.Fatalf("add status timestamp: %v", err)
+	}
+	var changedAt int64
+	if err := db.QueryRow("SELECT status_changed_at FROM jobs WHERE id = 'legacy'").Scan(&changedAt); err != nil || changedAt != 123 {
+		t.Fatalf("status timestamp=%d err=%v, want legacy update time 123", changedAt, err)
+	}
+}
+
+func TestStatusTimestampMigrationSupportsJobsWithoutUpdateTime(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(db); err != nil {
+		t.Fatalf("add status timestamp without legacy updated_at: %v", err)
+	}
+	if exists, err := hasColumn(db, "jobs", "status_changed_at"); err != nil || !exists {
+		t.Fatalf("status_changed_at exists=%t err=%v", exists, err)
+	}
+}
+
+func TestProcessDateMigrationAddsNullableColumnsIdempotently(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobProcessDates(db); err != nil {
+		t.Fatalf("add process dates: %v", err)
+	}
+	if err := migrateJobProcessDates(db); err != nil {
+		t.Fatalf("repeat process date migration: %v", err)
+	}
+	for _, column := range []string{"application_sent_date", "recruiter_first_contact_date"} {
+		exists, err := hasColumn(db, "jobs", column)
+		if err != nil || !exists {
+			t.Fatalf("column %s exists=%t err=%v", column, exists, err)
+		}
+	}
+}
+
+func TestProcessDateMigrationsReturnInspectionAndAlterErrors(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}); err == nil {
+		t.Fatal("status timestamp inspection failure should be returned")
+	}
+	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failExec: "ADD COLUMN status_changed_at"}); err == nil {
+		t.Fatal("status timestamp alter failure should be returned")
+	}
+	if err := migrateJobProcessDates(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}); err == nil {
+		t.Fatal("process date inspection failure should be returned")
+	}
+	if err := migrateJobProcessDates(migrationTestExecutor{db: db, failExec: "application_sent_date"}); err == nil {
+		t.Fatal("process date alter failure should be returned")
 	}
 }
 
@@ -856,6 +933,22 @@ func TestRestoreJobsCommitsEmptyAndPopulatedBackups(t *testing.T) {
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM jobs").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("jobs after rolled back restore=%d err=%v", count, err)
+	}
+}
+
+func TestRestoreJobsDefaultsMissingStatusTimestampToCreationTime(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "restore-time.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	job := models.Job{ID: "legacy-restored", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting, CreatedAt: 456}
+	if err := restoreJobs(db, []models.Job{job}, t.TempDir()); err != nil {
+		t.Fatalf("restore legacy job: %v", err)
+	}
+	var statusChangedAt int64
+	if err := db.QueryRow("SELECT status_changed_at FROM jobs WHERE id = ?", job.ID).Scan(&statusChangedAt); err != nil || statusChangedAt != job.CreatedAt {
+		t.Fatalf("status_changed_at=%d err=%v, want created_at %d", statusChangedAt, err, job.CreatedAt)
 	}
 }
 

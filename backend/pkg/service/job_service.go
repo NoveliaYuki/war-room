@@ -173,13 +173,15 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 		JobPostURL: input.JobPostURL, AvatarSeed: avatar, KeywordNote: keyword,
 		Description: valueOrEmpty(input.Description), CompanyOverview: valueOrEmpty(input.CompanyOverview),
 		CompanyDomain: input.CompanyDomain, InterviewNotes: valueOrEmpty(input.InterviewNotes),
-		ReasonsToChange: valueOrEmpty(input.ReasonsToChange),
-		ExperienceNotes: strings.TrimSpace(valueOrEmpty(input.ExperienceNotes)),
-		ExpectedSalary:  strings.TrimSpace(valueOrEmpty(input.ExpectedSalary)),
-		WorkArrangement: workArrangement,
-		EmploymentType:  employmentType,
-		IsReferral:      referral,
-		Technologies:    []models.Technology{},
+		ApplicationSentDate:       normalizeOptionalDate(input.ApplicationSentDate),
+		RecruiterFirstContactDate: normalizeOptionalDate(input.RecruiterFirstContactDate),
+		ReasonsToChange:           valueOrEmpty(input.ReasonsToChange),
+		ExperienceNotes:           strings.TrimSpace(valueOrEmpty(input.ExperienceNotes)),
+		ExpectedSalary:            strings.TrimSpace(valueOrEmpty(input.ExpectedSalary)),
+		WorkArrangement:           workArrangement,
+		EmploymentType:            employmentType,
+		IsReferral:                referral,
+		Technologies:              []models.Technology{},
 	}, nil
 }
 
@@ -190,7 +192,32 @@ func validateCreateJobEnums(input models.CreateJobInput) error {
 		validateOptionalEnum(input.SalaryType, validateSalaryType),
 		validateOptionalEnum(input.WorkArrangement, validateWorkArrangement),
 		validateOptionalEnum(input.EmploymentType, validateEmploymentType),
+		validateOptionalDate(input.ApplicationSentDate, "application_sent_date"),
+		validateOptionalDate(input.RecruiterFirstContactDate, "recruiter_first_contact_date"),
 	)
+}
+
+func validateOptionalDate(value *string, field string) error {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil
+	}
+	date := strings.TrimSpace(*value)
+	parsed, err := time.Parse("2006-01-02", date)
+	if err != nil || parsed.Format("2006-01-02") != date {
+		return fmt.Errorf("%w: %s must use YYYY-MM-DD", ErrInvalidField, field)
+	}
+	return nil
+}
+
+func normalizeOptionalDate(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	date := strings.TrimSpace(*value)
+	if date == "" {
+		return nil
+	}
+	return &date
 }
 
 func validateOptionalEnum[T ~string](value *T, validate func(T) error) error {
@@ -481,6 +508,8 @@ func validateUpdateJobEnums(input models.UpdateJobInput) error {
 		validateOptionalEnum(input.SalaryType, validateSalaryType),
 		validateOptionalEnum(input.WorkArrangement, validateWorkArrangement),
 		validateOptionalEnum(input.EmploymentType, validateEmploymentType),
+		validateOptionalDate(input.ApplicationSentDate, "application_sent_date"),
+		validateOptionalDate(input.RecruiterFirstContactDate, "recruiter_first_contact_date"),
 	)
 }
 
@@ -644,6 +673,13 @@ func addJobRecruiterFields(fields map[string]interface{}, input models.UpdateJob
 }
 
 func addJobNotesFields(fields map[string]interface{}, input models.UpdateJobInput) {
+	addJobLongTextFields(fields, input)
+	addJobProcessDateFields(fields, input)
+	addPreparationNoteFields(fields, input)
+	addJobFlags(fields, input)
+}
+
+func addJobLongTextFields(fields map[string]interface{}, input models.UpdateJobInput) {
 	if input.KeywordNote != nil {
 		fields["keyword_note"] = normalizeKeyword(input.KeywordNote)
 	}
@@ -662,7 +698,18 @@ func addJobNotesFields(fields map[string]interface{}, input models.UpdateJobInpu
 	if input.ReasonsToChange != nil {
 		fields["reasons_to_change"] = strings.TrimSpace(*input.ReasonsToChange)
 	}
-	addPreparationNoteFields(fields, input)
+}
+
+func addJobProcessDateFields(fields map[string]interface{}, input models.UpdateJobInput) {
+	if input.ApplicationSentDate != nil {
+		fields["application_sent_date"] = normalizeOptionalDate(input.ApplicationSentDate)
+	}
+	if input.RecruiterFirstContactDate != nil {
+		fields["recruiter_first_contact_date"] = normalizeOptionalDate(input.RecruiterFirstContactDate)
+	}
+}
+
+func addJobFlags(fields map[string]interface{}, input models.UpdateJobInput) {
 	if input.IsReferral != nil {
 		fields["is_referral"] = *input.IsReferral
 	}

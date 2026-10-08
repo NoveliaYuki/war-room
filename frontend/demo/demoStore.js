@@ -10,7 +10,9 @@ const STORAGE_KEY = "war-room-demo-data-v13";
 const TECHNOLOGY_STORAGE_KEY = "war-room-demo-technologies-v1";
 const SCHEDULE_DATE_KEY = "war-room-demo-schedule-date";
 const DEMO_SEED_VERSION_KEY = "war-room-demo-seed-version";
-const DEMO_SEED_VERSION = "5";
+const DEMO_SEED_VERSION = "6";
+const NEW_DEMO_SEED_IDS = new Set(["demo-10", "demo-11", "demo-12"]);
+const NEW_DEMO_TECHNOLOGY_IDS = new Set(["tech-aws", "tech-terraform"]);
 const BACKUP_FORMAT = "war-room-demo-backup";
 const BACKUP_VERSION = 1;
 const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
@@ -74,8 +76,14 @@ function loadJobs() {
     const records = stored ? JSON.parse(stored) : clone(initialJobs);
     const today = formatLocalDate(new Date());
     const seedChanged = window.localStorage.getItem(DEMO_SEED_VERSION_KEY) !== DEMO_SEED_VERSION;
-    if (seedChanged) migrateLegacyDemoJob(records, initialJobs.find((record) => record.id === "demo-3"));
     const seededJobs = new Map(initialJobs.map((job) => [job.id, job]));
+    if (seedChanged) {
+      migrateLegacyDemoJob(records, seededJobs.get("demo-3"));
+      const savedIDs = new Set(records.map((job) => job.id));
+      initialJobs.filter((job) => NEW_DEMO_SEED_IDS.has(job.id) && !savedIDs.has(job.id)).forEach((job) => records.push(clone(job)));
+      migrateDemoTimestamps(records, seededJobs);
+      migrateDemoTechnologyCatalog();
+    }
     records.forEach((job) => { if (!Array.isArray(job.technologies)) job.technologies = clone(seededJobs.get(job.id)?.technologies || []); });
     if (seedChanged || window.localStorage.getItem(SCHEDULE_DATE_KEY) !== today) {
       refreshDemoMeetingDates(records, today);
@@ -87,6 +95,31 @@ function loadJobs() {
   } catch {
     return clone(initialJobs);
   }
+}
+
+function migrateDemoTechnologyCatalog() {
+  try {
+    const stored = window.localStorage.getItem(TECHNOLOGY_STORAGE_KEY);
+    if (stored === null) return;
+    const catalog = JSON.parse(stored);
+    if (!Array.isArray(catalog)) return;
+    const savedIDs = new Set(catalog.map((item) => item?.id));
+    initialTechnologies.filter((item) => NEW_DEMO_TECHNOLOGY_IDS.has(item.id) && !savedIDs.has(item.id))
+      .forEach((item) => catalog.push(clone(item)));
+    window.localStorage.setItem(TECHNOLOGY_STORAGE_KEY, JSON.stringify(catalog));
+  } catch { /* The existing demo catalog remains usable if this migration cannot be saved. */ }
+}
+
+function migrateDemoTimestamps(records, seededJobs) {
+  const now = Math.floor(Date.now() / 1000);
+  records.forEach((job) => {
+    for (const field of ["created_at", "updated_at", "status_changed_at"]) {
+      if (Number(job[field]) > 1e12) job[field] = Math.floor(Number(job[field]) / 1000);
+    }
+    if (!Number(job.status_changed_at)) {
+      job.status_changed_at = seededJobs.get(job.id)?.status_changed_at || Number(job.created_at) || now;
+    }
+  });
 }
 
 let jobs = loadJobs();
@@ -669,6 +702,7 @@ function makeStage(jobId, payload, orderIndex) {
 
 function makeJob(payload) {
   const now = Date.now();
+  const nowSeconds = Math.floor(now / 1000);
   const id = `demo-job-${crypto.randomUUID()}`;
   const job = {
     id, company_name: payload.company_name || "Unknown", position_title: payload.position_title,
@@ -682,7 +716,7 @@ function makeJob(payload) {
     interview_notes: payload.interview_notes || "", reasons_to_change: payload.reasons_to_change || "",
     experience_notes: payload.experience_notes || "", expected_salary: payload.expected_salary || "",
     work_arrangement: payload.work_arrangement || "unknown", employment_type: payload.employment_type || "unknown",
-    is_referral: Boolean(payload.is_referral), order_index: jobs.length, created_at: now, updated_at: now,
+    is_referral: Boolean(payload.is_referral), order_index: jobs.length, created_at: nowSeconds, status_changed_at: nowSeconds, updated_at: nowSeconds,
     interviewers: [], stages: [], attachments: [],
     technologies: [],
   };
@@ -843,13 +877,16 @@ export const demoApi = {
   async createJob(payload) { const job = makeJob(payload); jobs.push(job); save(); return clone(job); },
   async updateJob(id, payload) {
     const job = getJob(id);
+    const statusChanged = Object.hasOwn(payload, "status") && payload.status !== job.status;
+    const nowSeconds = Math.floor(Date.now() / 1000);
     if (Object.hasOwn(payload, "technology_ids")) {
       const ids = payload.technology_ids;
       if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some((technologyID) => !technologies.some((item) => item.id === technologyID))) throw new Error("Choose technologies from the catalog.");
       job.technologies = ids.map((technologyID) => { const item = technologies.find((technology) => technology.id === technologyID); return { id: item.id, name: item.name }; });
       const { technology_ids: _technologyIDs, ...fields } = payload;
-      Object.assign(job, fields, { updated_at: Date.now() });
-    } else Object.assign(job, payload, { updated_at: Date.now() });
+      Object.assign(job, fields, { updated_at: nowSeconds });
+    } else Object.assign(job, payload, { updated_at: nowSeconds });
+    if (statusChanged) job.status_changed_at = nowSeconds;
     refreshDerived(job); save(); return clone(jobWithCurrentTechnologies(job));
   },
   async deleteJob(id) {
@@ -858,7 +895,7 @@ export const demoApi = {
     jobs = jobs.filter((item) => item.id !== String(id)); save(); return { success: true };
   },
   async reorderJobs(ids) { const order = new Map(ids.map((id, index) => [String(id), index])); jobs.forEach((job) => { if (order.has(job.id)) job.order_index = order.get(job.id); }); jobs.sort((a, b) => a.order_index - b.order_index); save(); return { success: true }; },
-  async createStage(payload) { const job = getJob(payload.job_id); const firstStage = job.stages.length === 0; const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); if (firstStage) job.status = "ongoing"; refreshDerived(job); save(); return clone(stage); },
+  async createStage(payload) { const job = getJob(payload.job_id); const firstStage = job.stages.length === 0; const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); if (firstStage) { job.status = "ongoing"; job.status_changed_at = Math.floor(Date.now() / 1000); } refreshDerived(job); save(); return clone(stage); },
   async updateStage(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, payload); refreshDerived(job); save(); return clone(stage); },
   async setCurrentStage(id) { const { job, stage } = getStage(id); job.stages.forEach((item) => { item.status = item.id === stage.id ? "current" : item.status === "current" ? "completed" : item.status; }); refreshDerived(job); save(); return clone(stage); },
   async getMeetings(date = "") { return jobs.flatMap((job) => job.stages.filter((stage) => stage.meeting_date && (!date || stage.meeting_date === date)).map((stage) => toMeeting(job, stage))); },

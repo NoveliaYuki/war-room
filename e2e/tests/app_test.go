@@ -228,7 +228,7 @@ func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
 	for _, filter := range []struct {
 		name  string
 		count int
-	}{{"all", 9}, {"accepted", 1}, {"rejected", 2}, {"ongoing", 6}} {
+	}{{"all", 12}, {"accepted", 1}, {"rejected", 2}, {"waiting", 3}, {"ongoing", 6}} {
 		selectFilter(t, page, filter.name)
 		assertCardCount(t, page, filter.count)
 	}
@@ -732,6 +732,7 @@ func TestJobStatusCyclesThroughEveryValue(t *testing.T) {
 
 func TestCardHoldDragPersistsOrderAndReleasesDragState(t *testing.T) {
 	page := newPage(t)
+	selectSortMode(t, page, "manual")
 	titleA := fmt.Sprintf("E2E Drag Alpha %d", time.Now().UnixNano())
 	titleB := fmt.Sprintf("E2E Drag Beta %d", time.Now().UnixNano())
 	cardA := createStatusCycleProcess(t, page, titleA)
@@ -762,6 +763,16 @@ func TestCardHoldDragPersistsOrderAndReleasesDragState(t *testing.T) {
 	}
 	waitForApplicationReady(t, page)
 	waitForCardOrder(t, page, titleA, titleB, initialOrder, "restored card order did not survive reload")
+}
+
+func selectSortMode(t *testing.T, page playwright.Page, mode string) {
+	t.Helper()
+	if err := page.Locator("#process-sort-trigger").Click(); err != nil {
+		t.Fatalf("open process sort menu: %v", err)
+	}
+	if err := page.Locator(`[data-sort-mode="` + mode + `"]`).Click(); err != nil {
+		t.Fatalf("select %s process sort: %v", mode, err)
+	}
 }
 
 func TestInterviewQuestionsCanBeAddedReorderedAndDeleted(t *testing.T) {

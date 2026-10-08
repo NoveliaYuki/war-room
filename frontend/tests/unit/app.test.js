@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn(), getCvVersions: vi.fn() },
+  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), getTechnologies: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn(), getCvVersions: vi.fn() },
   renderCardGrid: vi.fn(), renderScheduleView: vi.fn(), closeWithFlip: vi.fn((_modal, backdrop, done) => {
     backdrop?.classList.remove('active');
     done?.();
@@ -27,6 +27,7 @@ describe('application entry point', () => {
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
       <button id="btn-theme-toggle"></button>
+      <div id="process-toolbar" class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"></button><div id="process-filter-panel" hidden><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div><div id="process-filter-chips"></div><button id="process-filter-clear" hidden></button><span id="process-filter-count" hidden></span><span id="process-filter-summary"></span><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
       <div id="header-controls"><div class="search-wrapper"><button class="search-focus"></button><input id="search-input"></div>
       <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management" role="menuitem"></button></div></div>
       <nav class="view-controls"><div class="filter-tabs">
@@ -41,8 +42,9 @@ describe('application entry point', () => {
       `;
     mocks.api.getJobCounts.mockResolvedValue({ all: 1, waiting: 0, ongoing: 1, accepted: 0, rejected: 0 });
     mocks.api.getMeetings.mockResolvedValue([]);
+    mocks.api.getTechnologies.mockResolvedValue([{ id: 'tech-react', name: 'React' }, { id: 'tech-go', name: 'Go' }]);
     let resolveInitialJobs;
-    mocks.api.getJobs.mockImplementationOnce(() => new Promise((resolve) => {
+    mocks.api.getJobs.mockImplementation(() => new Promise((resolve) => {
       resolveInitialJobs = resolve;
     }));
     mocks.api.createJob.mockResolvedValue({ id: 'new' });
@@ -54,12 +56,115 @@ describe('application entry point', () => {
     expect(document.body.dataset.appReady).toBeUndefined();
     resolveInitialJobs([]);
     await appImport;
+    const matchingJob = {
+      id: 'matching', work_arrangement: 'remote', is_referral: true, expected_salary: '€95k target',
+      salary_min: 100000, salary_max: 120000, salary_currency: 'EUR',
+      technologies: [{ id: 'tech-react' }, { id: 'tech-go' }], order_index: 1, status_changed_at: 1, created_at: 2,
+      current_stage_index: 4, total_stages_count: 5,
+    };
+    const otherJob = {
+      id: 'other', work_arrangement: 'hybrid', is_referral: false, expected_salary: '€80k target',
+      salary_min: 80000, salary_max: 90000, salary_currency: 'EUR',
+      technologies: [{ id: 'tech-react' }], order_index: 2, status_changed_at: 2, created_at: 1,
+      current_stage_index: 1, total_stages_count: 5,
+    };
+    mocks.api.getJobs.mockResolvedValue([matchingJob, otherJob]);
     localStorageGet.mockRestore();
     await flush();
     expect(document.body.dataset.appReady).toBe('true');
     expect(mocks.renderCardGrid).toHaveBeenCalled();
     expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-checked')).toBe('true');
     expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-checked')).toBe('false');
+    const arrangementFilter = document.querySelector('[name="process-filter-arrangement"][value="remote"]');
+    const hybridFilter = document.querySelector('[name="process-filter-arrangement"][value="hybrid"]');
+    arrangementFilter.checked = true;
+    hybridFilter.checked = true;
+    arrangementFilter.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([matchingJob, otherJob]));
+    expect(document.querySelector('#process-filter-count').textContent).toBe('1');
+    expect([...document.querySelectorAll('.process-filter-chip')].map((chip) => chip.textContent.trim())).toEqual(['Remote', 'Hybrid']);
+    expect(document.querySelector('#process-filter-technology-options').innerHTML).toContain('React');
+    const technologyOptions = document.querySelector('#process-filter-technology-options');
+    const reactTechnology = technologyOptions.querySelector('[value="tech-react"]');
+    reactTechnology.checked = true;
+    reactTechnology.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    document.querySelector('#process-filter-referral').checked = true;
+    document.querySelector('#process-filter-referral').dispatchEvent(new Event('change'));
+    await flush();
+    document.querySelector('#process-filter-expected-salary').value = '95k';
+    document.querySelector('#process-filter-expected-salary').dispatchEvent(new Event('change'));
+    await flush();
+    document.querySelector('#process-filter-posted-salary-min').value = '100000';
+    document.querySelector('#process-filter-posted-salary-min').dispatchEvent(new Event('change'));
+    document.querySelector('#process-filter-posted-salary-max').value = '120000';
+    document.querySelector('#process-filter-posted-salary-max').dispatchEvent(new Event('change'));
+    document.querySelector('#process-filter-currency').value = 'EUR';
+    document.querySelector('#process-filter-currency').dispatchEvent(new Event('change'));
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1'))).toMatchObject({ referral: 'yes', expectedSalaryQuery: '95k', postedSalaryMin: 100000 });
+    await flush();
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1'))).toMatchObject({
+      referral: 'yes', expectedSalaryQuery: '95k', postedSalaryMin: 100000, technologies: ['tech-react'],
+    });
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).technologies).toEqual(['tech-react']);
+    document.querySelector('#process-filter-no-referral').checked = true;
+    document.querySelector('#process-filter-no-referral').dispatchEvent(new Event('change'));
+    await flush();
+    const noReferralChip = [...document.querySelectorAll('.process-filter-chip')].find((chip) => chip.textContent.includes('No referral'));
+    expect(noReferralChip).toBeTruthy();
+    noReferralChip.click();
+    await flush();
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).referral).toBe('');
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).arrangements).toEqual(['remote', 'hybrid']);
+    document.querySelector('[data-remove-filter="expectedSalary"]').click();
+    await flush();
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).expectedSalaryQuery).toBe('');
+    document.querySelector('[data-remove-filter="postingSalary"]').click();
+    await flush();
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1'))).toMatchObject({ postedSalaryMin: null, postedSalaryMax: null, currency: '' });
+    document.querySelector('[data-remove-filter="technology"]').click();
+    await flush();
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).technologies).toEqual([]);
+    document.querySelector('[data-remove-filter="arrangement"][data-filter-value="remote"]').click();
+    await flush();
+    expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).arrangements).toEqual(['hybrid']);
+    document.querySelector('#process-filter-chips').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    document.querySelector('#process-filter-chips').innerHTML = '<button data-remove-filter="unknown"></button>';
+    document.querySelector('#process-filter-chips button').click();
+    expect(document.querySelector('#process-filter-clear').hidden).toBe(false);
+    document.querySelector('#process-filter-clear').click();
+    await flush();
+    expect(document.querySelector('#process-filter-count').hidden).toBe(true);
+
+    document.querySelector('#process-sort-trigger').click();
+    document.querySelector('[data-sort-mode="added-oldest"]').click();
+    await flush();
+    expect(window.localStorage.getItem('war-room.process.sort.ongoing')).toBe('added-oldest');
+    document.querySelector('[data-sort-mode="status-newest"]').click();
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([otherJob, matchingJob]));
+    expect(window.localStorage.getItem('war-room.process.sort.ongoing')).toBe('status-newest');
+    document.querySelector('[data-sort-mode="status-oldest"]').click();
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([matchingJob, otherJob]));
+    document.querySelector('[data-sort-mode="advanced"]').click();
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([matchingJob, otherJob]));
+    document.querySelector('[data-sort-mode="early"]').click();
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([otherJob, matchingJob]));
+    document.querySelector('[data-sort-mode="manual"]').click();
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([matchingJob, otherJob]));
+    document.querySelector('[data-sort-mode="added-oldest"]').click();
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([otherJob, matchingJob]));
+    document.querySelector('#process-filter-trigger').click();
+    expect(document.querySelector('#process-filter-panel').hidden).toBe(false);
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('#process-filter-panel').hidden).toBe(true);
+    document.querySelector('#process-sort-trigger').click();
+    expect(document.querySelector('#process-sort-menu').hidden).toBe(false);
+    document.querySelector('#process-sort-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('#process-sort-menu').hidden).toBe(true);
+    const technologySearch = document.querySelector('#process-filter-technology-search');
+    technologySearch.value = 'go';
+    technologySearch.dispatchEvent(new Event('input'));
+    expect(document.querySelector('#process-filter-technology-options').textContent.trim()).toBe('Go');
 
     const themeToggle = document.querySelector('#btn-theme-toggle');
     const animationFrames = [];
@@ -120,6 +225,12 @@ describe('application entry point', () => {
     expect(document.activeElement).toBe(document.querySelector('#btn-cv-library'));
     document.querySelector('#toolbar-more-options').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
     expect(document.activeElement).toBe(dataButton);
+    document.querySelector('#toolbar-more-options').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('#btn-cv-library'));
+    document.querySelector('#search-input').focus();
+    document.querySelector('#toolbar-more-options').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    moreTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(dataButton);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(document.querySelector('#toolbar-more-options').hidden).toBe(true);
     expect(document.activeElement).toBe(moreTrigger);
@@ -130,6 +241,17 @@ describe('application entry point', () => {
     document.querySelector('#filter-menu-trigger').click();
     expect(document.querySelector('#filter-menu').hidden).toBe(false);
     expect(document.querySelector('#filter-menu-trigger').getAttribute('aria-expanded')).toBe('true');
+    const filterTrigger = document.querySelector('#filter-menu-trigger');
+    filterTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="waiting"]'));
+    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="ongoing"]'));
+    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="waiting"]'));
+    document.querySelector('#search-input').focus();
+    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    filterTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="invalid"]'));
     document.querySelector('[data-filter="accepted"]').click();
     expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-checked')).toBe('true');
     expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-checked')).toBe('false');
@@ -354,5 +476,40 @@ describe('application entry point', () => {
     dataButton.click();
     document.querySelector('#btn-close-data-modal').click();
     vi.unstubAllGlobals();
+
+    // Reload the module with valid saved filters to cover preference restoration and validation.
+    window.localStorage.setItem('war-room.process.filters.v1', JSON.stringify({
+      arrangements: ['remote', 'invalid'], expectedSalaryQuery: 'target', postedSalaryMin: 'invalid',
+      postedSalaryMax: '120000', currency: 'EUR', referral: 'no', technologies: ['tech-react', 3],
+    }));
+    window.localStorage.setItem('war-room.process.sort.ongoing', 'newest');
+    await import('../../public/js/app.js?restore-filters');
+    await flush();
+    expect(document.querySelector('[name="process-filter-arrangement"][value="remote"]').checked).toBe(true);
+    expect(document.querySelector('[name="process-filter-arrangement"][value="hybrid"]').checked).toBe(false);
+    expect(document.querySelector('#process-filter-expected-salary').value).toBe('target');
+    expect(document.querySelector('#process-filter-posted-salary-min').value).toBe('');
+    expect(document.querySelector('#process-filter-posted-salary-max').value).toBe('120000');
+    expect(document.querySelector('#process-filter-currency').value).toBe('EUR');
+    expect(document.querySelector('#process-filter-no-referral').checked).toBe(true);
+    expect(document.querySelector('#process-sort-current').textContent).toBe('Added · Newest');
+    document.querySelector('#process-filter-chips').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    document.querySelector('#process-filter-clear').click();
+    await flush();
+
+    ['process-filter-referral', 'process-filter-no-referral', 'process-filter-any-referral',
+      'process-filter-expected-salary', 'process-filter-posted-salary-min',
+      'process-filter-posted-salary-max', 'process-filter-currency'].forEach((id) => document.getElementById(id)?.remove());
+    document.querySelectorAll('[name="process-filter-arrangement"]').forEach((control) => control.remove());
+    await import('../../public/js/app.js?missing-filter-controls');
+    await flush();
+    const chips = document.querySelector('#process-filter-chips');
+    for (const category of ['referral', 'expectedSalary', 'postingSalary']) {
+      chips.innerHTML = `<button data-remove-filter="${category}"></button>`;
+      chips.querySelector('button').click();
+    }
+    document.querySelector('#process-filter-clear').click();
+    await flush();
+
   });
 });
