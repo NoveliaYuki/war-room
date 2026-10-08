@@ -3,7 +3,7 @@ WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-FROM golangci/golangci-lint:v2.13.2 AS golangci
+FROM golangci/golangci-lint:v2.14.0 AS golangci
 
 FROM mcr.microsoft.com/playwright:v1.64.0-noble
 RUN apt-get update \
