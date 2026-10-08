@@ -91,6 +91,31 @@
 .job-cv-row select { min-width: 0; max-width: 100%; flex: 1 1 220px; padding: 7px 9px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--bg-surface); }
 .job-cv-picker-label { font-weight: 600; }
 .job-cv-picker-status { flex-basis: 100%; color: var(--text-danger, #dc2626); overflow-wrap: anywhere; }
+.editable-overview { padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font-size: 13px; line-height: 1.55; }
+.markdown-field-edit, .btn-toggle-reachout { flex: 0 0 auto; white-space: nowrap; }
+.markdown-field-edit { padding: 2px 8px; font-size: 11px; }
+.markdown-preview > :first-child { margin-top: 0; }
+.markdown-preview > :last-child { margin-bottom: 0; }
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6 { margin: 14px 0 6px; color: var(--text-primary); line-height: 1.3; }
+.markdown-preview h1 { font-size: 19px; }
+.markdown-preview h2 { font-size: 16px; }
+.markdown-preview h3, .markdown-preview h4, .markdown-preview h5, .markdown-preview h6 { font-size: 14px; }
+.markdown-preview p { margin: 7px 0; white-space: normal; }
+.markdown-preview ul, .markdown-preview ol { margin: 7px 0; padding-left: 22px; }
+.markdown-preview li + li { margin-top: 4px; }
+.markdown-preview blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--accent-blue); color: var(--text-secondary); }
+.markdown-preview code { padding: 1px 4px; border-radius: 4px; background: var(--bg-surface); font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: anywhere; }
+.markdown-preview a { color: var(--accent-blue); overflow-wrap: anywhere; }
+.markdown-field-editor { display: grid; gap: 10px; }
+.markdown-editor-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-subtle); }
+.markdown-editor-tab { padding: 7px 11px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 12px; }
+.markdown-editor-tab.is-active { border-bottom-color: var(--accent-blue); color: var(--text-primary); font-weight: 600; }
+.markdown-field-input, .markdown-field-preview { box-sizing: border-box; width: 100%; min-height: 220px; max-height: 52vh; overflow: auto; padding: 11px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); font: 12px/1.55 var(--font-mono); resize: vertical; }
+.markdown-field-preview { font-family: var(--font-sans); }
+.markdown-field-input:focus, .markdown-editor-tab:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.markdown-editor-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; color: var(--text-muted); font-size: 11px; }
+.markdown-editor-footer > div { display: flex; gap: 7px; }
+.markdown-editor-footer .btn-primary, .markdown-editor-footer .btn-secondary { padding: 6px 11px; font-size: 12px; }
 .data-transfer-section h3 { margin: 0 0 7px; font-size: 15px; }
 .data-transfer-section p { margin: 0 0 14px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .data-transfer-file-label { display: block; margin-bottom: 6px; color: var(--text-secondary); font-size: 12px; }
