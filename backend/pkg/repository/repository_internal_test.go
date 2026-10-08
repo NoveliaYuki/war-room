@@ -45,6 +45,24 @@ func TestCVRepositoryVersionLifecycle(t *testing.T) {
 	assertCVAssignmentAndDelete(t, repo, version.ID)
 }
 
+func TestInsertFirstStageAndSetJobOngoing(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "job-first-stage")
+	stage := &models.Stage{ID: "stage-first", JobID: "job-first-stage", StageType: models.StageHR, Status: models.StageStatusCurrent,
+		MeetingType: "video", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertFirstStageAndSetJobOngoing(stage); err != nil {
+		t.Fatalf("insert first stage: %v", err)
+	}
+	job, err := repo.GetJobByID(stage.JobID)
+	if err != nil || job.Status != models.StatusOngoing {
+		t.Fatalf("job status=%q err=%v", job.Status, err)
+	}
+	stored, err := repo.GetStageByID(stage.ID)
+	if err != nil || stored.InterviewersJSON != "null" {
+		t.Fatalf("stage interviewers=%q err=%v", stored.InterviewersJSON, err)
+	}
+}
+
 func TestCreateTechnologyAliasFailureRollsBack(t *testing.T) {
 	repo := newImportRepositoryFixture(t)
 	if _, err := repo.db.Exec(`CREATE TRIGGER fail_alias BEFORE INSERT ON technology_aliases BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {

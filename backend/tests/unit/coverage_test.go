@@ -198,6 +198,24 @@ func repositorySecondJobFixture(t *testing.T, repo *repository.Repository) *mode
 	return job
 }
 
+func TestWaitingStatusFilteringAndCounts(t *testing.T) {
+	_, _, repo, _, db := newCoverageDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	waiting := &models.Job{ID: "waiting-job", CompanyName: "Waiting Co", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "waiting"}
+	if err := repo.InsertJob(waiting); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := repo.GetAllJobs("waiting", "")
+	if err != nil || len(jobs) != 1 || jobs[0].ID != waiting.ID {
+		t.Fatalf("waiting jobs=%+v err=%v", jobs, err)
+	}
+	counts, err := repo.GetJobCounts()
+	if err != nil || counts.Waiting != 1 || counts.All != 1 {
+		t.Fatalf("counts=%+v err=%v", counts, err)
+	}
+}
+
 func repositoryJobQueries(t *testing.T, repo *repository.Repository) {
 	t.Helper()
 	for _, tc := range []struct {

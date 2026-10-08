@@ -30,7 +30,7 @@ document.addEventListener("error", handleAvatarImageError, true);
 
 const FILTER_STORAGE_KEY = "war-room.active-filter";
 const THEME_STORAGE_KEY = "war-room.theme";
-const validFilters = new Set(["ongoing", "accepted", "rejected", "all", "schedule"]);
+const validFilters = new Set(["waiting", "ongoing", "accepted", "rejected", "all", "schedule"]);
 
 /** Restores a saved filter when it is a supported page. */
 function getSavedFilter() {
@@ -154,6 +154,7 @@ async function refreshApp() {
   try {
     const counts = await api.getJobCounts();
     document.querySelector("#count-all").textContent = counts.all;
+    document.querySelector("#count-waiting").textContent = counts.waiting;
     document.querySelector("#count-ongoing").textContent = counts.ongoing;
     document.querySelector("#count-accepted").textContent = counts.accepted;
     document.querySelector("#count-rejected").textContent = counts.rejected;
@@ -275,7 +276,7 @@ function requestsSearch(event, isTyping) {
 /** Maps a numeric shortcut to a filter, if one is available. */
 function filterFromShortcut(event, isTyping) {
   if (isTyping || event.metaKey || event.ctrlKey || event.altKey) return null;
-  const filters = { "1": "ongoing", "2": "accepted", "3": "rejected", "4": "all", "5": "schedule" };
+  const filters = { "1": "waiting", "2": "ongoing", "3": "accepted", "4": "rejected", "5": "all", "6": "schedule" };
   return filters[event.key] || null;
 }
 

@@ -31,8 +31,8 @@ const MAX_SPLIT_RATIO = 80;
 const MIN_LEFT_PANE_PX = 340;
 const MIN_RIGHT_PANE_PX = 400;
 const SPLIT_GUTTER_PX = 14;
-const JOB_STATUS_CYCLE = ["ongoing", "rejected", "accepted"];
-const JOB_STATUS_LABELS = { ongoing: "Ongoing", rejected: "Rejected", accepted: "Approved" };
+const JOB_STATUS_CYCLE = ["waiting", "ongoing", "rejected", "accepted"];
+const JOB_STATUS_LABELS = { waiting: "Waiting", ongoing: "Ongoing", rejected: "Rejected", accepted: "Approved" };
 const splitResizeObservers = new WeakMap();
 let detailLoadRequestId = 0;
 
@@ -209,7 +209,7 @@ function getSalaryRawValue(job) {
 /** Returns the next job status in the modal's click cycle. */
 function getNextJobStatus(status) {
   const currentIndex = JOB_STATUS_CYCLE.indexOf(status);
-  return JOB_STATUS_CYCLE[(currentIndex + 1) % JOB_STATUS_CYCLE.length];
+  return currentIndex === -1 ? "waiting" : JOB_STATUS_CYCLE[(currentIndex + 1) % JOB_STATUS_CYCLE.length];
 }
 
 /** Escapes optional note text or returns its empty-state markup. */
