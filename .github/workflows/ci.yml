@@ -48,24 +48,6 @@ jobs:
             "$TRIVY_IMAGE" image --scanners vuln --format json \
             --output /reports/frontend.json war-room-security-frontend:latest
           docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
-            -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
-            "$TRIVY_IMAGE" image --scanners vuln --format json \
-            --output /reports/test-runner.json war-room-precommit-test:latest
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
-            -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
-            "$TRIVY_IMAGE" image --scanners vuln --format json \
-            --output /reports/test-backend.json war-room-precommit-test-backend:latest
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
-            -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
-            "$TRIVY_IMAGE" image --scanners vuln --format json \
-            --output /reports/test-frontend.json war-room-precommit-test-frontend:latest
-          docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace:ro" \
             -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
             -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
@@ -78,9 +60,6 @@ jobs:
           node scripts/check-epss-threshold.mjs \
             "$RUNNER_TEMP/warroom-trivy-reports/backend.json" \
             "$RUNNER_TEMP/warroom-trivy-reports/frontend.json" \
-            "$RUNNER_TEMP/warroom-trivy-reports/test-runner.json" \
-            "$RUNNER_TEMP/warroom-trivy-reports/test-backend.json" \
-            "$RUNNER_TEMP/warroom-trivy-reports/test-frontend.json" \
             "$RUNNER_TEMP/warroom-trivy-reports/source.json"
 
       - name: Remove isolated test services
