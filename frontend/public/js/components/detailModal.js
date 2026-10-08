@@ -14,6 +14,7 @@ import { activateModal, focusModalContents, restoreModalFocus } from "../modalA1
 import { enableQuestionReordering } from "./questionList.js";
 import { makeInlineEditable, parseSalaryInput } from "../inlineEdit.js";
 import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
+import { renderMarkdown } from "../utils/markdown.js";
 import { formatSalary } from "../utils/salary.js";
 import { formatCvUploadDate } from "./cvLibrary.js";
 
@@ -217,6 +218,11 @@ function renderOptionalText(value, emptyMarkup) {
   return value ? escapeHtml(value) : emptyMarkup;
 }
 
+/** Renders an optional Markdown field with its empty-state prompt. */
+function renderMarkdownField(value, placeholder) {
+  return value ? renderMarkdown(value) : `<span class="empty-note">${escapeHtml(placeholder)}</span>`;
+}
+
 /** Renders a job link only when it uses a safe web URL. */
 function renderJobPostLink(value) {
   if (safeUrl(value)) return `<a href="${escapeAttr(safeUrl(value))}" target="_blank" rel="noopener noreferrer" class="inline-icon-text" style="word-break: break-all; color: var(--accent-blue);">${escapeHtml(value)} ${icon("arrowUpRight", 11)}</a>`;
@@ -225,13 +231,13 @@ function renderJobPostLink(value) {
 
 /** Renders the optional original job description section. */
 function renderJobDescription(job) {
-  if (!job.description) return "";
   return `<div class="detail-section">
     <div class="section-title">
       <span class="inline-icon-text">${icon("clipboard", 13)} Original Reachout / Description</span>
-      <button class="btn-secondary btn-toggle-reachout" style="padding: 2px 8px; font-size: 11px;">Toggle</button>
+      ${job.description ? '<button class="btn-secondary btn-toggle-reachout" style="padding: 2px 8px; font-size: 11px;">Toggle</button>' : ''}
+      <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="description" style="padding: 2px 8px; font-size: 11px;">Edit</button>
     </div>
-    <div id="reachout-text-container" class="editable-description" data-raw-value="${escapeAttr(job.description)}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); white-space: pre-wrap; max-height: 160px; overflow-y: auto; display: none;">${escapeHtml(job.description)}</div>
+    <div id="reachout-text-container" class="editable-description markdown-preview" data-raw-value="${escapeAttr(job.description || '')}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); max-height: 260px; overflow-y: auto; display: none;">${renderMarkdownField(job.description, 'Add the original job posting or recruiter message.')}</div>
   </div>`;
 }
 
@@ -450,8 +456,9 @@ function renderJobDetailsSection(view) {
           <div class="detail-section">
             <div class="section-title">
               <span class="inline-icon-text">${icon("building", 13)} Company & Role Overview</span>
+              <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="company_overview" aria-label="Edit company and role overview">Edit</button>
             </div>
-            <div id="company-overview-display" class="editable-overview" data-raw-value="${escapeAttr(job.company_overview || '')}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; line-height: 1.5; color: var(--text-primary); white-space: pre-wrap;">${renderOptionalText(job.company_overview, '<span style="color: var(--text-muted); font-style: italic; font-size: 12px;">Summarize what the company does and what the role involves.</span>')}</div>
+            <div id="company-overview-display" class="editable-overview markdown-preview" data-raw-value="${escapeAttr(job.company_overview || '')}">${renderMarkdownField(job.company_overview, 'Summarize what the company does and what the role involves.')}</div>
           </div>
 
           <div class="detail-section">
@@ -501,8 +508,8 @@ function renderMyNotesSection(job) {
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span>${icon("user", 13)} Relevant Experience</span></div>
-            <div id="experience-notes-display" class="note-value editable-experience-notes" data-raw-value="${escapeAttr(job.experience_notes || '')}">${renderOptionalText(job.experience_notes, '<span class="empty-note">Add experience and examples relevant to this role.</span>')}</div>
+            <div class="section-title"><span>${icon("user", 13)} Relevant Experience</span><button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="experience_notes">Edit</button></div>
+            <div id="experience-notes-display" class="note-value editable-experience-notes markdown-preview" data-raw-value="${escapeAttr(job.experience_notes || '')}">${renderMarkdownField(job.experience_notes, 'Add experience and examples relevant to this role.')}</div>
           </div>
 
           <div class="detail-section">
@@ -511,8 +518,8 @@ function renderMyNotesSection(job) {
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span>${icon("fileText", 13)} My Notes / Anything Else</span></div>
-            <div id="interview-notes-display" class="note-value editable-interview-notes" data-raw-value="${escapeAttr(job.interview_notes || '')}">${renderOptionalText(job.interview_notes, '<span class="empty-note">Write anything else you want to remember about this selection process.</span>')}</div>
+            <div class="section-title"><span>${icon("fileText", 13)} My Notes / Anything Else</span><button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="interview_notes">Edit</button></div>
+            <div id="interview-notes-display" class="note-value editable-interview-notes markdown-preview" data-raw-value="${escapeAttr(job.interview_notes || '')}">${renderMarkdownField(job.interview_notes, 'Write anything else you want to remember about this selection process.')}</div>
           </div>
         </section>
   `;
@@ -971,18 +978,7 @@ function bindJobTextEditors(context) {
     });
   }
 
-  const elOverview = modalEl.querySelector(".editable-overview");
-  if (elOverview) {
-    makeInlineEditable(elOverview, {
-      multiline: true,
-      rows: 5,
-      placeholder: "What does this company do? What is remarkable/special about this position for you?",
-      onSave: async (newVal) => {
-        await api.updateJob(job.id, { company_overview: newVal });
-        refreshModal();
-      },
-    });
-  }
+  bindMarkdownEditors(context);
 
   const elReasons = modalEl.querySelector(".editable-reasons-to-change");
   if (elReasons) {
@@ -992,19 +988,6 @@ function bindJobTextEditors(context) {
       placeholder: "Why do you want to change company? Write your key talking points and motivations here...",
       onSave: async (newVal) => {
         await api.updateJob(job.id, { reasons_to_change: newVal });
-        refreshModal();
-      },
-    });
-  }
-
-  const elExperience = modalEl.querySelector(".editable-experience-notes");
-  if (elExperience) {
-    makeInlineEditable(elExperience, {
-      multiline: true,
-      rows: 5,
-      placeholder: "Which experience and examples are most relevant to this role?",
-      onSave: async (newVal) => {
-        await api.updateJob(job.id, { experience_notes: newVal });
         refreshModal();
       },
     });
@@ -1021,32 +1004,6 @@ function bindJobTextEditors(context) {
     });
   }
 
-  const elNotes = modalEl.querySelector(".editable-interview-notes");
-  if (elNotes) {
-    makeInlineEditable(elNotes, {
-      multiline: true,
-      rows: 6,
-      placeholder: "Notes from calls (funding round, revenue/ARR, team size, culture, debriefs)...",
-      onSave: async (newVal) => {
-        await api.updateJob(job.id, { interview_notes: newVal });
-        refreshModal();
-      },
-    });
-  }
-
-  const elDesc = modalEl.querySelector(".editable-description");
-  if (elDesc) {
-    makeInlineEditable(elDesc, {
-      multiline: true,
-      rows: 6,
-      placeholder: "Job description or original message...",
-      onSave: async (newVal) => {
-        await api.updateJob(job.id, { description: newVal });
-        refreshModal();
-      },
-    });
-  }
-
   const elJobPostUrl = modalEl.querySelector(".editable-job-post-url");
   if (elJobPostUrl) {
     makeInlineEditable(elJobPostUrl, {
@@ -1057,6 +1014,104 @@ function bindJobTextEditors(context) {
       },
     });
   }
+}
+
+/** Binds Markdown editing to the overview, notes, and original description fields. */
+function bindMarkdownEditors({ modalEl, job, refreshModal }) {
+  const fields = [
+    { field: "company_overview", selector: ".editable-overview", label: "Company and role overview", empty: "Summarize what the company does and what the role involves." },
+    { field: "experience_notes", selector: ".editable-experience-notes", label: "Relevant experience", empty: "Add experience and examples relevant to this role." },
+    { field: "interview_notes", selector: ".editable-interview-notes", label: "My notes and anything else", empty: "Write anything else you want to remember about this selection process." },
+    { field: "description", selector: ".editable-description", label: "Original job description", empty: "Add the original job posting or recruiter message." },
+  ];
+
+  fields.forEach(({ field, selector, label, empty }) => {
+    const element = modalEl.querySelector(selector);
+    if (!element) return;
+    const open = () => {
+      if (field === "description") element.style.display = "block";
+      openMarkdownFieldEditor({ element, job, field, label, empty, refreshModal });
+    };
+    modalEl.querySelectorAll(`[data-markdown-field="${field}"]`).forEach((button) => button.addEventListener("click", open));
+    element.addEventListener("dblclick", open);
+  });
+}
+
+/** Opens a Markdown editor and saves only after an explicit confirmation. */
+function openMarkdownFieldEditor({ element, job, field, label, empty, refreshModal }) {
+  if (element.dataset.editing === "true") return;
+  element.dataset.editing = "true";
+  const originalValue = element.dataset.rawValue || "";
+  element.innerHTML = `
+    <div class="markdown-field-editor">
+      <div class="markdown-editor-tabs" role="tablist" aria-label="${escapeAttr(label)} editor mode">
+        <button type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="markdown-field-input">Markdown</button>
+        <button type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="markdown-field-preview">Preview</button>
+      </div>
+      <textarea id="markdown-field-input" class="markdown-field-input" aria-label="${escapeAttr(label)} Markdown" placeholder="${escapeAttr(empty)}"></textarea>
+      <div id="markdown-field-preview" class="markdown-field-preview markdown-preview" role="tabpanel" hidden></div>
+      <div class="markdown-editor-footer"><span>Markdown supported. Enter saves; Shift+Enter adds a line.</span><div><button type="button" class="btn-secondary markdown-editor-cancel">Cancel</button><button type="button" class="btn-primary markdown-editor-save">Save</button></div></div>
+    </div>`;
+  const editor = element.querySelector(".markdown-field-editor");
+  const input = element.querySelector(".markdown-field-input");
+  const preview = element.querySelector(".markdown-field-preview");
+  const tabs = [...element.querySelectorAll(".markdown-editor-tab")];
+  input.value = originalValue;
+
+  let finished = false;
+  const cleanup = () => {
+    document.removeEventListener("pointerdown", onOutsidePointer, true);
+    element.dataset.editing = "false";
+  };
+  const discard = () => {
+    if (finished) return;
+    finished = true;
+    cleanup();
+    element.dataset.rawValue = originalValue;
+    element.innerHTML = renderMarkdownField(originalValue, empty);
+  };
+  const save = async () => {
+    if (finished) return;
+    const newValue = input.value.trim();
+    finished = true;
+    cleanup();
+    try {
+      await api.updateJob(job.id, { [field]: newValue });
+      refreshModal();
+    } catch (error) {
+      finished = false;
+      element.dataset.editing = "true";
+      document.addEventListener("pointerdown", onOutsidePointer, true);
+      showToast(error.message || `Could not save ${label.toLowerCase()}`, "error");
+    }
+  };
+  function onOutsidePointer(event) {
+    if (!editor.contains(event.target)) discard();
+  }
+
+  tabs.forEach((tab, index) => tab.addEventListener("click", () => {
+    const isPreview = index === 1;
+    input.hidden = isPreview;
+    preview.hidden = !isPreview;
+    if (isPreview) preview.innerHTML = renderMarkdownField(input.value, "Nothing to preview yet.");
+    tabs.forEach((item, itemIndex) => {
+      item.classList.toggle("is-active", itemIndex === index);
+      item.setAttribute("aria-selected", String(itemIndex === index));
+    });
+  }));
+  element.querySelector(".markdown-editor-save").addEventListener("click", save);
+  element.querySelector(".markdown-editor-cancel").addEventListener("click", discard);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      save();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      discard();
+    }
+  });
+  document.addEventListener("pointerdown", onOutsidePointer, true);
+  input.focus();
 }
 
 /** Wires bindReachoutToggle fields. */
