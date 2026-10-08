@@ -1,5 +1,5 @@
 # Validate assets in the build stage; serve them from the production image.
-FROM node:24-alpine AS assets
+FROM node:26-alpine AS assets
 
 WORKDIR /src
 COPY package.json ./package.json
