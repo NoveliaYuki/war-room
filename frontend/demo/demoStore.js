@@ -761,7 +761,7 @@ export const demoApi = {
     return clone(jobs.filter((job) => (status === "all" || job.status === status) && meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index).map(jobWithCurrentTechnologies));
   },
   async getJobCounts() {
-    return { all: jobs.length, ongoing: jobs.filter((job) => job.status === "ongoing").length, accepted: jobs.filter((job) => job.status === "accepted").length, rejected: jobs.filter((job) => job.status === "rejected").length };
+    return { all: jobs.length, waiting: jobs.filter((job) => job.status === "waiting").length, ongoing: jobs.filter((job) => job.status === "ongoing").length, accepted: jobs.filter((job) => job.status === "accepted").length, rejected: jobs.filter((job) => job.status === "rejected").length };
   },
   async getJob(id) {
     const job = clone(jobWithCurrentTechnologies(getJob(id)));
@@ -858,7 +858,7 @@ export const demoApi = {
     jobs = jobs.filter((item) => item.id !== String(id)); save(); return { success: true };
   },
   async reorderJobs(ids) { const order = new Map(ids.map((id, index) => [String(id), index])); jobs.forEach((job) => { if (order.has(job.id)) job.order_index = order.get(job.id); }); jobs.sort((a, b) => a.order_index - b.order_index); save(); return { success: true }; },
-  async createStage(payload) { const job = getJob(payload.job_id); const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); refreshDerived(job); save(); return clone(stage); },
+  async createStage(payload) { const job = getJob(payload.job_id); const firstStage = job.stages.length === 0; const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); if (firstStage) job.status = "ongoing"; refreshDerived(job); save(); return clone(stage); },
   async updateStage(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, payload); refreshDerived(job); save(); return clone(stage); },
   async setCurrentStage(id) { const { job, stage } = getStage(id); job.stages.forEach((item) => { item.status = item.id === stage.id ? "current" : item.status === "current" ? "completed" : item.status; }); refreshDerived(job); save(); return clone(stage); },
   async getMeetings(date = "") { return jobs.flatMap((job) => job.stages.filter((stage) => stage.meeting_date && (!date || stage.meeting_date === date)).map((stage) => toMeeting(job, stage))); },

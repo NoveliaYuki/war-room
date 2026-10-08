@@ -366,13 +366,14 @@ func (r *Repository) GetJobCounts() (*models.JobCounts, error) {
 	row := r.reader.QueryRow(`
 		SELECT
 			COUNT(*) as total,
+			COALESCE(SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END), 0) as waiting,
 			COALESCE(SUM(CASE WHEN status = 'ongoing' THEN 1 ELSE 0 END), 0) as ongoing,
 			COALESCE(SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END), 0) as accepted,
 			COALESCE(SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END), 0) as rejected
 		FROM jobs
 	`)
 	var counts models.JobCounts
-	if err := row.Scan(&counts.All, &counts.Ongoing, &counts.Accepted, &counts.Rejected); err != nil {
+	if err := row.Scan(&counts.All, &counts.Waiting, &counts.Ongoing, &counts.Accepted, &counts.Rejected); err != nil {
 		return nil, err
 	}
 	return &counts, nil
@@ -624,12 +625,43 @@ func (r *Repository) GetStageByID(id string) (*models.Stage, error) {
 
 // InsertStage persists a new stage.
 func (r *Repository) InsertStage(stage *models.Stage) error {
-	now := time.Now().Unix()
-	stage.CreatedAt = now
-	ijBytes, _ := json.Marshal(stage.Interviewers)
-	stage.InterviewersJSON = string(ijBytes)
+	return insertStage(r.db, stage)
+}
 
-	_, err := r.db.Exec(`
+// InsertFirstStageAndSetJobOngoing atomically starts a process when its first stage is added.
+func (r *Repository) InsertFirstStageAndSetJobOngoing(stage *models.Stage) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := insertStage(tx, stage); err != nil {
+		return err
+	}
+	result, err := tx.Exec(`UPDATE jobs SET status = 'ongoing', updated_at = unixepoch() WHERE id = ?`, stage.JobID)
+	if err != nil {
+		return err
+	}
+	if err := requireOneUpdatedRow(result, "job", stage.JobID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+type stageExecer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func insertStage(execer stageExecer, stage *models.Stage) error {
+	if stage.CreatedAt == 0 {
+		stage.CreatedAt = time.Now().Unix()
+	}
+	ijBytes, err := json.Marshal(stage.Interviewers)
+	if err != nil {
+		return err
+	}
+	stage.InterviewersJSON = string(ijBytes)
+	_, err = execer.Exec(`
 		INSERT INTO stages (
 			id, job_id, order_index, stage_type, custom_title, description, status,
 			scheduled_at, meeting_date, meeting_time, meeting_url, meeting_type, notes,

@@ -31,14 +31,15 @@ describe('application entry point', () => {
       <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management" role="menuitem"></button></div></div>
       <nav class="view-controls"><div class="filter-tabs">
       <div class="filter-current-group"><button id="filter-current-action"><span id="filter-current-label"></span><span id="filter-current-count"></span></button><button id="filter-menu-trigger" aria-expanded="false"></button></div>
-      <div id="filter-menu" hidden><button class="filter-tab" data-filter="ongoing" aria-checked="false"><span class="filter-label">Ongoing</span><span class="tab-count" id="count-ongoing"></span></button>
+      <div id="filter-menu" hidden><button class="filter-tab" data-filter="waiting" aria-checked="false"><span class="filter-label">Waiting</span><span class="tab-count" id="count-waiting"></span></button>
+      <button class="filter-tab" data-filter="ongoing" aria-checked="false"><span class="filter-label">Ongoing</span><span class="tab-count" id="count-ongoing"></span></button>
       <button class="filter-tab" data-filter="accepted" aria-checked="false"><span class="filter-label">Accepted</span><span class="tab-count" id="count-accepted"></span></button>
       <button class="filter-tab" data-filter="rejected" aria-checked="false"><span class="filter-label">Rejected</span><span class="tab-count" id="count-rejected"></span></button>
       <button class="filter-tab" data-filter="all" aria-checked="false"><span class="filter-label">All</span><span class="tab-count" id="count-all"></span></button>
       <button class="filter-tab" data-filter="invalid" aria-checked="false"><span class="filter-label">Invalid</span></button></div></div>
       <button id="tab-schedule" class="schedule-trigger" data-filter="schedule" aria-pressed="false"><span>Daily Schedule</span><span class="tab-count" id="count-meetings"></span></button></nav></div>
       `;
-    mocks.api.getJobCounts.mockResolvedValue({ all: 1, ongoing: 1, accepted: 0, rejected: 0 });
+    mocks.api.getJobCounts.mockResolvedValue({ all: 1, waiting: 0, ongoing: 1, accepted: 0, rejected: 0 });
     mocks.api.getMeetings.mockResolvedValue([]);
     let resolveInitialJobs;
     mocks.api.getJobs.mockImplementationOnce(() => new Promise((resolve) => {
@@ -136,7 +137,7 @@ describe('application entry point', () => {
     expect(document.querySelector('#filter-menu').hidden).toBe(true);
     expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     expect(headerControls.classList.contains('is-open')).toBe(false);
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '4' }));
     expect(document.querySelector('[data-filter="rejected"]').classList.contains('active')).toBe(true);
     document.querySelector('#search-input').value = 'engineer';
     vi.useFakeTimers();
@@ -145,7 +146,7 @@ describe('application entry point', () => {
     vi.useRealTimers();
     await flush();
     expect(mocks.api.getJobs).toHaveBeenLastCalledWith('rejected', 'engineer');
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '5' }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '6' }));
     await flush();
     expect(mocks.renderScheduleView).toHaveBeenCalled();
     expect(window.localStorage.getItem('war-room.active-filter')).toBe('schedule');

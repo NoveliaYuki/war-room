@@ -178,6 +178,12 @@
   white-space: nowrap;
 }
 
+.status-pill.waiting {
+  background: var(--status-waiting-bg);
+  color: var(--status-waiting);
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 25%, transparent);
+}
+
 .status-pill.ongoing {
   background: var(--status-ongoing-bg);
   color: var(--status-ongoing);

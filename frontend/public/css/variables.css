@@ -47,6 +47,8 @@
   /* Status Colors */
   --status-ongoing: #0ea5e9;
   --status-ongoing-bg: rgba(14, 165, 233, 0.12);
+  --status-waiting: #a78bfa;
+  --status-waiting-bg: rgba(167, 139, 250, 0.12);
   --status-accepted: #10b981;
   --status-accepted-bg: rgba(16, 185, 129, 0.12);
   --status-rejected: #f43f5e;
@@ -123,6 +125,8 @@
     --accent-blue-subtle: rgba(37, 99, 235, 0.12);
     --status-ongoing: #087eaf;
     --status-ongoing-bg: rgba(8, 126, 175, 0.1);
+    --status-waiting: #7654c8;
+    --status-waiting-bg: rgba(118, 84, 200, 0.1);
     --status-accepted: #087c59;
     --status-accepted-bg: rgba(8, 124, 89, 0.1);
     --status-rejected: #d22f50;
@@ -169,6 +173,8 @@
   --accent-blue-subtle: rgba(37, 99, 235, 0.12);
   --status-ongoing: #087eaf;
   --status-ongoing-bg: rgba(8, 126, 175, 0.1);
+  --status-waiting: #7654c8;
+  --status-waiting-bg: rgba(118, 84, 200, 0.1);
   --status-accepted: #087c59;
   --status-accepted-bg: rgba(8, 124, 89, 0.1);
   --status-rejected: #d22f50;

@@ -11,6 +11,8 @@ import (
 type JobStatus string
 
 const (
+	// StatusWaiting marks an application awaiting an initial response.
+	StatusWaiting JobStatus = "waiting"
 	// StatusOngoing marks a job application that is still active.
 	StatusOngoing JobStatus = "ongoing"
 	// StatusAccepted marks a job application that resulted in an offer.
@@ -317,6 +319,7 @@ type Attachment struct {
 // JobCounts aggregates selection processes by status.
 type JobCounts struct {
 	All      int `json:"all"`
+	Waiting  int `json:"waiting"`
 	Ongoing  int `json:"ongoing"`
 	Accepted int `json:"accepted"`
 	Rejected int `json:"rejected"`
