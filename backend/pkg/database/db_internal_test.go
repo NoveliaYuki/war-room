@@ -290,6 +290,30 @@ func TestWaitingStatusMigrationAddsStatusWhenColumnIsMissing(t *testing.T) {
 	}
 }
 
+func TestWaitingStatusMigrationReportsMigrationRecordFailure(t *testing.T) {
+	db := prepareWaitingStatusMigrationDB(t)
+	if _, err := db.Exec(`CREATE TRIGGER fail_waiting_migration_record BEFORE INSERT ON schema_migrations WHEN NEW.version = 9 BEGIN SELECT RAISE(ABORT, 'injected migration record failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyWaitingStatusMigration(db, 9); err == nil {
+		t.Fatal("migration record failure should be returned")
+	}
+}
+
+func TestWaitingStatusMigrationReturnsInspectionAndSQLFailures(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := runSchemaMigration(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}, 9); err == nil {
+		t.Fatal("schema inspection failure should be returned")
+	}
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	executor := migrationTestExecutor{db: db, failExec: "DROP TRIGGER IF EXISTS validate_employment_type_insert"}
+	if err := runSchemaMigration(executor, 9); err == nil {
+		t.Fatal("waiting status migration SQL failure should be returned")
+	}
+}
+
 func prepareWaitingStatusMigrationDB(t *testing.T) *sql.DB {
 	t.Helper()
 	databasePath := filepath.Join(t.TempDir(), "waiting-migration.db")
