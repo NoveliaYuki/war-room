@@ -2,6 +2,8 @@ const DEMO_COMPANY_LOGOS = new Map([
   ["google", "google-g.png"], ["openai", "openai.svg"], ["nvidia", "nvidia-eye.png"],
   ["apple", "apple.svg"], ["microsoft", "microsoft.svg"], ["datadog", "datadog.svg"],
   ["meta", "meta.svg"], ["stripe", "stripe.svg"], ["spotify", "spotify.svg"],
+  ["northstar labs", "northstar-labs.svg"], ["cedar systems", "cedar-systems.svg"],
+  ["bluebird analytics", "bluebird-analytics.svg"],
 ]);
 
 export const DEMO_LOGOS_STORAGE_KEY = "war-room-demo-company-logos-v1";

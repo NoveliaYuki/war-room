@@ -180,11 +180,83 @@ func repositoryJobUpdates(t *testing.T, repo *repository.Repository, job *models
 		t.Fatalf("expected missing update error, got %v", err)
 	}
 	updated, err := repo.GetJobByID(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err != nil || updated.CompanyName != "Updated" || len(updated.KeywordNote) != 100 || !updated.IsReferral {
 		t.Fatalf("updated job = %#v, %v", updated, err)
 	}
 	if err := repo.UpdateJob("missing", map[string]interface{}{"unknown": "ignored"}); err != nil {
 		t.Fatalf("empty update: %v", err)
+	}
+}
+
+func TestRepositoryStoresProcessDates(t *testing.T) {
+	_, _, repo, _, _ := newCoverageDB(t)
+	job := repositoryJobFixture(t, repo)
+	applicationSentDate := "2030-03-04"
+	recruiterContactDate := "2030-03-05"
+	if err := repo.UpdateJob(job.ID, map[string]interface{}{"application_sent_date": applicationSentDate, "recruiter_first_contact_date": recruiterContactDate}); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := repo.GetJobByID(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertJobProcessDates(t, updated, applicationSentDate, recruiterContactDate)
+	listed, err := repo.GetAllJobs("all", "")
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("listed jobs = %#v, %v", listed, err)
+	}
+	assertJobProcessDates(t, &listed[0], applicationSentDate, recruiterContactDate)
+}
+
+func assertJobProcessDates(t *testing.T, job *models.Job, sent, contacted string) {
+	t.Helper()
+	if job == nil || optionalJobDate(job.ApplicationSentDate) != sent || optionalJobDate(job.RecruiterFirstContactDate) != contacted {
+		t.Fatalf("job process dates = %#v, want sent=%q contacted=%q", job, sent, contacted)
+	}
+}
+
+func optionalJobDate(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func TestProcessDateServiceValidationAndNormalization(t *testing.T) {
+	_, jobs, _, _ := newCoverageApp(t)
+	noDefaults := false
+	sent := " 2030-03-04 "
+	blank := " \t "
+	created, err := jobs.CreateJob(models.CreateJobInput{
+		PositionTitle: "Process date test", CreateDefaultStages: &noDefaults,
+		ApplicationSentDate: &sent, RecruiterFirstContactDate: &blank,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertJobProcessDates(t, created, "2030-03-04", "")
+	contact := "2030-04-05"
+	updated, err := jobs.UpdateJob(created.ID, models.UpdateJobInput{ApplicationSentDate: &blank, RecruiterFirstContactDate: &contact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertJobProcessDates(t, updated, "", contact)
+	assertInvalidProcessDates(t, jobs, created.ID)
+}
+
+func assertInvalidProcessDates(t *testing.T, jobs *service.JobService, jobID string) {
+	t.Helper()
+	invalidDates := []string{"2030-02-30", "2030-3-4"}
+	for _, date := range invalidDates {
+		if _, err := jobs.CreateJob(models.CreateJobInput{PositionTitle: "Invalid process date", ApplicationSentDate: &date}); !errors.Is(err, service.ErrInvalidField) {
+			t.Errorf("invalid create date %q error = %v", date, err)
+		}
+		if _, err := jobs.UpdateJob(jobID, models.UpdateJobInput{RecruiterFirstContactDate: &date}); !errors.Is(err, service.ErrInvalidField) {
+			t.Errorf("invalid update date %q error = %v", date, err)
+		}
 	}
 }
 
@@ -698,7 +770,7 @@ func expectRouteStatus(t *testing.T, mux *http.ServeMux, method, path, body stri
 
 func createHandlerJob(t *testing.T, mux *http.ServeMux) models.Job {
 	t.Helper()
-	recorder := expectRouteStatus(t, mux, http.MethodPost, "/api/jobs", `{"company_name":"Acme","position_title":"Dev","create_default_stages":false}`, http.StatusCreated)
+	recorder := expectRouteStatus(t, mux, http.MethodPost, "/api/jobs", `{"company_name":"Acme","position_title":"Dev","create_default_stages":false,"application_sent_date":"2030-03-04"}`, http.StatusCreated)
 	var job models.Job
 	if err := json.Unmarshal(recorder.Body.Bytes(), &job); err != nil {
 		t.Fatal(err)
@@ -710,7 +782,7 @@ func checkJobRoutes(t *testing.T, mux *http.ServeMux, jobID string) {
 	t.Helper()
 	expectRouteStatus(t, mux, http.MethodGet, "/api/jobs?status=all&search=Acme", "", http.StatusOK)
 	expectRouteStatus(t, mux, http.MethodGet, "/api/jobs/missing", "", http.StatusNotFound)
-	expectRouteStatus(t, mux, http.MethodPut, "/api/jobs/"+jobID, `{"position_title":"Developer"}`, http.StatusOK)
+	expectRouteStatus(t, mux, http.MethodPut, "/api/jobs/"+jobID, `{"position_title":"Developer","recruiter_first_contact_date":"2030-04-05"}`, http.StatusOK)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/jobs/missing", `{}`, http.StatusNotFound)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/jobs/reorder", `{"job_ids":["`+jobID+`"]}`, http.StatusOK)
 	expectRouteStatus(t, mux, http.MethodPut, "/api/jobs/reorder", `{}`, http.StatusBadRequest)

@@ -3,6 +3,11 @@ import { deflateRawSync } from "node:zlib";
 import { createZip } from "../../demo/zipWriter.js";
 
 const files = vi.hoisted(() => new Map());
+const demoLogos = vi.hoisted(() => new Map([
+  ["bluebird-analytics.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>'],
+  ["cedar-systems.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>'],
+  ["northstar-labs.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>'],
+]));
 vi.mock("../../demo/fileStore.js", () => ({
   saveFile: vi.fn(async (id, blob) => files.set(String(id), blob)),
   readFile: vi.fn(async (id) => files.get(String(id))),
@@ -15,14 +20,35 @@ describe("demo CV library backup", () => {
     vi.resetModules();
     window.localStorage.clear();
     files.clear();
+    window.localStorage.setItem("war-room-demo-seed-version", "5");
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      const name = String(url).split("/").at(-1);
+      const content = demoLogos.get(name) || '<svg xmlns="http://www.w3.org/2000/svg"/>';
+      return new Response(new Blob([content], { type: "image/svg+xml" }), { status: 200 });
+    }));
     const now = new Date();
     const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     window.localStorage.setItem("war-room-demo-data-v13", JSON.stringify([{
       id: "demo-cv-job", company_name: "Private Company", position_title: "Engineer", status: "ongoing",
-      order_index: 0, stages: [], attachments: [], interviewers: [],
+      order_index: 0, created_at: Date.now(), updated_at: Date.now(), stages: [], attachments: [], interviewers: [],
     }]));
-    window.localStorage.setItem("war-room-demo-seed-version", "4");
     window.localStorage.setItem("war-room-demo-schedule-date", localToday);
+  });
+
+  it("adds waiting samples with varied, second-based process and status dates", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const waiting = await demoApi.getJobs("waiting");
+    const savedPrivateJob = await demoApi.getJob("demo-cv-job");
+    const technologyCatalog = await demoApi.getTechnologies();
+    const catalogIDs = new Set(technologyCatalog.map((item) => item.id));
+
+    expect(waiting).toHaveLength(3);
+    expect(new Set(waiting.map((job) => job.created_at)).size).toBe(3);
+    expect(new Set(waiting.map((job) => job.status_changed_at)).size).toBe(3);
+    expect(waiting.every((job) => job.created_at < 1e12 && job.status_changed_at < 1e12)).toBe(true);
+    expect(waiting.flatMap((job) => job.technologies).every((item) => catalogIDs.has(item.id))).toBe(true);
+    expect(savedPrivateJob.created_at).toBeLessThan(1e12);
+    expect(savedPrivateJob.status_changed_at).toBeLessThan(1e12);
   });
 
   it("moves a CV-only job from waiting to ongoing when its first stage is created", async () => {

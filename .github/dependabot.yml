@@ -1,0 +1,42 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend-dependencies:
+        patterns:
+          - "*"
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      backend-dependencies:
+        patterns:
+          - "*"
+  - package-ecosystem: gomod
+    directory: /e2e
+    schedule:
+      interval: weekly
+    groups:
+      e2e-dependencies:
+        patterns:
+          - "*"
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /e2e
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * *'
 
 permissions:
   contents: read
@@ -25,6 +27,43 @@ jobs:
       - name: Run required quality and test gates
         run: docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test
 
+      - name: Build current runtime images for vulnerability scanning
+        run: docker compose --project-name war-room-security build --pull backend frontend
+
+      - name: Scan images and dependency manifests against EPSS and CISA KEV
+        env:
+          TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+        run: |
+          mkdir -p "$RUNNER_TEMP/warroom-trivy-cache" "$RUNNER_TEMP/warroom-trivy-reports"
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
+            -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
+            "$TRIVY_IMAGE" image --scanners vuln --format json \
+            --output /reports/backend.json war-room-security-backend:latest
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
+            -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
+            "$TRIVY_IMAGE" image --scanners vuln --format json \
+            --output /reports/frontend.json war-room-security-frontend:latest
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
+            -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
+            "$TRIVY_IMAGE" fs --scanners vuln --include-dev-deps \
+            --skip-dirs /workspace/.git \
+            --skip-dirs /workspace/data \
+            --skip-dirs /workspace/backend/data \
+            --skip-dirs /workspace/frontend/node_modules \
+            --format json --output /reports/source.json /workspace
+          node scripts/check-epss-threshold.mjs \
+            "$RUNNER_TEMP/warroom-trivy-reports/backend.json" \
+            "$RUNNER_TEMP/warroom-trivy-reports/frontend.json" \
+            "$RUNNER_TEMP/warroom-trivy-reports/source.json"
+
       - name: Remove isolated test services
         if: always()
-        run: docker compose --project-name war-room-precommit down
+        run: |
+          docker compose --project-name war-room-precommit down
+          docker compose --project-name war-room-security down
