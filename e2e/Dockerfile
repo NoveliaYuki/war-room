@@ -1,11 +1,11 @@
-FROM golang:1.25-bookworm AS go-runtime
+FROM golang:1.26-bookworm AS go-runtime
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 FROM golangci/golangci-lint:v2.14.0 AS golangci
 
-FROM mcr.microsoft.com/playwright:v1.63.0-noble
+FROM mcr.microsoft.com/playwright:v1.64.0-noble
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes \
     && apt-get remove --yes libass9 libsrt1.5-gnutls \
