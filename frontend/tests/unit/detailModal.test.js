@@ -29,6 +29,14 @@ async function editInline(modal, selector, value) {
   await tick();
 }
 
+async function editMarkdown(modal, field, value) {
+  modal.querySelector(`[data-markdown-field="${field}"]`).click();
+  const input = modal.querySelector('.markdown-field-input');
+  input.value = value;
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await tick();
+}
+
 const job = (stages = []) => ({
   id: 'job-1', company_name: 'Acme', position_title: 'Engineer', status: 'ongoing', salary_type: 'limited',
   salary_min: 80000, salary_max: 100000, salary_currency: 'EUR', is_referral: false,
@@ -460,22 +468,93 @@ describe('detail modal', () => {
       ['.editable-company-name', '', { company_name: 'Unknown' }],
       ['.editable-salary', 'from 95k', { salary_type: 'no_max', salary_min: 95000, salary_max: null }],
       ['.editable-keywords', 'platform, remote', { keyword_note: 'platform, remote' }],
-      ['.editable-overview', 'New overview', { company_overview: 'New overview' }],
       ['.editable-reasons-to-change', 'More scope', { reasons_to_change: 'More scope' }],
-      ['.editable-experience-notes', 'Platform migration', { experience_notes: 'Platform migration' }],
       ['.editable-expected-salary', '€90k plus equity', { expected_salary: '€90k plus equity' }],
-      ['.editable-interview-notes', 'Hiring team is 8', { interview_notes: 'Hiring team is 8' }],
-      ['.editable-description', 'Updated role', { description: 'Updated role' }],
       ['.editable-job-post-url', '', { job_post_url: null }],
     ];
     for (const [selector, value, payload] of cases) {
       await editInline(modal, selector, value);
       expect(api.updateJob).toHaveBeenCalledWith(fixture.id, payload);
     }
+    await editMarkdown(modal, 'experience_notes', 'Platform migration');
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { experience_notes: 'Platform migration' });
+    await editMarkdown(modal, 'interview_notes', 'Hiring team is 8');
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { interview_notes: 'Hiring team is 8' });
+    await editMarkdown(modal, 'description', '## Updated role');
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { description: '## Updated role' });
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    const overviewInput = modal.querySelector('.markdown-field-input');
+    overviewInput.value = '## New overview';
+    overviewInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { company_overview: '## New overview' });
     modal.querySelector('.btn-toggle-reachout').click();
     expect(modal.querySelector('#reachout-text-container').style.display).toBe('block');
     modal.querySelector('.btn-toggle-reachout').click();
     expect(modal.querySelector('#reachout-text-container').style.display).toBe('none');
+  });
+
+  it('previews Markdown and discards overview edits on outside clicks', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    const input = modal.querySelector('.markdown-field-input');
+    input.value = '# Draft';
+    modal.querySelectorAll('.markdown-editor-tab')[1].click();
+    expect(modal.querySelector('.markdown-field-preview h1').textContent).toBe('Draft');
+    document.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    expect(api.updateJob).not.toHaveBeenCalledWith('job-1', expect.objectContaining({ company_overview: '# Draft' }));
+  });
+
+  it('keeps the overview editor open after save errors and supports multiline and Escape', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.updateJob.mockRejectedValueOnce(new Error('offline'));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    const input = modal.querySelector('.markdown-field-input');
+    input.value = '# Draft';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.markdown-field-editor')).not.toBeNull();
+    modal.querySelector('.markdown-editor-save').click();
+    await tick();
+    expect(modal.querySelector('.markdown-field-input')).not.toBeNull();
+    expect(toast).toHaveBeenCalledWith('offline', 'error');
+    modal.querySelector('.markdown-field-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.markdown-field-editor')).toBeNull();
+    expect(modal.querySelector('.editable-overview').textContent).toBe('Company');
+  });
+
+  it('shows the empty preview and empty overview placeholder', async () => {
+    api.getJob.mockResolvedValue({ ...job(), company_overview: '' });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    modal.querySelectorAll('.markdown-editor-tab')[1].click();
+    expect(modal.querySelector('.markdown-field-preview').textContent).toBe('Nothing to preview yet.');
+    modal.querySelector('.markdown-editor-cancel').click();
+    expect(modal.querySelector('.editable-overview').textContent).toContain('Summarize what the company does');
+  });
+
+  it('renders Markdown descriptions and lets jobs without one add it', async () => {
+    const fixture = { ...job(), description: '## Responsibilities\n\n- Design controls\n- Review code' };
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-toggle-reachout').click();
+    expect(modal.querySelector('.editable-description h2').textContent).toBe('Responsibilities');
+    expect(modal.querySelectorAll('.editable-description li')).toHaveLength(2);
+
+    api.getJob.mockResolvedValue({ ...fixture, description: '' });
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="description"]').click();
+    expect(modal.querySelector('.markdown-field-input')).not.toBeNull();
+    expect(modal.querySelector('#reachout-text-container').style.display).toBe('block');
+    modal.querySelector('.markdown-editor-cancel').click();
   });
 
   it('shows unknown job statuses safely and restarts the status cycle at waiting', async () => {
@@ -777,7 +856,8 @@ describe('detail modal', () => {
     expect(modal.querySelector('.modal-meta-pills .recruiter-badge')).toBeNull();
     expect(modal.querySelector('.editable-stage-recruiter-name').textContent).toContain('Stage Contact');
     expect(modal.querySelector('.editable-job-post-url').textContent).toContain('No job post link recorded');
-    expect(modal.querySelector('#reachout-text-container')).toBeNull();
+    expect(modal.querySelector('#reachout-text-container').style.display).toBe('none');
+    expect(modal.querySelector('[data-markdown-field="description"]')).not.toBeNull();
     expect(modal.querySelector('.editable-keywords').textContent).toContain('No keywords');
     expect(modal.querySelector('#company-overview-display').textContent).toContain('Summarize what the company does');
     expect(modal.querySelector('#experience-notes-display').textContent).toContain('Add experience');
