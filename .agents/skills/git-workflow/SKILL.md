@@ -74,6 +74,11 @@ Before opening a pull request, verify its base is `main`, its branch is not
 `main`, and the working tree contains no local data, build artifacts, secrets,
 or unrelated changes.
 
+For a functional app change, choose the semantic version and update root
+`VERSION` before creating the pull request. Do not open the PR first and defer
+the version bump to a later commit. Use the updated version in commit subjects
+and the pull request title.
+
 Search open and closed issues for an existing issue that the pull request fully
 resolves. Always add one `Closes` line to the pull request body: use
 `Closes #<number>` when an issue will be fixed, or `Closes NO_ISSUE` when no
@@ -91,9 +96,14 @@ Use this order when intent is mixed:
 | Is behavior unchanged? | Choose `refactor`, `test`, `docs`, `build`, `ci`, or `style` by scope |
 | No category fits? | `chore` |
 
-Update root `VERSION` once per PR with functional app changes. Use the resulting
-version in every commit subject in that PR. Do not duplicate the app version in
-package metadata or image labels.
+For each PR with functional app changes, compare the changes with the current
+root `VERSION` and bump it once before creating the PR. Choose the bump by the
+highest-impact functional change in the PR: breaking change means major,
+backward-compatible feature means minor, and compatible bug fix means patch.
+Complete this decision before writing commit subjects, running pre-commit, or
+creating the PR. Use the resulting version in every commit subject and in the
+PR title. Documentation and workflow-only PRs do not bump `VERSION`. Do not
+duplicate the app version in package metadata or image labels.
 
 | Change | `VERSION` update | Publish a release? |
 | --- | --- | --- |
