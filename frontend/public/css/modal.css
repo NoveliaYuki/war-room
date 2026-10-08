@@ -607,6 +607,38 @@ body.is-resizing-split * {
   background: color-mix(in srgb, var(--text-info) 5%, var(--bg-surface));
 }
 
+.process-timeline-section {
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+.process-timeline-list { display: grid; gap: 7px; }
+.process-timeline-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.process-timeline-item time, .process-timeline-item > span:last-child {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+}
+.process-timeline-item input[type="date"] {
+  max-width: 150px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-xs);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  font: 11px var(--font-sans);
+}
+.process-timeline-item input[type="date"]:disabled { opacity: 0.65; }
+.process-timeline-hint { margin: 0; color: var(--text-muted); font-size: 10px; }
+
 .technology-detail-section .section-title { color: var(--text-info); }
 .technology-count { font-variant-numeric: tabular-nums; }
 .technology-assigned-list { display: flex; flex-wrap: wrap; gap: 6px; }

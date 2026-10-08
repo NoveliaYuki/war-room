@@ -9,7 +9,10 @@ COPY index.html ./index.html
 COPY runtime-config.json ./runtime-config.json
 RUN find public/js demo -type f -name '*.js' -exec node --check {} +
 
-FROM nginx:alpine-slim AS runtime
+FROM nginxinc/nginx-unprivileged:alpine-slim AS runtime
+
+USER root
+RUN apk upgrade --no-cache
 
 LABEL maintainer="War Room Team" \
       description="War Room Candidate Selection Process Command Center Frontend"
@@ -24,9 +27,11 @@ COPY --from=assets /src/runtime-config.json /usr/share/nginx/html/runtime-config
 COPY --from=assets /src/public /usr/share/nginx/html/public
 COPY --from=assets /src/demo /usr/share/nginx/html/demo
 
-EXPOSE 80
+USER 101
+
+EXPOSE 8080
 
 HEALTHCHECK --interval=5s --timeout=2s --start-period=3s --retries=5 \
-  CMD wget -qO- http://127.0.0.1/ > /dev/null || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/ > /dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

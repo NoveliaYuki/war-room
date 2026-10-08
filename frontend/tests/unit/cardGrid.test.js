@@ -87,6 +87,7 @@ describe('cardGrid', () => {
     mocks.api.updateJob.mockReset();
     mocks.api.deleteJob.mockReset();
     mocks.api.reorderJobs.mockReset();
+    mocks.api.reorderJobs.mockResolvedValue(undefined);
     mocks.openWithFlip.mockReset();
     mocks.openDetailModal.mockReset();
     mocks.toast.mockReset();

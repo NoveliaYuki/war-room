@@ -120,6 +120,21 @@ function renderCardTechnologyStack(job) {
   return `<div class="card-tech-stack"><div class="card-summary-label">Tech stack <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
 }
 
+/** Formats date-only fields without shifting them across time zones. */
+function formatCardDate(value) {
+  if (!value) return "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(Number(value) * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(date);
+}
+
+/** Renders the creation and optional application/contact dates on a job card. */
+function renderCardProcessDates(job) {
+  const dates = [["Added", formatCardDate(job.created_at)], ["CV sent", formatCardDate(job.application_sent_date)], ["Recruiter", formatCardDate(job.recruiter_first_contact_date)]]
+    .filter(([, date]) => date);
+  return `<div class="card-process-dates" aria-label="Process dates">${dates.map(([label, date]) => `<span><strong>${label}</strong> ${escapeHtml(date)}</span>`).join("")}</div>`;
+}
+
 /** Creates and fills the static markup for one job card. */
 function createCardElement(job) {
   const card = document.createElement("div");
@@ -140,6 +155,7 @@ function createCardElement(job) {
   <div class="card-body"><span class="salary-tag editable-card-salary ${salaryClass}" data-raw-value="${escapeAttr(getCardSalaryRawValue(job))}">${escapeHtml(salaryText)}</span>
     ${renderReferralTag(job)}${renderEmploymentTypeTag(job.employment_type)}${renderWorkArrangementTag(job.work_arrangement)}</div>
   <div class="card-summary"><div class="card-summary-label">Role highlights</div><div class="keyword-note editable-card-keyword" data-raw-value="${escapeAttr(job.keyword_note || "")}" title="Role highlights">${renderCardRoleHighlights(job)}</div></div>
+  ${renderCardProcessDates(job)}
   ${renderCardTechnologyStack(job)}</div>
   <div class="card-footer">
     <div class="card-stage-indicator"><span class="card-stage-summary" title="${escapeAttr(stageIndicator.text)}">${stageIndicator.markup}</span>
@@ -287,8 +303,9 @@ function bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isD
  * @param {HTMLElement} modalEl - The modal container element.
  * @param {HTMLElement} backdropEl - The modal backdrop element.
  * @param {Function} onGlobalRefresh - Global refresh callback.
+ * @param {string} [sortMode='manual'] - Recent ordering or the user's saved manual order.
  */
-export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropEl = null, onGlobalRefresh = null) {
+export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropEl = null, onGlobalRefresh = null, sortMode = "manual") {
   containerEl.innerHTML = "";
 
   if (jobs.length === 0) {
@@ -316,7 +333,11 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
     const card = createCardElement(job);
     bindCardInlineEditors(card, job, onGlobalRefresh);
     bindCardDeletion(card, job, onGlobalRefresh);
-    const isDragActive = enableHoldToDrag(card, containerEl, (newOrder) => api.reorderJobs(newOrder));
+    const isDragActive = sortMode === "manual"
+      ? enableHoldToDrag(card, containerEl, (newOrder) => Promise.resolve(api.reorderJobs(newOrder))
+        .then(() => onGlobalRefresh?.())
+        .catch(() => showToast("Could not save card order", "error")))
+      : () => false;
     bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
     containerEl.appendChild(card);
   });
