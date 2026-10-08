@@ -253,6 +253,123 @@ func TestTechnologyCatalogMigrationReportsSQLFailure(t *testing.T) {
 	}
 }
 
+func TestWaitingStatusMigrationPreservesRelatedRecords(t *testing.T) {
+	db := prepareWaitingStatusMigrationDB(t)
+	insertWaitingMigrationRecords(t, db)
+	if err := applyWaitingStatusMigration(db, 9); err != nil {
+		t.Fatalf("apply waiting status migration: %v", err)
+	}
+	assertWaitingMigrationRecords(t, db)
+}
+
+func TestWaitingStatusMigrationReportsConnectionAndSchemaErrors(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyWaitingStatusMigration(db, 9); err == nil {
+		t.Fatal("closed database should fail to acquire a migration connection")
+	}
+
+	db = openMigrationTestDB(t)
+	if err := applyWaitingStatusMigration(db, 9); err == nil {
+		t.Fatal("missing jobs table should fail the waiting status migration")
+	}
+}
+
+func TestWaitingStatusMigrationAddsStatusWhenColumnIsMissing(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobWaitingStatus(db); err != nil {
+		t.Fatalf("add waiting job status: %v", err)
+	}
+	if hasStatus, err := hasColumn(db, "jobs", "status"); err != nil || !hasStatus {
+		t.Fatalf("jobs.status exists=%t err=%v", hasStatus, err)
+	}
+}
+
+func TestWaitingStatusMigrationReportsMigrationRecordFailure(t *testing.T) {
+	db := prepareWaitingStatusMigrationDB(t)
+	if _, err := db.Exec(`CREATE TRIGGER fail_waiting_migration_record BEFORE INSERT ON schema_migrations WHEN NEW.version = 9 BEGIN SELECT RAISE(ABORT, 'injected migration record failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyWaitingStatusMigration(db, 9); err == nil {
+		t.Fatal("migration record failure should be returned")
+	}
+}
+
+func TestWaitingStatusMigrationReturnsInspectionAndSQLFailures(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := runSchemaMigration(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}, 9); err == nil {
+		t.Fatal("schema inspection failure should be returned")
+	}
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	executor := migrationTestExecutor{db: db, failExec: "DROP TRIGGER IF EXISTS validate_employment_type_insert"}
+	if err := runSchemaMigration(executor, 9); err == nil {
+		t.Fatal("waiting status migration SQL failure should be returned")
+	}
+}
+
+func prepareWaitingStatusMigrationDB(t *testing.T) *sql.DB {
+	t.Helper()
+	databasePath := filepath.Join(t.TempDir(), "waiting-migration.db")
+	db, err := sql.Open("sqlite", sqliteDataSource(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	legacySchema := strings.Replace(schemaSQL, "('waiting', 'ongoing', 'accepted', 'rejected')", "('ongoing', 'accepted', 'rejected')", 1)
+	if _, err := db.Exec(legacySchema); err != nil {
+		t.Fatalf("create legacy schema: %v", err)
+	}
+	for version := 1; version <= 8; version++ {
+		if err := applySchemaMigration(db, version); err != nil {
+			t.Fatalf("apply legacy schema migration %d: %v", version, err)
+		}
+	}
+	return db
+}
+
+func insertWaitingMigrationRecords(t *testing.T, db *sql.DB) {
+	t.Helper()
+	statements := []string{
+		`INSERT INTO cv_versions (id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at) VALUES ('cv-1', 1, 'resume.pdf', 'resume.pdf', 1, 'application/pdf', 'digest', 1)`,
+		`INSERT INTO jobs (id, company_name, position_title, status, salary_type, salary_currency, recruiter_type, avatar_seed, cv_version_id) VALUES ('job-1', 'Example', 'Engineer', 'ongoing', 'unknown', 'EUR', 'none', 'avatar', 'cv-1')`,
+		`INSERT INTO stages (id, job_id, order_index, stage_type, status, meeting_type) VALUES ('stage-1', 'job-1', 0, 'HR', 'current', 'video')`,
+		`INSERT INTO stage_questions (id, stage_id, order_index, question) VALUES ('question-1', 'stage-1', 0, 'Question?')`,
+		`INSERT INTO attachments (id, job_id, stage_id, original_name, stored_filename, absolute_path, file_size, mime_type) VALUES ('attachment-1', 'job-1', 'stage-1', 'note.txt', 'note.txt', '/data/attachments/note.txt', 1, 'text/plain')`,
+		`INSERT INTO technologies (id, name, normalized_name) VALUES ('tech-1', 'Go', 'go')`,
+		`INSERT INTO job_technologies (job_id, technology_id) VALUES ('job-1', 'tech-1')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("insert related migration fixture: %v", err)
+		}
+	}
+}
+
+func assertWaitingMigrationRecords(t *testing.T, db *sql.DB) {
+	t.Helper()
+	for table, want := range map[string]int{"stages": 1, "stage_questions": 1, "attachments": 1, "job_technologies": 1} {
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil || count != want {
+			t.Fatalf("%s count=%d err=%v, want %d", table, count, err, want)
+		}
+	}
+	var cvVersionID string
+	if err := db.QueryRow(`SELECT cv_version_id FROM jobs WHERE id = 'job-1'`).Scan(&cvVersionID); err != nil || cvVersionID != "cv-1" {
+		t.Fatalf("job CV version=%q err=%v", cvVersionID, err)
+	}
+	var violations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&violations); err != nil || violations != 0 {
+		t.Fatalf("foreign-key violations=%d err=%v", violations, err)
+	}
+}
+
 func TestRecoverySnapshotRestoresTechnologyCatalogAndAssignments(t *testing.T) {
 	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "technology-recovery.db")}
 	db, err := InitDB(cfg)

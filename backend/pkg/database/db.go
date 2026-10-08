@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     company_name TEXT NOT NULL DEFAULT 'Unknown',
     position_title TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('ongoing', 'accepted', 'rejected')),
+    status TEXT NOT NULL CHECK (status IN ('waiting', 'ongoing', 'accepted', 'rejected')),
     salary_type TEXT NOT NULL CHECK (salary_type IN ('limited', 'no_min', 'no_max', 'unknown')),
     salary_min INTEGER NULL,
     salary_max INTEGER NULL,
@@ -222,7 +223,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 8
+const latestSchemaVersion = 9
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -241,6 +242,9 @@ func migrateSchema(db *sql.DB) error {
 }
 
 func applySchemaMigration(db *sql.DB, version int) error {
+	if version == 9 {
+		return applyWaitingStatusMigration(db, version)
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -255,10 +259,43 @@ func applySchemaMigration(db *sql.DB, version int) error {
 	return tx.Commit()
 }
 
+func applyWaitingStatusMigration(db *sql.DB, version int) error {
+	connection, err := db.Conn(context.Background())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = connection.Close() }()
+	if _, err := connection.ExecContext(context.Background(), "PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("disable foreign keys for waiting status migration: %w", err)
+	}
+	defer func() { _, _ = connection.ExecContext(context.Background(), "PRAGMA foreign_keys = ON") }()
+	tx, err := connection.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := runSchemaMigration(tx, version); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
+		return fmt.Errorf("record migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func runSchemaMigration(executor schemaExecutor, version int) error {
 	switch version {
 	case 1:
 		return applyInitialSchemaMigration(executor)
+	}
+	return runLaterSchemaMigration(executor, version)
+}
+
+func runLaterSchemaMigration(executor schemaExecutor, version int) error {
+	switch version {
 	case 2:
 		return executeMigrationSQL(executor, attachmentOwnershipTriggersSQL, "create attachment ownership triggers")
 	case 3:
@@ -273,9 +310,88 @@ func runSchemaMigration(executor schemaExecutor, version int) error {
 		return migrateCVLibrary(executor)
 	case 8:
 		return migrateTechnologyCatalog(executor)
+	case 9:
+		return migrateJobWaitingStatus(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
+}
+
+func migrateJobWaitingStatus(executor schemaExecutor) error {
+	hasStatus, err := hasColumn(executor, "jobs", "status")
+	if err != nil {
+		return fmt.Errorf("inspect jobs.status: %w", err)
+	}
+	if !hasStatus {
+		return executeMigrationSQL(executor, `ALTER TABLE jobs ADD COLUMN status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'ongoing', 'accepted', 'rejected'))`, "add waiting job status")
+	}
+	statements := []string{
+		`DROP TRIGGER IF EXISTS validate_employment_type_insert`,
+		`DROP TRIGGER IF EXISTS validate_employment_type_update`,
+		`DROP TRIGGER IF EXISTS validate_work_arrangement_insert`,
+		`DROP TRIGGER IF EXISTS validate_work_arrangement_update`,
+		`DROP TRIGGER IF EXISTS validate_jobs_insert`,
+		`DROP TRIGGER IF EXISTS validate_jobs_update`,
+		`CREATE TABLE jobs_with_waiting (
+			id TEXT PRIMARY KEY,
+			company_name TEXT NOT NULL DEFAULT 'Unknown',
+			position_title TEXT NOT NULL,
+			status TEXT NOT NULL CHECK (status IN ('waiting', 'ongoing', 'accepted', 'rejected')),
+			salary_type TEXT NOT NULL CHECK (salary_type IN ('limited', 'no_min', 'no_max', 'unknown')),
+			salary_min INTEGER NULL,
+			salary_max INTEGER NULL,
+			salary_currency TEXT NOT NULL DEFAULT 'EUR',
+			recruiter_type TEXT NOT NULL DEFAULT 'none' CHECK (recruiter_type IN ('internal', 'external', 'none')),
+			recruiter_name TEXT NULL,
+			recruiter_agency TEXT NULL,
+			recruiter_contact TEXT NULL,
+			interviewers_json TEXT NOT NULL DEFAULT '[]',
+			job_post_url TEXT NULL,
+			avatar_seed TEXT NOT NULL,
+			keyword_note TEXT NOT NULL DEFAULT '' CHECK (length(keyword_note) <= 100),
+			description TEXT NOT NULL DEFAULT '',
+			company_overview TEXT NOT NULL DEFAULT '',
+			company_domain TEXT NULL,
+			interview_notes TEXT NOT NULL DEFAULT '',
+			reasons_to_change TEXT NOT NULL DEFAULT '',
+			experience_notes TEXT NOT NULL DEFAULT '',
+			expected_salary TEXT NOT NULL DEFAULT '',
+			work_arrangement TEXT NOT NULL DEFAULT 'unknown' CHECK (work_arrangement IN ('unknown', 'remote', 'hybrid', 'on_site')),
+			employment_type TEXT NOT NULL DEFAULT 'unknown' CHECK (employment_type IN ('unknown', 'permanent', 'b2b', 'permanent_b2b')),
+			is_referral INTEGER NOT NULL DEFAULT 0 CHECK (is_referral IN (0, 1)),
+			order_index INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			cv_version_id TEXT NULL REFERENCES cv_versions(id) ON DELETE RESTRICT,
+			CHECK (salary_min IS NULL OR salary_max IS NULL OR salary_min <= salary_max)
+		)`,
+		`INSERT INTO jobs_with_waiting (
+			id, company_name, position_title, status, salary_type, salary_min, salary_max,
+			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
+			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
+			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
+			work_arrangement, employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
+		)
+		SELECT id, company_name, position_title, status, salary_type, salary_min, salary_max,
+			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
+			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
+			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
+			work_arrangement, employment_type, is_referral, order_index, created_at, updated_at, cv_version_id
+		FROM jobs`,
+		`DROP TABLE jobs`,
+		`ALTER TABLE jobs_with_waiting RENAME TO jobs`,
+		employmentTypeConstraintsSQL,
+		workArrangementConstraintsSQL,
+		schemaIndexesSQL,
+		`CREATE INDEX IF NOT EXISTS idx_jobs_status_order ON jobs(status, order_index, updated_at DESC, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_jobs_order_updated ON jobs(order_index, updated_at DESC, created_at DESC)`,
+	}
+	for _, statement := range statements {
+		if err := executeMigrationSQL(executor, statement, "allow waiting job status"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func migrateTechnologyCatalog(executor schemaExecutor) error {

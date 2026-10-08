@@ -439,7 +439,7 @@ describe('detail modal', () => {
     const refreshed = vi.fn();
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id, refreshed);
 
-    for (const [label, value] of [['Rejected', 'rejected'], ['Approved', 'accepted'], ['Ongoing', 'ongoing']]) {
+    for (const [label, value] of [['Rejected', 'rejected'], ['Approved', 'accepted'], ['Waiting', 'waiting'], ['Ongoing', 'ongoing']]) {
       modal.querySelector('.editable-job-status').click();
       await tick();
       expect(modal.querySelector('.editable-job-status').textContent).toBe(label);
@@ -478,7 +478,7 @@ describe('detail modal', () => {
     expect(modal.querySelector('#reachout-text-container').style.display).toBe('none');
   });
 
-  it('shows unknown job statuses safely and restarts the status cycle at ongoing', async () => {
+  it('shows unknown job statuses safely and restarts the status cycle at waiting', async () => {
     const fixture = job();
     fixture.status = 'archived';
     api.getJob.mockImplementation(async () => fixture);
@@ -492,8 +492,8 @@ describe('detail modal', () => {
     statusButton.click();
     await tick();
 
-    expect(fixture.status).toBe('ongoing');
-    expect(modal.querySelector('.editable-job-status').textContent).toBe('Ongoing');
+    expect(fixture.status).toBe('waiting');
+    expect(modal.querySelector('.editable-job-status').textContent).toBe('Waiting');
   });
 
   it('covers active stage recruiter, interviewer, question, and stage action handlers', async () => {

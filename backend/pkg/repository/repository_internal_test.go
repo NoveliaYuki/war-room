@@ -45,6 +45,92 @@ func TestCVRepositoryVersionLifecycle(t *testing.T) {
 	assertCVAssignmentAndDelete(t, repo, version.ID)
 }
 
+func TestInsertFirstStageAndSetJobOngoing(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := &models.Job{ID: "job-first-stage", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed"}
+	if err := repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+	stage := &models.Stage{ID: "stage-first", JobID: "job-first-stage", StageType: models.StageHR, Status: models.StageStatusCurrent,
+		MeetingType: "video", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertFirstStageAndSetJobOngoing(stage); err != nil {
+		t.Fatalf("insert first stage: %v", err)
+	}
+	job, err := repo.GetJobByID(stage.JobID)
+	if err != nil || job.Status != models.StatusOngoing {
+		t.Fatalf("job status=%q err=%v", job.Status, err)
+	}
+	stored, err := repo.GetStageByID(stage.ID)
+	if err != nil || stored.InterviewersJSON != "null" {
+		t.Fatalf("stage interviewers=%q err=%v", stored.InterviewersJSON, err)
+	}
+}
+
+func TestInsertFirstStageRollsBackWhenJobUpdateFails(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := &models.Job{ID: "job-stage-rollback", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed"}
+	if err := repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER fail_job_start BEFORE UPDATE OF status ON jobs WHEN NEW.status = 'ongoing' BEGIN SELECT RAISE(ABORT, 'injected job update failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	stage := &models.Stage{ID: "stage-rollback", JobID: job.ID, StageType: models.StageHR, Status: models.StageStatusCurrent,
+		MeetingType: "video", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertFirstStageAndSetJobOngoing(stage); err == nil {
+		t.Fatal("job update failure should be returned")
+	}
+	if stored, err := repo.GetStageByID(stage.ID); err != nil || stored != nil {
+		t.Fatalf("rolled back stage=%+v err=%v", stored, err)
+	}
+	storedJob, err := repo.GetJobByID(job.ID)
+	if err != nil || storedJob.Status != models.StatusWaiting {
+		t.Fatalf("job status=%q err=%v", storedJob.Status, err)
+	}
+}
+
+func TestInsertFirstStageRollsBackWhenInsertFails(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := &models.Job{ID: "job-insert-rollback", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed"}
+	if err := repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER fail_stage_insert BEFORE INSERT ON stages BEGIN SELECT RAISE(ABORT, 'injected stage insert failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	stage := &models.Stage{ID: "stage-insert-rollback", JobID: job.ID, StageType: models.StageHR, Status: models.StageStatusCurrent,
+		MeetingType: "video", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertFirstStageAndSetJobOngoing(stage); err == nil {
+		t.Fatal("stage insert failure should be returned")
+	}
+	if stored, err := repo.GetStageByID(stage.ID); err != nil || stored != nil {
+		t.Fatalf("rolled back stage=%+v err=%v", stored, err)
+	}
+}
+
+func TestInsertFirstStageRollsBackWhenJobUpdateAffectsNoRows(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := &models.Job{ID: "job-ignore-rollback", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed"}
+	if err := repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER ignore_job_start BEFORE UPDATE OF status ON jobs WHEN NEW.status = 'ongoing' BEGIN SELECT RAISE(IGNORE); END`); err != nil {
+		t.Fatal(err)
+	}
+	stage := &models.Stage{ID: "stage-ignore-rollback", JobID: job.ID, StageType: models.StageHR, Status: models.StageStatusCurrent,
+		MeetingType: "video", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertFirstStageAndSetJobOngoing(stage); err == nil {
+		t.Fatal("zero-row job update should be rejected")
+	}
+	if stored, err := repo.GetStageByID(stage.ID); err != nil || stored != nil {
+		t.Fatalf("rolled back stage=%+v err=%v", stored, err)
+	}
+}
+
 func TestCreateTechnologyAliasFailureRollsBack(t *testing.T) {
 	repo := newImportRepositoryFixture(t)
 	if _, err := repo.db.Exec(`CREATE TRIGGER fail_alias BEFORE INSERT ON technology_aliases BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {

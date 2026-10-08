@@ -538,7 +538,7 @@ func validateWorkArrangement(arrangement models.WorkArrangement) error {
 
 func validateJobStatus(status models.JobStatus) error {
 	switch status {
-	case models.StatusOngoing, models.StatusAccepted, models.StatusRejected:
+	case models.StatusWaiting, models.StatusOngoing, models.StatusAccepted, models.StatusRejected:
 		return nil
 	}
 	return fmt.Errorf("%w: invalid status %q", ErrInvalidField, status)
@@ -743,7 +743,12 @@ func (s *JobService) CreateStage(input models.CreateStageInput) (*models.Stage, 
 		stg.Status = models.StageStatusCurrent
 	}
 
-	if err := s.repo.InsertStage(stg); err != nil {
+	if orderIdx == 0 {
+		err = s.repo.InsertFirstStageAndSetJobOngoing(stg)
+	} else {
+		err = s.repo.InsertStage(stg)
+	}
+	if err != nil {
 		return nil, err
 	}
 	s.mirrorAfterMutation()

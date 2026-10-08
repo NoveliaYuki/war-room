@@ -25,6 +25,13 @@ describe("demo CV library backup", () => {
     window.localStorage.setItem("war-room-demo-schedule-date", localToday);
   });
 
+  it("moves a CV-only job from waiting to ongoing when its first stage is created", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    await demoApi.updateJob("demo-cv-job", { status: "waiting" });
+    await demoApi.createStage({ job_id: "demo-cv-job", stage_type: "HR" });
+    expect((await demoApi.getJob("demo-cv-job")).status).toBe("ongoing");
+  });
+
   it("manages canonical technologies, aliases, and assignments in demo storage", async () => {
     const { demoApi } = await import("../../demo/demoStore.js");
     const catalog = await demoApi.getTechnologies();

@@ -606,7 +606,7 @@ func TestKeyboardSearchAndFilterShortcuts(t *testing.T) {
 	if err := search.Blur(); err != nil {
 		t.Fatalf("blur search field: %v", err)
 	}
-	for key, filter := range map[string]string{"4": "all", "1": "ongoing"} {
+	for key, filter := range map[string]string{"5": "all", "1": "waiting", "2": "ongoing"} {
 		if err := page.Keyboard().Press(key); err != nil {
 			t.Fatalf("press filter shortcut %s: %v", key, err)
 		}
@@ -709,7 +709,8 @@ func TestJobStatusCyclesThroughEveryValue(t *testing.T) {
 	}
 	cycleStatusAndVerifyFilter(t, page, card, status, "Ongoing", "Rejected", "rejected")
 	cycleStatusAndVerifyFilter(t, page, card, status, "Rejected", "Approved", "accepted")
-	cycleStatusAndVerifyFilter(t, page, card, status, "Approved", "Ongoing", "ongoing")
+	cycleStatusAndVerifyFilter(t, page, card, status, "Approved", "Waiting", "waiting")
+	cycleStatusAndVerifyFilter(t, page, card, status, "Waiting", "Ongoing", "ongoing")
 	if err := page.Locator("#detail-modal .modal-close-btn").Click(); err != nil {
 		t.Fatalf("close process details: %v", err)
 	}
