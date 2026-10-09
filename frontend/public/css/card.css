@@ -23,22 +23,25 @@
 .process-search .search-input { height: 38px; }
 
 .process-filter-control { position: relative; }
-.search-period-control { display: inline-flex; align-items: center; gap: 8px; }
-.search-period-select-wrap { position: relative; width: 290px; min-width: 0; }
+.search-period-control { display: inline-flex; align-items: center; }
+.search-period-select-wrap { position: relative; width: 220px; min-width: 0; }
 .search-period-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 38px; padding: 7px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: 500 12px var(--font-sans); line-height: 1.2; text-align: left; cursor: pointer; }
 .search-period-trigger:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .search-period-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-period-select-chevron { flex: 0 0 14px; width: 14px; height: 14px; color: var(--text-muted); transition: transform .15s ease; }
 .search-period-trigger[aria-expanded="true"] .search-period-select-chevron { transform: rotate(180deg); }
-.search-period-menu { position: absolute; z-index: 30; top: calc(100% + 5px); left: 0; display: grid; width: 100%; max-height: min(280px, 50vh); overflow: auto; padding: 4px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface-elevated); box-shadow: var(--shadow-lg); }
+.search-period-menu { position: absolute; z-index: 30; top: calc(100% + 5px); left: 0; display: grid; width: max(100%, 220px); max-height: min(300px, 55vh); overflow: hidden; padding: 4px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface-elevated); box-shadow: var(--shadow-lg); }
 .search-period-menu[hidden] { display: none; }
+.search-period-menu-options { display: grid; max-height: min(240px, 42vh); overflow-y: auto; }
 .search-period-menu button { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 34px; padding: 7px 9px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font: 500 12px var(--font-sans); text-align: left; cursor: pointer; }
-.search-period-menu button::before { flex: 0 0 14px; width: 14px; color: transparent; content: "✓"; }
-.search-period-menu button[aria-checked="true"] { background: var(--bg-surface); color: var(--text-primary); }
-.search-period-menu button[aria-checked="true"]::before { color: var(--accent-blue); }
+.search-period-menu button[role="radio"]::before { flex: 0 0 14px; width: 14px; color: transparent; content: "✓"; }
+.search-period-menu button[role="radio"][aria-checked="true"] { background: var(--bg-surface); color: var(--text-primary); }
+.search-period-menu button[role="radio"][aria-checked="true"]::before { color: var(--accent-blue); }
 .search-period-menu button:hover { background: var(--bg-surface); color: var(--text-primary); }
 .search-period-menu button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
-.search-period-control .btn-secondary { min-height: 32px; padding: 5px 9px; font-size: 11px; }
+.search-period-menu-footer { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-subtle); }
+.search-period-menu-footer button { width: 100%; color: var(--text-info); }
+.search-period-menu-footer svg { flex: 0 0 14px; }
 .process-filter-trigger,
 .process-sort-trigger {
   display: inline-flex;
@@ -176,12 +179,17 @@
 .search-period-form { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
 .search-period-form > label,
 .search-period-form .form-grid label { display: grid; gap: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.search-period-optional { color: var(--text-muted); font-size: 10px; font-weight: 400; }
 .search-period-form input { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font: 400 13px var(--font-sans); }
 #create-search-period,
 #edit-search-period { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font: 400 13px var(--font-sans); }
 .search-period-form-actions,
 .search-period-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-period-form-actions [hidden] { display: none; }
 .search-period-list { display: grid; gap: 8px; }
+.search-period-empty { display: grid; gap: 5px; margin: 0; padding: 12px 2px; }
+.search-period-empty strong { color: var(--text-secondary); font-size: 12px; }
+.search-period-empty span { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
 .search-period-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
 .search-period-row > div:first-child { display: grid; gap: 4px; min-width: 0; }
 .search-period-row strong { color: var(--text-primary); font-size: 13px; }
@@ -199,7 +207,7 @@
   .process-filter-clear { grid-column: 1; justify-self: start; }
   .process-filter-summary { grid-column: 1 / -1; }
   .search-period-control { grid-column: 1 / -1; display: flex; }
-  .search-period-select-wrap { flex: 1 1 auto; width: auto; }
+  .search-period-select-wrap { flex: 0 1 220px; width: min(220px, 100%); }
   .process-filter-panel { width: min(310px, calc(100vw - 36px)); }
   .process-filter-arrangements { grid-template-columns: 1fr 1fr; }
   .process-filter-arrangements label { min-height: 28px; }

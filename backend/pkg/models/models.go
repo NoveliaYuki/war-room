@@ -157,7 +157,7 @@ type Job struct {
 	Technologies      []Technology  `json:"technologies,omitempty"`
 }
 
-// SearchPeriod groups jobs within a user-defined date range.
+// SearchPeriod groups jobs within a user-defined date range; an empty end date means ongoing.
 type SearchPeriod struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

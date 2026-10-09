@@ -85,7 +85,6 @@ const searchPeriodFilter = document.querySelector("#search-period-filter");
 const searchPeriodTrigger = document.querySelector("#search-period-trigger");
 const searchPeriodCurrent = document.querySelector("#search-period-current");
 const searchPeriodMenu = document.querySelector("#search-period-menu");
-const manageSearchPeriodsButton = document.querySelector("#btn-manage-search-periods");
 const processFilterPanel = document.querySelector("#process-filter-panel");
 const processFilterArrangements = document.querySelectorAll('input[name="process-filter-arrangement"]');
 const processFilterPostedSalaryMin = document.querySelector("#process-filter-posted-salary-min");
@@ -234,9 +233,9 @@ function loadProcessFilters() {
 function renderSearchPeriodOptions() {
   if (!searchPeriodFilter || !searchPeriodMenu || !searchPeriodCurrent || !searchPeriodTrigger) return;
   const options = [
-    { value: "all", label: "All search periods" },
-    { value: "unassigned", label: "Unassigned" },
-    ...searchPeriods.map((period) => ({ value: period.id, label: `${period.name} · ${period.start_date} – ${period.end_date}` })),
+    { value: "all", label: "All periods", menuLabel: "All search periods" },
+    { value: "unassigned", label: "Unassigned", menuLabel: "Unassigned" },
+    ...searchPeriods.map((period) => ({ value: period.id, label: period.name, menuLabel: `${period.name} · ${period.start_date} – ${period.end_date || "Ongoing"}` })),
   ];
   const selected = searchPeriods.some((period) => period.id === processFilters.searchPeriod)
     || ["all", "unassigned"].includes(processFilters.searchPeriod) ? processFilters.searchPeriod : "all";
@@ -244,20 +243,22 @@ function renderSearchPeriodOptions() {
   searchPeriodFilter.value = selected;
   const selectedOption = options.find((option) => option.value === selected);
   searchPeriodCurrent.textContent = selectedOption.label;
-  searchPeriodTrigger.setAttribute("aria-label", `Search period: ${selectedOption.label}`);
-  searchPeriodMenu.innerHTML = options.map((option) => `<button type="button" role="radio" aria-checked="${option.value === selected}" data-search-period="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`).join("");
+  searchPeriodTrigger.setAttribute("aria-label", `Search period: ${selectedOption.menuLabel}`);
+  searchPeriodMenu.innerHTML = `
+    <div class="search-period-menu-options">${options.map((option) => `<button type="button" role="radio" aria-checked="${option.value === selected}" data-search-period="${escapeHtml(option.value)}">${escapeHtml(option.menuLabel)}</button>`).join("")}</div>
+    <div class="search-period-menu-footer"><button id="btn-manage-search-periods" type="button">Manage search periods</button></div>`;
 }
 
 function periodForToday() {
   const now = new Date();
   const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
-  return searchPeriods.find((period) => period.start_date <= today && period.end_date >= today);
+  return searchPeriods.find((period) => period.start_date <= today && (!period.end_date || period.end_date >= today));
 }
 
 function searchPeriodOptions(selectedID) {
   return [
     `<option value="">Unassigned</option>`,
-    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</option>`),
+    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Ongoing")}</option>`),
   ].join("");
 }
 
@@ -307,7 +308,6 @@ function renderTechnologyFilterOptions() {
 /** Updates the compact filter count and active filter summary. */
 function updateProcessFilterSummary() {
   const count = Number(processFilters.arrangements.length > 0)
-    + Number(Boolean(processFilters.searchPeriod && processFilters.searchPeriod !== "all"))
     + Number(Boolean(processFilters.expectedSalaryQuery))
     + Number(processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null)
     + Number(Boolean(processFilters.currency))
@@ -334,17 +334,10 @@ function updateProcessFilterSummary() {
 function getProcessFilterChips() {
   return [
     ...processFilters.arrangements.map((value) => ({ category: "arrangement", value, label: ({ remote: "Remote", hybrid: "Hybrid", on_site: "On-site" })[value] || value })),
-    ...getSearchPeriodFilterChips(),
     ...getReferralFilterChips(),
     ...getSalaryFilterChips(),
     ...getTechnologyFilterChips(),
   ];
-}
-
-function getSearchPeriodFilterChips() {
-  if (!processFilters.searchPeriod || processFilters.searchPeriod === "all") return [];
-  const selectedPeriod = searchPeriods.find((period) => period.id === processFilters.searchPeriod);
-  return [{ category: "searchPeriod", value: processFilters.searchPeriod, label: selectedPeriod?.name || "Unassigned" }];
 }
 
 function getReferralFilterChips() {
@@ -575,9 +568,10 @@ function closeDataModal() {
 }
 
 function defaultSearchPeriodName(startDate, endDate) {
-  if (!startDate || !endDate) return "";
+  if (!startDate) return "";
   const formatMonth = (value) => new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
   const startLabel = formatMonth(startDate);
+  if (!endDate) return startLabel;
   const endLabel = formatMonth(endDate);
   return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
 }
@@ -590,7 +584,7 @@ async function openSearchPeriodsModal() {
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
     <div class="modal-header data-transfer-header">
-      <div><div class="modal-title">Search Periods</div><div class="modal-company">Group jobs by the dates of each job search.</div></div>
+      <div><div class="modal-title">Search Periods</div><div class="modal-company">Unassigned cards added within a period’s date range are grouped automatically. Leave the end date blank while the search is active.</div></div>
       <button class="btn-secondary" id="btn-close-search-periods" type="button" aria-label="Close">${icon("close", 18)}</button>
     </div>
     <div class="search-period-manager">
@@ -599,11 +593,11 @@ async function openSearchPeriodsModal() {
         <label>Name<input name="name" maxlength="100" required placeholder="March 2026" /></label>
         <div class="form-grid form-grid-two">
           <label>Start date<input name="start_date" type="date" required /></label>
-          <label>End date<input name="end_date" type="date" required /></label>
+          <label>End date <span class="search-period-optional">Optional · leave blank while the search is active</span><input name="end_date" type="date" /></label>
         </div>
         <div class="search-period-form-actions">
           <button class="btn-primary" type="submit">Create period</button>
-          <button class="btn-secondary" id="btn-cancel-search-period-edit" type="button" hidden>Cancel edit</button>
+          <button class="btn-secondary" id="btn-cancel-search-period-edit" type="button" hidden>Cancel editing</button>
         </div>
       </form>
       <div id="search-period-list" class="search-period-list"></div>
@@ -630,19 +624,19 @@ async function openSearchPeriodsModal() {
   const renderList = () => {
     list.innerHTML = searchPeriods.length ? searchPeriods.map((period) => `
       <article class="search-period-row">
-        <div><strong>${escapeHtml(period.name)}</strong><span>${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</span><small>${period.job_count} job${period.job_count === 1 ? "" : "s"}</small></div>
+        <div><strong>${escapeHtml(period.name)}</strong><span>${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Ongoing")}</span><small>${period.job_count} job${period.job_count === 1 ? "" : "s"}</small></div>
         <div class="search-period-actions">
           <button class="btn-secondary" type="button" data-edit-period="${escapeHtml(period.id)}">Edit</button>
           <button class="btn-secondary" type="button" data-delete-period="${escapeHtml(period.id)}">Delete</button>
         </div>
-      </article>`).join("") : '<p class="search-period-empty">No search periods yet.</p>';
+      </article>`).join("") : '<div class="search-period-empty"><strong>No search periods yet</strong><span>Create one above. Unassigned cards added within its date range will be grouped automatically.</span></div>';
   };
   const reload = async () => {
     searchPeriods = await api.getSearchPeriods();
     renderList();
     renderSearchPeriodOptions();
   };
-  closeButton.addEventListener("click", () => closeManagementModal(manageSearchPeriodsButton));
+  closeButton.addEventListener("click", () => closeManagementModal(searchPeriodTrigger));
   cancelEdit.addEventListener("click", resetForm);
   nameField.addEventListener("input", () => { autoName = false; });
   [startField, endField].forEach((input) => input.addEventListener("change", () => {
@@ -652,10 +646,18 @@ async function openSearchPeriodsModal() {
     event.preventDefault();
     const payload = { name: nameField.value, start_date: startField.value, end_date: endField.value };
     try {
-      if (idField.value) await api.updateSearchPeriod(idField.value, payload);
-      else await api.createSearchPeriod(payload);
+      const isEditing = Boolean(idField.value);
+      let createdPeriod;
+      if (isEditing) await api.updateSearchPeriod(idField.value, payload);
+      else createdPeriod = await api.createSearchPeriod(payload);
       resetForm();
       await reload();
+      if (createdPeriod) {
+        processFilters.searchPeriod = createdPeriod.id;
+        if (searchPeriodFilter) searchPeriodFilter.value = createdPeriod.id;
+        renderSearchPeriodOptions();
+        try { window.localStorage.setItem(PROCESS_FILTER_STORAGE_KEY, JSON.stringify(processFilters)); } catch { /* Keep the new period selected until this page closes. */ }
+      }
       await refreshApp();
       showToast("Search period saved", "success");
     } catch (error) { showToast(error.message, "error"); }
@@ -1110,6 +1112,12 @@ searchPeriodTrigger?.addEventListener("keydown", (event) => {
   (selected || searchPeriodMenu.querySelector("button"))?.focus();
 });
 searchPeriodMenu?.addEventListener("click", (event) => {
+  if (event.target.closest("#btn-manage-search-periods")) {
+    searchPeriodMenu.hidden = true;
+    searchPeriodTrigger?.setAttribute("aria-expanded", "false");
+    openSearchPeriodsModal();
+    return;
+  }
   const option = event.target.closest("[data-search-period]");
   if (!option || !searchPeriodFilter || !searchPeriodTrigger || !searchPeriodMenu) return;
   searchPeriodFilter.value = option.dataset.searchPeriod;
@@ -1126,7 +1134,7 @@ searchPeriodMenu?.addEventListener("keydown", (event) => {
     searchPeriodTrigger?.focus();
     return;
   }
-  const options = [...searchPeriodMenu.querySelectorAll("button")];
+  const options = [...searchPeriodMenu.querySelectorAll('button[role="radio"]')];
   const index = options.indexOf(event.target);
   const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
   if (!direction || !options.length) return;
@@ -1141,11 +1149,6 @@ processFilterChips?.addEventListener("click", (event) => {
 
 function clearProcessFilterCategory(category, value = "") {
   switch (category) {
-    case "searchPeriod":
-      processFilters.searchPeriod = "all";
-      if (searchPeriodFilter) searchPeriodFilter.value = "all";
-      renderSearchPeriodOptions();
-      break;
     case "arrangement": clearArrangementFilter(value); break;
     case "referral": clearReferralFilter(); break;
     case "expectedSalary": clearExpectedSalaryFilter(); break;
@@ -1252,7 +1255,6 @@ searchInput.addEventListener("input", () => {
 searchFocusButton?.addEventListener("click", () => searchInput.focus());
 
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
-manageSearchPeriodsButton?.addEventListener("click", openSearchPeriodsModal);
 dataManagementButton?.addEventListener("click", openDataModal);
 technologyLibraryButton?.addEventListener("click", openTechnologyLibraryModal);
 window.addEventListener("war-room:open-cv-library", openCvLibraryModal);
