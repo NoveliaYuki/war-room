@@ -689,7 +689,8 @@ body.is-resizing-split * {
 .technology-option + .technology-option { border-top: 1px solid var(--border-subtle); }
 .technology-option:hover, .technology-option.is-selected { background: var(--bg-subtle-hover); }
 .technology-option span:last-child { color: var(--text-info); font-size: 11px; }
-.technology-empty, .technology-catalog-hint { margin: 0; color: var(--text-muted); font-size: 11px; }
+.technology-empty { margin: 0; color: var(--text-muted); font-size: 11px; }
+.technology-catalog-manage { min-height: 30px; padding: 5px 9px; font-size: 11px; }
 
 .section-title {
   font-size: 12px;

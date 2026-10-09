@@ -144,6 +144,7 @@ type Job struct {
 	RecruiterFirstContactDate *string         `json:"recruiter_first_contact_date"`
 	CreatedAt                 int64           `json:"created_at"`
 	UpdatedAt                 int64           `json:"updated_at"`
+	SearchPeriodID            *string         `json:"search_period_id"`
 
 	// Derived / populated fields
 	CurrentStageTitle *string       `json:"current_stage_title,omitempty"`
@@ -154,6 +155,17 @@ type Job struct {
 	Attachments       []Attachment  `json:"attachments,omitempty"`
 	SelectedCVVersion *CVVersion    `json:"selected_cv_version"`
 	Technologies      []Technology  `json:"technologies,omitempty"`
+}
+
+// SearchPeriod groups jobs within a user-defined date range.
+type SearchPeriod struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+	JobCount  int    `json:"job_count"`
 }
 
 // Technology represents a canonical technology and its searchable aliases.
@@ -208,6 +220,7 @@ func (snapshot CVVersionSnapshot) CVVersion() CVVersion {
 // RecoverySnapshot atomically stores the job state and CV library metadata.
 type RecoverySnapshot struct {
 	Jobs          []Job               `json:"jobs"`
+	SearchPeriods []SearchPeriod      `json:"search_periods,omitempty"`
 	Technologies  []Technology        `json:"technologies,omitempty"`
 	CVVersions    []CVVersionSnapshot `json:"cv_versions,omitempty"`
 	NextCVVersion int                 `json:"next_cv_version"`
@@ -384,6 +397,7 @@ type CreateJobInput struct {
 	TechnologyIDs             []string         `json:"technology_ids"`
 	ApplicationSentDate       *string          `json:"application_sent_date"`
 	RecruiterFirstContactDate *string          `json:"recruiter_first_contact_date"`
+	SearchPeriodID            *string          `json:"search_period_id"`
 }
 
 // UpdateJobInput contains optional fields accepted when updating a job.
@@ -417,6 +431,14 @@ type UpdateJobInput struct {
 	TechnologyIDs             []string         `json:"technology_ids"`
 	ApplicationSentDate       *string          `json:"application_sent_date"`
 	RecruiterFirstContactDate *string          `json:"recruiter_first_contact_date"`
+	SearchPeriodID            *string          `json:"search_period_id"`
+}
+
+// SearchPeriodInput contains fields accepted when creating or updating a period.
+type SearchPeriodInput struct {
+	Name      string `json:"name"`
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
 }
 
 // CreateStageInput contains fields accepted when creating a stage.

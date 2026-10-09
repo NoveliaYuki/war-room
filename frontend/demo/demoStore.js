@@ -23,6 +23,7 @@ const MAX_ARCHIVE_LOGO_BYTES = 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 10001;
 const CV_VERSIONS_KEY = "war-room-demo-cv-versions-v1";
 const NEXT_CV_VERSION_KEY = "war-room-demo-next-cv-version-v1";
+const SEARCH_PERIODS_KEY = "war-room-demo-search-periods-v1";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function readDemoCvVersions() {
@@ -123,6 +124,34 @@ function migrateDemoTimestamps(records, seededJobs) {
 }
 
 let jobs = loadJobs();
+let searchPeriods = loadSearchPeriods();
+
+function loadSearchPeriods() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(SEARCH_PERIODS_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
+}
+
+function saveSearchPeriods() {
+  try { window.localStorage.setItem(SEARCH_PERIODS_KEY, JSON.stringify(searchPeriods)); } catch { /* Keep periods available for this tab. */ }
+}
+
+function validateSearchPeriod(payload, excludeID = "") {
+  const name = String(payload.name || "").trim();
+  const startDate = String(payload.start_date || "");
+  const endDate = String(payload.end_date || "");
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  const isCalendarDate = (value) => datePattern.test(value)
+    && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (!name || name.length > 100 || !isCalendarDate(startDate) || !isCalendarDate(endDate)
+    || startDate > endDate) throw new Error("Enter a name and valid start and end dates.");
+  if (searchPeriods.some((period) => period.id !== excludeID && period.start_date <= endDate && period.end_date >= startDate)) {
+    throw new Error("Search period dates overlap an existing period.");
+  }
+  return { name, start_date: startDate, end_date: endDate };
+}
 
 function loadTechnologies() {
   try {
@@ -445,7 +474,7 @@ async function readApplicationZip(file) {
   } catch {
     throw new Error("The ZIP backup manifest is not valid JSON.");
   }
-  if (manifest?.format !== "war-room-backup" || ![1, 2, 3].includes(manifest.version) || !Array.isArray(manifest.jobs)) {
+  if (manifest?.format !== "war-room-backup" || ![1, 2, 3, 4].includes(manifest.version) || !Array.isArray(manifest.jobs)) {
     throw new Error("The ZIP is not a supported War Room backup.");
   }
   if (manifest.version === 1 && Array.isArray(manifest.cv_versions) && manifest.cv_versions.length) {
@@ -467,6 +496,21 @@ async function readApplicationZip(file) {
       attachments: Array.isArray(job.attachments) ? job.attachments : [],
     };
   });
+  const periods = Array.isArray(manifest.search_periods) ? clone(manifest.search_periods) : [];
+  periods.sort((left, right) => String(left.start_date).localeCompare(String(right.start_date)));
+  const periodIDs = new Set();
+  periods.forEach((period, index) => {
+    if (!period || typeof period.id !== "string" || !period.id || periodIDs.has(period.id)
+      || typeof period.name !== "string" || !period.name.trim()
+      || !/^\d{4}-\d{2}-\d{2}$/.test(period.start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(period.end_date)
+      || period.start_date > period.end_date || (index > 0 && periods[index - 1].end_date >= period.start_date)) {
+      throw new Error("The ZIP backup contains invalid or overlapping search periods.");
+    }
+    periodIDs.add(period.id);
+  });
+  if (jobs.some((job) => job.search_period_id && !periodIDs.has(job.search_period_id))) {
+    throw new Error("A process refers to a search period missing from the backup.");
+  }
   const logosByDomain = new Map();
   for (const logo of manifest.logos || []) {
     if (typeof logo?.domain !== "string" || typeof logo.path !== "string") throw new Error("The ZIP backup contains invalid company icon metadata.");
@@ -521,7 +565,7 @@ async function readApplicationZip(file) {
     version.stored_file_id = checksum;
     files.set(checksum, new Blob([fileBytes], { type: version.mime_type || "application/pdf" }));
   }
-  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, jobs, technologies: Array.isArray(manifest.technologies) ? manifest.technologies : [], company_logos: companyLogos, files, cv_versions: cvVersions, next_cv_version: manifest.next_cv_version };
+  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, jobs, search_periods: periods, technologies: Array.isArray(manifest.technologies) ? manifest.technologies : [], company_logos: companyLogos, files, cv_versions: cvVersions, next_cv_version: manifest.next_cv_version };
 }
 
 async function sha256(bytes) {
@@ -601,7 +645,7 @@ async function makeZipBackup() {
     seenDomains.add(domain);
   }
   const publicCvVersions = backupCvVersions.map(({ stored_file_id, stored_filename, ...version }) => version);
-  const manifest = { format: "war-room-backup", version: 3, exported_at: new Date().toISOString(), jobs: backupJobs, technologies: clone(technologies), attachment_sha256: attachmentSHA256, cv_versions: publicCvVersions, next_cv_version: getDemoNextCvVersion(backupCvVersions), logos };
+  const manifest = { format: "war-room-backup", version: 4, exported_at: new Date().toISOString(), jobs: backupJobs, search_periods: clone(searchPeriods), technologies: clone(technologies), attachment_sha256: attachmentSHA256, cv_versions: publicCvVersions, next_cv_version: getDemoNextCvVersion(backupCvVersions), logos };
   entries.push(["manifest.json", new TextEncoder().encode(JSON.stringify(manifest))]);
   return createZip(entries);
 }
@@ -704,9 +748,14 @@ function makeJob(payload) {
   const now = Date.now();
   const nowSeconds = Math.floor(now / 1000);
   const id = `demo-job-${crypto.randomUUID()}`;
+  const localToday = new Date();
+  const today = [localToday.getFullYear(), String(localToday.getMonth() + 1).padStart(2, "0"), String(localToday.getDate()).padStart(2, "0")].join("-");
+  const currentPeriod = searchPeriods.find((period) => period.start_date <= today && period.end_date >= today);
+  const requestedPeriod = Object.hasOwn(payload, "search_period_id") ? String(payload.search_period_id || "") : currentPeriod?.id || "";
+  if (requestedPeriod && !searchPeriods.some((period) => period.id === requestedPeriod)) throw new Error("Search period not found");
   const job = {
     id, company_name: payload.company_name || "Unknown", position_title: payload.position_title,
-    status: "ongoing", salary_type: payload.salary_type || "unknown", salary_min: payload.salary_min ?? null,
+    status: "waiting", salary_type: payload.salary_type || "unknown", salary_min: payload.salary_min ?? null,
     salary_max: payload.salary_max ?? null, salary_currency: payload.salary_currency || "EUR",
     recruiter_type: payload.recruiter_type || "none", recruiter_name: payload.recruiter_name || null,
     recruiter_agency: payload.recruiter_agency || null, recruiter_contact: null,
@@ -716,6 +765,7 @@ function makeJob(payload) {
     interview_notes: payload.interview_notes || "", reasons_to_change: payload.reasons_to_change || "",
     experience_notes: payload.experience_notes || "", expected_salary: payload.expected_salary || "",
     work_arrangement: payload.work_arrangement || "unknown", employment_type: payload.employment_type || "unknown",
+    search_period_id: requestedPeriod || null,
     is_referral: Boolean(payload.is_referral), order_index: jobs.length, created_at: nowSeconds, status_changed_at: nowSeconds, updated_at: nowSeconds,
     interviewers: [], stages: [], attachments: [],
     technologies: [],
@@ -750,7 +800,7 @@ export const demoApi = {
   async exportBackup() { return makeZipBackup(); },
   async importBackup(file, allowEmpty = false) {
     const backup = await readApplicationZip(file);
-    const { jobs: importedJobs, technologies: importedTechnologies, logos, cvVersions, nextCVVersion } = validateBackup(backup);
+    const { jobs: importedJobs, search_periods: importedPeriods, technologies: importedTechnologies, logos, cvVersions, nextCVVersion } = validateBackup(backup);
     const files = backup.files;
     if (importedJobs.length === 0 && !allowEmpty) {
       const error = new Error("The backup contains no saved demo processes.");
@@ -762,9 +812,11 @@ export const demoApi = {
     const previousLogos = window.localStorage.getItem(DEMO_LOGOS_STORAGE_KEY);
     const previousCvVersions = window.localStorage.getItem(CV_VERSIONS_KEY);
     const previousNextCVVersion = window.localStorage.getItem(NEXT_CV_VERSION_KEY);
+    const previousSearchPeriods = window.localStorage.getItem(SEARCH_PERIODS_KEY);
     try {
       window.localStorage.setItem(DEMO_LOGOS_STORAGE_KEY, JSON.stringify(logos));
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(importedJobs));
+      window.localStorage.setItem(SEARCH_PERIODS_KEY, JSON.stringify(importedPeriods));
       window.localStorage.setItem(TECHNOLOGY_STORAGE_KEY, JSON.stringify(importedTechnologies));
       saveDemoCvVersions(cvVersions);
       saveDemoNextCvVersion(nextCVVersion);
@@ -781,6 +833,8 @@ export const demoApi = {
         else window.localStorage.setItem(CV_VERSIONS_KEY, previousCvVersions);
         if (previousNextCVVersion === null) window.localStorage.removeItem(NEXT_CV_VERSION_KEY);
         else window.localStorage.setItem(NEXT_CV_VERSION_KEY, previousNextCVVersion);
+        if (previousSearchPeriods === null) window.localStorage.removeItem(SEARCH_PERIODS_KEY);
+        else window.localStorage.setItem(SEARCH_PERIODS_KEY, previousSearchPeriods);
       } catch {
         // Preserve the import error when browser storage is unavailable.
       }
@@ -788,11 +842,35 @@ export const demoApi = {
     }
     cacheDemoLogos(logos);
     jobs = importedJobs;
+    searchPeriods = importedPeriods;
     technologies = importedTechnologies;
     return { success: true };
   },
   async getJobs(status = "all", search = "") {
     return clone(jobs.filter((job) => (status === "all" || job.status === status) && meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index).map(jobWithCurrentTechnologies));
+  },
+  async getSearchPeriods() {
+    return clone(searchPeriods.map((period) => ({ ...period, job_count: jobs.filter((job) => job.search_period_id === period.id).length }))
+      .sort((left, right) => right.start_date.localeCompare(left.start_date)));
+  },
+  async createSearchPeriod(payload) {
+    const valid = validateSearchPeriod(payload);
+    const now = Math.floor(Date.now() / 1000);
+    const period = { id: `demo-period-${crypto.randomUUID()}`, ...valid, created_at: now, updated_at: now };
+    searchPeriods.push(period); saveSearchPeriods(); return clone(period);
+  },
+  async updateSearchPeriod(id, payload) {
+    const period = searchPeriods.find((item) => item.id === String(id));
+    if (!period) throw new Error("Search period not found");
+    Object.assign(period, validateSearchPeriod(payload, period.id), { updated_at: Math.floor(Date.now() / 1000) });
+    saveSearchPeriods(); return clone(period);
+  },
+  async deleteSearchPeriod(id) {
+    const period = searchPeriods.find((item) => item.id === String(id));
+    if (!period) throw new Error("Search period not found");
+    jobs.forEach((job) => { if (job.search_period_id === period.id) job.search_period_id = null; });
+    searchPeriods = searchPeriods.filter((item) => item.id !== period.id);
+    saveSearchPeriods(); save(); return { success: true };
   },
   async getJobCounts() {
     return { all: jobs.length, waiting: jobs.filter((job) => job.status === "waiting").length, ongoing: jobs.filter((job) => job.status === "ongoing").length, accepted: jobs.filter((job) => job.status === "accepted").length, rejected: jobs.filter((job) => job.status === "rejected").length };
@@ -879,13 +957,20 @@ export const demoApi = {
     const job = getJob(id);
     const statusChanged = Object.hasOwn(payload, "status") && payload.status !== job.status;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    if (Object.hasOwn(payload, "technology_ids")) {
-      const ids = payload.technology_ids;
+    const fields = { ...payload };
+    if (Object.hasOwn(fields, "search_period_id")) {
+      const periodID = String(fields.search_period_id || "");
+      if (periodID && !searchPeriods.some((period) => period.id === periodID)) throw new Error("Search period not found");
+      job.search_period_id = periodID || null;
+      delete fields.search_period_id;
+    }
+    if (Object.hasOwn(fields, "technology_ids")) {
+      const ids = fields.technology_ids;
       if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some((technologyID) => !technologies.some((item) => item.id === technologyID))) throw new Error("Choose technologies from the catalog.");
       job.technologies = ids.map((technologyID) => { const item = technologies.find((technology) => technology.id === technologyID); return { id: item.id, name: item.name }; });
-      const { technology_ids: _technologyIDs, ...fields } = payload;
-      Object.assign(job, fields, { updated_at: nowSeconds });
-    } else Object.assign(job, payload, { updated_at: nowSeconds });
+      delete fields.technology_ids;
+    }
+    Object.assign(job, fields, { updated_at: nowSeconds });
     if (statusChanged) job.status_changed_at = nowSeconds;
     refreshDerived(job); save(); return clone(jobWithCurrentTechnologies(job));
   },

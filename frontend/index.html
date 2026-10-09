@@ -83,27 +83,6 @@
           </nav>
 
           <div class="header-search-actions">
-          <div class="search-wrapper">
-            <button type="button" class="search-focus" aria-label="Focus search field">
-              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            </button>
-              <input type="text" id="search-input" class="search-input" aria-label="Search selection processes" placeholder="Search company, title, tag..." />
-              <span class="search-shortcut">/</span>
-            </div>
-
-            <div class="more-actions-menu">
-              <button id="toolbar-more-trigger" class="btn-secondary toolbar-more-trigger" type="button" aria-label="More options" title="More options" aria-haspopup="menu" aria-expanded="false" aria-controls="toolbar-more-options">
-                <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
-              </button>
-              <div class="toolbar-more-options" id="toolbar-more-options" role="menu" aria-label="More options" hidden>
-                <button id="btn-cv-library" class="toolbar-more-option" type="button" role="menuitem">CV Library<span>Manage saved CV versions</span></button>
-                <button id="btn-technology-library" class="toolbar-more-option" type="button" role="menuitem">Manage technologies<span>Maintain the shared technology catalog</span></button>
-                <button id="btn-data-management" class="toolbar-more-option" type="button" role="menuitem">Data &amp; Backups<span>Import or export app data</span></button>
-              </div>
-            </div>
             <button id="btn-new-process" class="btn-primary new-process-trigger" title="New Selection Process" aria-label="New Selection Process">
               <span class="inline-icon-text">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -127,6 +106,16 @@
 
     <main id="main-content">
       <div class="process-toolbar" id="process-toolbar">
+        <div class="search-wrapper process-search">
+          <button type="button" class="search-focus" aria-label="Focus search field">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+          <input type="text" id="search-input" class="search-input" aria-label="Search selection processes" placeholder="Search company, title, tag..." />
+          <span class="search-shortcut">/</span>
+        </div>
         <div class="process-filter-control">
           <button id="process-filter-trigger" class="process-filter-trigger" type="button" aria-expanded="false" aria-controls="process-filter-panel">
             <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="12" r="2"/></svg>
@@ -155,9 +144,21 @@
             <fieldset class="process-filter-technologies"><legend>Tech stack</legend>
               <input id="process-filter-technology-search" type="search" placeholder="Search technologies" autocomplete="off" />
               <div id="process-filter-technology-options" class="process-filter-technology-options" aria-describedby="process-filter-technologies-help"></div>
+              <button id="btn-technology-library" class="btn-secondary process-manage-technologies" type="button">Manage technology catalog</button>
             </fieldset>
             <p id="process-filter-technologies-help" class="process-filter-note">Select one or more technologies; matching roles must include all selected technologies.</p>
           </div>
+        </div>
+        <div class="search-period-control">
+          <label class="visually-hidden" for="search-period-filter">Search period</label>
+          <div class="search-period-select-wrap">
+            <select id="search-period-filter" aria-label="Filter by search period">
+              <option value="all">All search periods</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+            <span class="search-period-select-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
+          </div>
+          <button id="btn-manage-search-periods" class="btn-secondary" type="button">Manage periods</button>
         </div>
         <div id="process-filter-chips" class="process-filter-chips" aria-label="Active filters" aria-live="polite"></div>
         <button id="process-filter-clear" class="process-filter-clear" type="button" hidden>Clear all</button>
@@ -186,6 +187,10 @@
       <div id="cards-grid" class="cards-grid">
         <!-- Rendered dynamically by cardGrid.js -->
       </div>
+      <footer class="settings-data-footer">
+        <div><strong>Settings &amp; data</strong><span>Import or export your local War Room data.</span></div>
+        <button id="btn-data-management" class="btn-secondary" type="button">Data &amp; backups</button>
+      </footer>
     </main>
   </div>
 
