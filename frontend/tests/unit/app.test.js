@@ -288,9 +288,10 @@ describe('application entry point', () => {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await flush();
     expect(mocks.api.createJob).toHaveBeenCalledWith(expect.objectContaining({
-      company_name: 'Unknown', position_title: 'Engineer', salary_type: 'no_max', salary_min: 80000,
+      company_name: 'Unknown', position_title: 'Engineer', status: 'waiting', salary_type: 'no_max', salary_min: 80000,
       salary_max: null, keyword_note: 'remote EU', experience_notes: 'Platform migrations', expected_salary: 'Flexible by scope',
     }));
+    expect(document.querySelector('[data-filter="waiting"]').getAttribute('aria-checked')).toBe('true');
     expect(mocks.showToast).toHaveBeenCalledWith('Selection process created successfully!', 'success');
 
     // Cover keyboard shortcuts while typing, search focus, modal closing, and both salary bounds.
