@@ -247,6 +247,32 @@ func TestProcessDateServiceValidationAndNormalization(t *testing.T) {
 	assertInvalidProcessDates(t, jobs, created.ID)
 }
 
+func TestCreateJobDefaultsToWaitingAndUsesLatestCV(t *testing.T) {
+	_, jobs, repo, _ := newCoverageApp(t)
+	older := &models.CVVersion{ID: "cv-old", Version: 1, OriginalName: "older.pdf", StoredFilename: "older", FileSize: 1, SHA256: "older", UploadedAt: 10}
+	newer := &models.CVVersion{ID: "cv-new", Version: 2, OriginalName: "newer.pdf", StoredFilename: "newer", FileSize: 1, SHA256: "newer", UploadedAt: 20}
+	if err := repo.InsertCVVersion(older); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.InsertCVVersion(newer); err != nil {
+		t.Fatal(err)
+	}
+	noDefaults := false
+	created, err := jobs.CreateJob(models.CreateJobInput{PositionTitle: "Waiting default", CreateDefaultStages: &noDefaults})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Status != models.StatusWaiting {
+		t.Fatalf("status=%q, want waiting", created.Status)
+	}
+	if created.ApplicationSentDate == nil || *created.ApplicationSentDate == "" {
+		t.Fatal("CV sent date was not set")
+	}
+	if created.SelectedCVVersion == nil || created.SelectedCVVersion.ID != newer.ID {
+		t.Fatalf("selected CV=%+v, want latest %q", created.SelectedCVVersion, newer.ID)
+	}
+}
+
 func assertInvalidProcessDates(t *testing.T, jobs *service.JobService, jobID string) {
 	t.Helper()
 	invalidDates := []string{"2030-02-30", "2030-3-4"}

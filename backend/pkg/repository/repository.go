@@ -424,8 +424,8 @@ func (r *Repository) InsertJob(job *models.Job) error {
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
 			employment_type, is_referral, order_index, status_changed_at, application_sent_date,
-			recruiter_first_contact_date, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			recruiter_first_contact_date, created_at, updated_at, cv_version_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		job.ID, job.CompanyName, job.PositionTitle, job.Status, job.SalaryType,
 		job.SalaryMin, job.SalaryMax, job.SalaryCurrency, job.RecruiterType,
@@ -434,9 +434,16 @@ func (r *Repository) InsertJob(job *models.Job) error {
 		job.Description, job.CompanyOverview, job.CompanyDomain, job.InterviewNotes,
 		job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
 		job.WorkArrangement, job.EmploymentType, job.IsReferral, job.OrderIndex, job.StatusChangedAt,
-		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt,
+		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job.SelectedCVVersion),
 	)
 	return err
+}
+
+func selectedCVVersionID(version *models.CVVersion) interface{} {
+	if version == nil {
+		return nil
+	}
+	return version.ID
 }
 
 // UpdateJob updates the fields selected by the service layer.
