@@ -82,6 +82,9 @@ const technologyLibraryButton = document.querySelector("#btn-technology-library"
 const themeToggle = document.querySelector("#btn-theme-toggle");
 const processFilterTrigger = document.querySelector("#process-filter-trigger");
 const searchPeriodFilter = document.querySelector("#search-period-filter");
+const searchPeriodTrigger = document.querySelector("#search-period-trigger");
+const searchPeriodCurrent = document.querySelector("#search-period-current");
+const searchPeriodMenu = document.querySelector("#search-period-menu");
 const manageSearchPeriodsButton = document.querySelector("#btn-manage-search-periods");
 const processFilterPanel = document.querySelector("#process-filter-panel");
 const processFilterArrangements = document.querySelectorAll('input[name="process-filter-arrangement"]');
@@ -229,17 +232,20 @@ function loadProcessFilters() {
 }
 
 function renderSearchPeriodOptions() {
-  if (!searchPeriodFilter) return;
+  if (!searchPeriodFilter || !searchPeriodMenu || !searchPeriodCurrent || !searchPeriodTrigger) return;
   const options = [
-    `<option value="all">All search periods</option>`,
-    `<option value="unassigned">Unassigned</option>`,
-    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}">${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</option>`),
+    { value: "all", label: "All search periods" },
+    { value: "unassigned", label: "Unassigned" },
+    ...searchPeriods.map((period) => ({ value: period.id, label: `${period.name} · ${period.start_date} – ${period.end_date}` })),
   ];
-  searchPeriodFilter.innerHTML = options.join("");
   const selected = searchPeriods.some((period) => period.id === processFilters.searchPeriod)
     || ["all", "unassigned"].includes(processFilters.searchPeriod) ? processFilters.searchPeriod : "all";
   processFilters.searchPeriod = selected;
   searchPeriodFilter.value = selected;
+  const selectedOption = options.find((option) => option.value === selected);
+  searchPeriodCurrent.textContent = selectedOption.label;
+  searchPeriodTrigger.setAttribute("aria-label", `Search period: ${selectedOption.label}`);
+  searchPeriodMenu.innerHTML = options.map((option) => `<button type="button" role="radio" aria-checked="${option.value === selected}" data-search-period="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`).join("");
 }
 
 function periodForToday() {
@@ -1089,6 +1095,44 @@ processFilterExpectedSalary?.addEventListener("change", saveProcessFilters);
 processFilterTechnologySearch?.addEventListener("input", renderTechnologyFilterOptions);
 processFilterTechnologyOptions?.addEventListener("change", saveProcessFilters);
 searchPeriodFilter?.addEventListener("change", saveProcessFilters);
+searchPeriodTrigger?.addEventListener("click", () => {
+  if (!searchPeriodMenu) return;
+  const willOpen = searchPeriodMenu.hidden;
+  searchPeriodMenu.hidden = !willOpen;
+  searchPeriodTrigger.setAttribute("aria-expanded", String(willOpen));
+});
+searchPeriodTrigger?.addEventListener("keydown", (event) => {
+  if (!searchPeriodMenu || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  searchPeriodMenu.hidden = false;
+  searchPeriodTrigger.setAttribute("aria-expanded", "true");
+  const selected = searchPeriodMenu.querySelector('[aria-checked="true"]');
+  (selected || searchPeriodMenu.querySelector("button"))?.focus();
+});
+searchPeriodMenu?.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-search-period]");
+  if (!option || !searchPeriodFilter || !searchPeriodTrigger || !searchPeriodMenu) return;
+  searchPeriodFilter.value = option.dataset.searchPeriod;
+  searchPeriodMenu.hidden = true;
+  searchPeriodTrigger.setAttribute("aria-expanded", "false");
+  saveProcessFilters();
+  searchPeriodTrigger.focus();
+});
+searchPeriodMenu?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    searchPeriodMenu.hidden = true;
+    searchPeriodTrigger?.setAttribute("aria-expanded", "false");
+    searchPeriodTrigger?.focus();
+    return;
+  }
+  const options = [...searchPeriodMenu.querySelectorAll("button")];
+  const index = options.indexOf(event.target);
+  const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+  if (!direction || !options.length) return;
+  event.preventDefault();
+  options[(index + direction + options.length) % options.length]?.focus();
+});
 
 processFilterChips?.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-remove-filter]");
@@ -1100,6 +1144,7 @@ function clearProcessFilterCategory(category, value = "") {
     case "searchPeriod":
       processFilters.searchPeriod = "all";
       if (searchPeriodFilter) searchPeriodFilter.value = "all";
+      renderSearchPeriodOptions();
       break;
     case "arrangement": clearArrangementFilter(value); break;
     case "referral": clearReferralFilter(); break;
@@ -1149,8 +1194,15 @@ processFilterClear?.addEventListener("click", () => {
   processFilters.technologies = [];
   processFilters.searchPeriod = "all";
   if (searchPeriodFilter) searchPeriodFilter.value = "all";
+  renderSearchPeriodOptions();
   renderTechnologyFilterOptions();
   saveProcessFilters();
+});
+
+document.addEventListener("click", (event) => {
+  if (!searchPeriodMenu || searchPeriodMenu.hidden || !(event.target instanceof Element) || event.target.closest(".search-period-select-wrap")) return;
+  searchPeriodMenu.hidden = true;
+  searchPeriodTrigger?.setAttribute("aria-expanded", "false");
 });
 
 filterMenuTrigger?.addEventListener("click", () => {

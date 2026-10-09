@@ -27,7 +27,7 @@ describe('application entry point', () => {
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
       <button id="btn-theme-toggle"></button>
-      <div id="process-toolbar" class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"></button><div id="process-filter-panel" hidden><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div><div class="search-period-control"><select id="search-period-filter"><option value="all">All</option><option value="unassigned">Unassigned</option></select><button id="btn-manage-search-periods"></button></div><div id="process-filter-chips"></div><button id="process-filter-clear" hidden></button><span id="process-filter-count" hidden></span><span id="process-filter-summary"></span><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
+      <div id="process-toolbar" class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"></button><div id="process-filter-panel" hidden><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div><div class="search-period-control"><input id="search-period-filter" type="hidden" value="all"><div class="search-period-select-wrap"><button id="search-period-trigger" aria-expanded="false"><span id="search-period-current"></span></button><div id="search-period-menu" role="radiogroup" hidden></div></div><button id="btn-manage-search-periods"></button></div><div id="process-filter-chips"></div><button id="process-filter-clear" hidden></button><span id="process-filter-count" hidden></span><span id="process-filter-summary"></span><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
       <div id="header-controls"><div class="search-wrapper"><button class="search-focus"></button><input id="search-input"></div>
       <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management" role="menuitem"></button></div></div>
       <nav class="view-controls"><div class="filter-tabs">
@@ -162,10 +162,27 @@ describe('application entry point', () => {
     await vi.waitFor(() => expect(mocks.api.createSearchPeriod).toHaveBeenCalledWith({ name: periodName, start_date: startDate, end_date: endDate }));
     await flush();
     const periodFilter = document.querySelector('#search-period-filter');
-    periodFilter.value = 'period-1';
-    periodFilter.dispatchEvent(new Event('change'));
+    const periodTrigger = document.querySelector('#search-period-trigger');
+    const periodMenu = document.querySelector('#search-period-menu');
+    periodTrigger.click();
+    expect(periodMenu.hidden).toBe(false);
+    periodMenu.click();
+    document.querySelector('[data-search-period="period-1"]').click();
     await flush();
+    expect(periodFilter.value).toBe('period-1');
+    expect(document.querySelector('#search-period-menu').hidden).toBe(true);
     expect([...document.querySelectorAll('.process-filter-chip')].some((chip) => chip.textContent.includes(periodName))).toBe(true);
+    periodTrigger.click();
+    periodTrigger.click();
+    expect(periodMenu.hidden).toBe(true);
+    periodTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    periodTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(periodMenu.hidden).toBe(false);
+    periodMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    periodMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    periodMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    periodMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(periodMenu.hidden).toBe(true);
     document.querySelector('[data-remove-filter="searchPeriod"]').click();
     await flush();
     expect(periodFilter.value).toBe('all');
@@ -236,6 +253,9 @@ describe('application entry point', () => {
     window.confirm = originalConfirm;
     expect(periodFilter.value).toBe('all');
     document.querySelector('#btn-close-search-periods').click();
+    periodTrigger.click();
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(periodMenu.hidden).toBe(true);
     document.querySelector('#btn-new-process').click();
     expect(document.querySelector('#create-search-period').value).toBe('');
     document.querySelector('.btn-cancel').click();
