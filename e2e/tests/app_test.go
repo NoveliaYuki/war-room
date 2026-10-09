@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -707,10 +708,8 @@ func TestJobStatusCyclesThroughEveryValue(t *testing.T) {
 	if err := status.WaitFor(); err != nil {
 		t.Fatalf("wait for editable status: %v", err)
 	}
-	cycleStatusAndVerifyFilter(t, page, card, status, "Ongoing", "Rejected", "rejected")
-	cycleStatusAndVerifyFilter(t, page, card, status, "Rejected", "Approved", "accepted")
-	cycleStatusAndVerifyFilter(t, page, card, status, "Approved", "Waiting", "waiting")
-	cycleStatusAndVerifyFilter(t, page, card, status, "Waiting", "Ongoing", "ongoing")
+	cycleCreatedStatusToOngoing(t, page, card, status)
+	cycleExistingStatuses(t, page, card, status)
 	if err := page.Locator("#detail-modal .modal-close-btn").Click(); err != nil {
 		t.Fatalf("close process details: %v", err)
 	}
@@ -720,22 +719,52 @@ func TestJobStatusCyclesThroughEveryValue(t *testing.T) {
 	if _, err := page.WaitForFunction("() => document.body.dataset.appReady === 'true'", nil); err != nil {
 		t.Fatalf("wait for application after reload: %v", err)
 	}
-	expression := fmt.Sprintf(`() => {
-		const card = Array.from(document.querySelectorAll(".process-card"))
-			.find((item) => item.textContent.includes(%q));
-		return card?.querySelector(".status-pill")?.textContent.trim() === "ongoing";
-	}`, uniqueTitle)
-	if _, err := page.WaitForFunction(expression, nil); err != nil {
-		t.Fatalf("card did not reflect the persisted Ongoing status: %v", err)
+	assertPersistedJobStatus(t, uniqueTitle, "waiting")
+}
+
+func assertPersistedJobStatus(t *testing.T, title, expectedStatus string) {
+	t.Helper()
+	response, err := http.Get(baseURL + "/api/jobs?status=all") // #nosec G107 -- targets the configured local E2E application.
+	if err != nil {
+		t.Fatalf("read persisted jobs: %v", err)
 	}
+	defer func() { _ = response.Body.Close() }()
+	var jobs []struct {
+		PositionTitle string `json:"position_title"`
+		Status        string `json:"status"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&jobs); err != nil {
+		t.Fatalf("decode persisted jobs: %v", err)
+	}
+	for _, job := range jobs {
+		if job.PositionTitle == title {
+			if job.Status != expectedStatus {
+				t.Fatalf("persisted status=%q, want %s", job.Status, expectedStatus)
+			}
+			return
+		}
+	}
+	t.Fatalf("created process %q was not persisted", title)
+}
+
+func cycleCreatedStatusToOngoing(t *testing.T, page playwright.Page, card, status playwright.Locator) {
+	t.Helper()
+	cycleStatusAndVerifyFilter(t, page, card, status, "Waiting", "Ongoing", "ongoing")
+}
+
+func cycleExistingStatuses(t *testing.T, page playwright.Page, card, status playwright.Locator) {
+	t.Helper()
+	cycleStatusAndVerifyFilter(t, page, card, status, "Ongoing", "Rejected", "rejected")
+	cycleStatusAndVerifyFilter(t, page, card, status, "Rejected", "Approved", "accepted")
+	cycleStatusAndVerifyFilter(t, page, card, status, "Approved", "Waiting", "waiting")
 }
 
 func TestCardHoldDragPersistsOrderAndReleasesDragState(t *testing.T) {
 	page := newPage(t)
-	selectSortMode(t, page, "manual")
 	titleA := fmt.Sprintf("E2E Drag Alpha %d", time.Now().UnixNano())
 	titleB := fmt.Sprintf("E2E Drag Beta %d", time.Now().UnixNano())
 	cardA := createStatusCycleProcess(t, page, titleA)
+	selectSortMode(t, page, "manual")
 	cardB := createStatusCycleProcess(t, page, titleB)
 	initialOrder := cardOrder(t, page, titleA, titleB)
 	source, target := cardA, cardB
