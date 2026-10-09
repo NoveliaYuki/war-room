@@ -12,6 +12,13 @@ import (
 	"war-room/backend/pkg/models"
 )
 
+func splitTechnologyAliases(value string) []string {
+	if value == "" {
+		return []string{}
+	}
+	return strings.Split(value, "\n")
+}
+
 type readQueryer interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryRow(query string, args ...any) *sql.Row
@@ -69,7 +76,7 @@ func populateJobTechnologies(reader readQueryer, jobs []models.Job) error {
 		jobs[index].Technologies = []models.Technology{}
 		byID[jobs[index].ID] = index
 	}
-	rows, err := reader.Query(`SELECT jt.job_id, t.id, t.name FROM job_technologies jt JOIN technologies t ON t.id = jt.technology_id ORDER BY t.name COLLATE NOCASE`)
+	rows, err := reader.Query(`SELECT jt.job_id, t.id, t.name, COALESCE((SELECT GROUP_CONCAT(alias, char(10)) FROM (SELECT alias FROM technology_aliases WHERE technology_id = t.id ORDER BY length(alias), alias)), '') FROM job_technologies jt JOIN technologies t ON t.id = jt.technology_id ORDER BY t.name COLLATE NOCASE`)
 	if err != nil {
 		return err
 	}
@@ -77,9 +84,11 @@ func populateJobTechnologies(reader readQueryer, jobs []models.Job) error {
 	for rows.Next() {
 		var jobID string
 		var item models.Technology
-		if err := rows.Scan(&jobID, &item.ID, &item.Name); err != nil {
+		var aliases string
+		if err := rows.Scan(&jobID, &item.ID, &item.Name, &aliases); err != nil {
 			return err
 		}
+		item.Aliases = splitTechnologyAliases(aliases)
 		if index, exists := byID[jobID]; exists {
 			jobs[index].Technologies = append(jobs[index].Technologies, item)
 		}
@@ -97,7 +106,7 @@ func buildJobsQuery(status, search string) (string, []interface{}) {
 			jobs.description, jobs.company_overview, jobs.company_domain, jobs.interview_notes,
 			jobs.reasons_to_change, jobs.experience_notes, jobs.expected_salary, jobs.work_arrangement,
 			jobs.employment_type, jobs.is_referral, jobs.order_index, jobs.status_changed_at,
-			jobs.application_sent_date, jobs.recruiter_first_contact_date, jobs.created_at, jobs.updated_at, jobs.cv_version_id,
+			jobs.application_sent_date, jobs.recruiter_first_contact_date, jobs.created_at, jobs.updated_at, jobs.cv_version_id, jobs.search_period_id,
 			(SELECT COALESCE(custom_title, stage_type) FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_title,
 			(SELECT order_index + 1 FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_index,
 			(SELECT COUNT(*) FROM stages WHERE job_id = jobs.id) as total_stages_count
@@ -127,7 +136,7 @@ func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 	for rows.Next() {
 		var j models.Job
 		var ijJSON sql.NullString
-		var cvVersionID sql.NullString
+		var cvVersionID, searchPeriodID sql.NullString
 		var applicationSentDate, recruiterFirstContactDate sql.NullString
 		err := rows.Scan(
 			&j.ID, &j.CompanyName, &j.PositionTitle, &j.Status, &j.SalaryType,
@@ -136,7 +145,7 @@ func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 			&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 			&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 			&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
+			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID, &searchPeriodID,
 			&j.CurrentStageTitle, &j.CurrentStageIndex, &j.TotalStagesCount,
 		)
 		if err != nil {
@@ -156,6 +165,7 @@ func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 		}
 		j.ApplicationSentDate = nullableStringPointer(applicationSentDate)
 		j.RecruiterFirstContactDate = nullableStringPointer(recruiterFirstContactDate)
+		j.SearchPeriodID = nullableStringPointer(searchPeriodID)
 		jobs = append(jobs, j)
 	}
 	return jobs, nil
@@ -177,13 +187,13 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
 			employment_type, is_referral, order_index, status_changed_at, application_sent_date,
-			recruiter_first_contact_date, created_at, updated_at, cv_version_id
+			recruiter_first_contact_date, created_at, updated_at, cv_version_id, search_period_id
 		FROM jobs WHERE id = ?
 	`, id)
 
 	var j models.Job
 	var ijJSON sql.NullString
-	var cvVersionID sql.NullString
+	var cvVersionID, searchPeriodID sql.NullString
 	var applicationSentDate, recruiterFirstContactDate sql.NullString
 	err := row.Scan(
 		&j.ID, &j.CompanyName, &j.PositionTitle, &j.Status, &j.SalaryType,
@@ -192,7 +202,7 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 		&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 		&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 		&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID,
+		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID, &searchPeriodID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -214,6 +224,7 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 	}
 	j.ApplicationSentDate = nullableStringPointer(applicationSentDate)
 	j.RecruiterFirstContactDate = nullableStringPointer(recruiterFirstContactDate)
+	j.SearchPeriodID = nullableStringPointer(searchPeriodID)
 	jobTechnologies, err := r.JobTechnologies(j.ID)
 	if err != nil {
 		return nil, err
@@ -423,9 +434,9 @@ func (r *Repository) InsertJob(job *models.Job) error {
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
-			employment_type, is_referral, order_index, status_changed_at, application_sent_date,
-			recruiter_first_contact_date, created_at, updated_at, cv_version_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		employment_type, is_referral, order_index, status_changed_at, application_sent_date,
+		recruiter_first_contact_date, created_at, updated_at, cv_version_id, search_period_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		job.ID, job.CompanyName, job.PositionTitle, job.Status, job.SalaryType,
 		job.SalaryMin, job.SalaryMax, job.SalaryCurrency, job.RecruiterType,
@@ -434,7 +445,7 @@ func (r *Repository) InsertJob(job *models.Job) error {
 		job.Description, job.CompanyOverview, job.CompanyDomain, job.InterviewNotes,
 		job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
 		job.WorkArrangement, job.EmploymentType, job.IsReferral, job.OrderIndex, job.StatusChangedAt,
-		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job.SelectedCVVersion),
+		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job.SelectedCVVersion), job.SearchPeriodID,
 	)
 	return err
 }
@@ -457,7 +468,7 @@ func (r *Repository) UpdateJob(id string, fields map[string]interface{}) error {
 		"interview_notes": true, "reasons_to_change": true, "experience_notes": true,
 		"expected_salary": true, "work_arrangement": true, "employment_type": true,
 		"is_referral": true, "order_index": true, "application_sent_date": true,
-		"recruiter_first_contact_date": true,
+		"recruiter_first_contact_date": true, "search_period_id": true,
 	}
 
 	var clauses []string

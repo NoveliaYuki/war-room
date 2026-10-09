@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), getTechnologies: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn(), getCvVersions: vi.fn() },
+  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), getTechnologies: vi.fn(), getSearchPeriods: vi.fn(), createSearchPeriod: vi.fn(), updateSearchPeriod: vi.fn(), deleteSearchPeriod: vi.fn(), createJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn(), getCvVersions: vi.fn() },
   renderCardGrid: vi.fn(), renderScheduleView: vi.fn(), closeWithFlip: vi.fn((_modal, backdrop, done) => {
     backdrop?.classList.remove('active');
     done?.();
@@ -27,7 +27,7 @@ describe('application entry point', () => {
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
       <button id="btn-theme-toggle"></button>
-      <div id="process-toolbar" class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"></button><div id="process-filter-panel" hidden><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div><div id="process-filter-chips"></div><button id="process-filter-clear" hidden></button><span id="process-filter-count" hidden></span><span id="process-filter-summary"></span><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
+      <div id="process-toolbar" class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"></button><div id="process-filter-panel" hidden><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div><div class="search-period-control"><select id="search-period-filter"><option value="all">All</option><option value="unassigned">Unassigned</option></select><button id="btn-manage-search-periods"></button></div><div id="process-filter-chips"></div><button id="process-filter-clear" hidden></button><span id="process-filter-count" hidden></span><span id="process-filter-summary"></span><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
       <div id="header-controls"><div class="search-wrapper"><button class="search-focus"></button><input id="search-input"></div>
       <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management" role="menuitem"></button></div></div>
       <nav class="view-controls"><div class="filter-tabs">
@@ -43,6 +43,7 @@ describe('application entry point', () => {
     mocks.api.getJobCounts.mockResolvedValue({ all: 1, waiting: 0, ongoing: 1, accepted: 0, rejected: 0 });
     mocks.api.getMeetings.mockResolvedValue([]);
     mocks.api.getTechnologies.mockResolvedValue([{ id: 'tech-react', name: 'React' }, { id: 'tech-go', name: 'Go' }]);
+    mocks.api.getSearchPeriods.mockResolvedValue([]);
     let resolveInitialJobs;
     mocks.api.getJobs.mockImplementation(() => new Promise((resolve) => {
       resolveInitialJobs = resolve;
@@ -71,8 +72,179 @@ describe('application entry point', () => {
     mocks.api.getJobs.mockResolvedValue([matchingJob, otherJob]);
     localStorageGet.mockRestore();
     await flush();
+    const searchInput = document.querySelector('#search-input');
+    searchInput.value = 'platform';
+    searchInput.dispatchEvent(new Event('input'));
+    await new Promise((resolve) => setTimeout(resolve, 225));
+    expect(mocks.api.getJobs).toHaveBeenLastCalledWith('ongoing', 'platform');
     expect(document.body.dataset.appReady).toBe('true');
     expect(mocks.renderCardGrid).toHaveBeenCalled();
+    const avatar = document.createElement('img');
+    avatar.dataset.avatarFallback = 'true';
+    const fallback = document.createElement('span');
+    avatar.after(fallback);
+    document.body.append(avatar, fallback);
+    avatar.dispatchEvent(new Event('error', { bubbles: true }));
+    expect(avatar.style.display).toBe('none');
+    expect(fallback.style.display).toBe('block');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('#search-input'));
+    document.querySelector('#search-input').blur();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#new-process-form')).not.toBeNull();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#new-process-form')).toBeNull();
+    document.querySelector('#search-input').focus();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#new-process-form')).toBeNull();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('#search-input'));
+    document.querySelector('#search-input').blur();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true, cancelable: true }));
+    await flush();
+    expect(document.querySelector('[data-filter="waiting"]').getAttribute('aria-checked')).toBe('true');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true, cancelable: true }));
+    await flush();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true, cancelable: true }));
+    await flush();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '4', bubbles: true, cancelable: true }));
+    await flush();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '5', bubbles: true, cancelable: true }));
+    await flush();
+    window.matchMedia = vi.fn(() => ({ matches: true, addEventListener: vi.fn() }));
+    document.querySelector('[data-filter="accepted"]').click();
+    expect(document.activeElement).toBe(document.querySelector('#btn-menu-toggle'));
+    document.querySelector('#tab-schedule').click();
+    await flush();
+    expect(mocks.renderScheduleView).toHaveBeenCalled();
+    document.querySelector('#filter-current-action').click();
+    expect(document.activeElement).toBe(document.querySelector('#btn-menu-toggle'));
+    window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }));
+    document.querySelector('[data-filter="ongoing"]').click();
+    await flush();
+    let currentSearchPeriods = [];
+    mocks.api.getSearchPeriods.mockImplementation(async () => currentSearchPeriods);
+    mocks.api.createSearchPeriod.mockImplementation(async (payload) => {
+      currentSearchPeriods = [{ id: 'period-1', ...payload, job_count: 1 }];
+      return currentSearchPeriods[0];
+    });
+    mocks.api.updateSearchPeriod.mockResolvedValue({ success: true });
+    mocks.api.deleteSearchPeriod.mockImplementation(async () => { currentSearchPeriods = []; return { success: true }; });
+    document.querySelector('#btn-manage-search-periods').click();
+    await flush();
+    let periodForm = document.querySelector('#search-period-form');
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const startDate = `${now.getFullYear()}-${month}-01`;
+    const endDate = `${now.getFullYear()}-${month}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
+    const periodName = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${startDate}T00:00:00Z`));
+    periodForm.elements.start_date.value = startDate;
+    periodForm.elements.start_date.dispatchEvent(new Event('change'));
+    periodForm.elements.end_date.value = endDate;
+    periodForm.elements.end_date.dispatchEvent(new Event('change'));
+    expect(periodForm.elements.name.value).toBe(periodName);
+    periodForm.elements.name.value = '';
+    periodForm.elements.start_date.value = startDate;
+    periodForm.elements.end_date.value = '';
+    periodForm.elements.end_date.dispatchEvent(new Event('change'));
+    expect(periodForm.elements.name.value).toBe('');
+    periodForm.elements.end_date.value = '2026-04-02';
+    periodForm.elements.end_date.dispatchEvent(new Event('change'));
+    expect(periodForm.elements.name.value).toContain('–');
+    periodForm.elements.name.value = periodName;
+    periodForm.elements.end_date.value = endDate;
+    periodForm.elements.end_date.dispatchEvent(new Event('change'));
+    document.querySelector('#btn-cancel-search-period-edit').click();
+    periodForm.elements.name.value = periodName;
+    periodForm.elements.start_date.value = startDate;
+    periodForm.elements.end_date.value = endDate;
+    periodForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(mocks.api.createSearchPeriod).toHaveBeenCalledWith({ name: periodName, start_date: startDate, end_date: endDate }));
+    await flush();
+    const periodFilter = document.querySelector('#search-period-filter');
+    periodFilter.value = 'period-1';
+    periodFilter.dispatchEvent(new Event('change'));
+    await flush();
+    expect([...document.querySelectorAll('.process-filter-chip')].some((chip) => chip.textContent.includes(periodName))).toBe(true);
+    document.querySelector('[data-remove-filter="searchPeriod"]').click();
+    await flush();
+    expect(periodFilter.value).toBe('all');
+    periodFilter.value = 'unassigned';
+    periodFilter.dispatchEvent(new Event('change'));
+    await flush();
+    expect([...document.querySelectorAll('.process-filter-chip')].some((chip) => chip.textContent.includes('Unassigned'))).toBe(true);
+    document.querySelector('[data-remove-filter="searchPeriod"]').click();
+    await flush();
+    document.querySelector('#btn-close-search-periods').click();
+    document.querySelector('#btn-manage-search-periods').click();
+    await flush();
+    const emptyPeriodListForm = document.querySelector('#search-period-form');
+    emptyPeriodListForm.elements.name.value = 'Manual period';
+    emptyPeriodListForm.elements.start_date.value = startDate;
+    emptyPeriodListForm.elements.end_date.value = endDate;
+    mocks.api.createSearchPeriod.mockRejectedValueOnce(new Error('Period overlaps'));
+    emptyPeriodListForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('Period overlaps', 'error');
+    const unmatchedEdit = document.createElement('button');
+    unmatchedEdit.dataset.editPeriod = 'missing-period';
+    document.querySelector('#search-period-list').append(unmatchedEdit);
+    unmatchedEdit.click();
+    const unmatchedDelete = document.createElement('button');
+    unmatchedDelete.dataset.deletePeriod = 'missing-period';
+    document.querySelector('#search-period-list').append(unmatchedDelete);
+    unmatchedDelete.click();
+    expect(mocks.api.deleteSearchPeriod).not.toHaveBeenCalled();
+    document.querySelector('#btn-close-search-periods').click();
+    document.querySelector('#btn-new-process').click();
+    expect(document.querySelector('#create-search-period').value).toBe('period-1');
+    document.querySelector('.btn-cancel').click();
+    document.querySelector('#btn-manage-search-periods').click();
+    await flush();
+    periodForm = document.querySelector('#search-period-form');
+    document.querySelector('[data-edit-period="period-1"]').click();
+    periodForm.elements.name.value = 'Spring search';
+    periodForm.elements.start_date.dispatchEvent(new Event('change'));
+    expect(periodForm.elements.name.value).toBe('Spring search');
+    periodForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(mocks.api.updateSearchPeriod).toHaveBeenCalledWith('period-1', { name: 'Spring search', start_date: startDate, end_date: endDate }));
+    await flush();
+    currentSearchPeriods[0].job_count = 2;
+    document.querySelector('#btn-close-search-periods').click();
+    document.querySelector('#btn-manage-search-periods').click();
+    await flush();
+    expect(document.querySelector('#search-period-list').textContent).toContain('2 jobs');
+    const originalConfirm = window.confirm;
+    window.confirm = vi.fn().mockReturnValue(true);
+    window.confirm.mockReturnValueOnce(false);
+    document.querySelector('[data-delete-period="period-1"]').click();
+    expect(mocks.api.deleteSearchPeriod).not.toHaveBeenCalled();
+    periodFilter.value = 'period-1';
+    periodFilter.dispatchEvent(new Event('change'));
+    await flush();
+    document.querySelector('#btn-close-search-periods').click();
+    document.querySelector('#btn-manage-search-periods').click();
+    await flush();
+    expect(periodFilter.value).toBe('period-1');
+    mocks.api.deleteSearchPeriod.mockRejectedValueOnce(new Error('Delete failed'));
+    document.querySelector('[data-delete-period="period-1"]').click();
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('Delete failed', 'error');
+    document.querySelector('[data-delete-period="period-1"]').click();
+    await vi.waitFor(() => expect(mocks.api.deleteSearchPeriod).toHaveBeenCalledWith('period-1'));
+    await flush();
+    window.confirm = originalConfirm;
+    expect(periodFilter.value).toBe('all');
+    document.querySelector('#btn-close-search-periods').click();
+    document.querySelector('#btn-new-process').click();
+    expect(document.querySelector('#create-search-period').value).toBe('');
+    document.querySelector('.btn-cancel').click();
+    const getPeriods = mocks.api.getSearchPeriods;
+    getPeriods.mockRejectedValueOnce(new Error('Periods unavailable'));
+    document.querySelector('#btn-manage-search-periods').click();
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('Periods unavailable', 'error');
+    document.querySelector('#btn-close-search-periods').click();
     expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-checked')).toBe('true');
     expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-checked')).toBe('false');
     const arrangementFilter = document.querySelector('[name="process-filter-arrangement"][value="remote"]');
@@ -153,6 +325,13 @@ describe('application entry point', () => {
     await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([matchingJob, otherJob]));
     document.querySelector('[data-sort-mode="added-oldest"]').click();
     await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([otherJob, matchingJob]));
+    const viewMenuTrigger = document.querySelector('#filter-menu-trigger');
+    viewMenuTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="waiting"]'));
+    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="ongoing"]'));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(viewMenuTrigger);
     document.querySelector('#process-filter-trigger').click();
     expect(document.querySelector('#process-filter-panel').hidden).toBe(false);
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -188,6 +367,12 @@ describe('application entry point', () => {
     animationFrames.shift()();
     animationFrames.shift()();
     requestAnimationFrame.mockRestore();
+    const requestAnimationFrameFallback = window.requestAnimationFrame;
+    window.requestAnimationFrame = undefined;
+    themeToggle.click();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    window.requestAnimationFrame = requestAnimationFrameFallback;
+    expect(document.documentElement.classList.contains('theme-switching')).toBe(false);
 
     const menuToggle = document.querySelector('#btn-menu-toggle');
     const headerControls = document.querySelector('#header-controls');
@@ -205,205 +390,42 @@ describe('application entry point', () => {
     expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     menuToggle.click();
 
-    document.querySelector('#toolbar-more-trigger').click();
-    expect(document.querySelector('#toolbar-more-options').hidden).toBe(false);
     dataButton.click();
-    expect(document.querySelector('#toolbar-more-options').hidden).toBe(true);
     expect(document.querySelector('#btn-open-cv-library')).toBeNull();
     expect(document.querySelector('.modal-title').textContent).toBe('Data & Backups');
     document.querySelector('#btn-close-data-modal').click();
-    document.querySelector('#toolbar-more-trigger').click();
-    document.querySelector('#btn-cv-library').click();
+    window.dispatchEvent(new Event('war-room:open-cv-library'));
     await flush();
     expect(document.querySelector('.modal-title').textContent).toBe('CV Library');
     expect(document.querySelector('#btn-cv-library-back')).toBeNull();
     document.querySelector('#btn-close-cv-library').click();
     expect(document.querySelector('.modal-title')).toBeNull();
 
-    const moreTrigger = document.querySelector('#toolbar-more-trigger');
-    moreTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(document.querySelector('#btn-cv-library'));
-    document.querySelector('#toolbar-more-options').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(dataButton);
-    document.querySelector('#toolbar-more-options').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(document.querySelector('#btn-cv-library'));
-    document.querySelector('#search-input').focus();
-    document.querySelector('#toolbar-more-options').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    moreTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(dataButton);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-    expect(document.querySelector('#toolbar-more-options').hidden).toBe(true);
-    expect(document.activeElement).toBe(moreTrigger);
-    moreTrigger.click();
-    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(document.querySelector('#toolbar-more-options').hidden).toBe(true);
-
-    document.querySelector('#filter-menu-trigger').click();
-    expect(document.querySelector('#filter-menu').hidden).toBe(false);
-    expect(document.querySelector('#filter-menu-trigger').getAttribute('aria-expanded')).toBe('true');
-    const filterTrigger = document.querySelector('#filter-menu-trigger');
-    filterTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(document.querySelector('[data-filter="waiting"]'));
-    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(document.querySelector('[data-filter="ongoing"]'));
-    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(document.querySelector('[data-filter="waiting"]'));
-    document.querySelector('#search-input').focus();
-    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    filterTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(document.querySelector('[data-filter="invalid"]'));
-    document.querySelector('[data-filter="accepted"]').click();
-    expect(document.querySelector('[data-filter="accepted"]').getAttribute('aria-checked')).toBe('true');
-    expect(document.querySelector('[data-filter="ongoing"]').getAttribute('aria-checked')).toBe('false');
-    expect(document.querySelector('#filter-current-label').textContent).toBe('Accepted');
-    expect(document.querySelector('#filter-menu').hidden).toBe(true);
-    expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
-    expect(headerControls.classList.contains('is-open')).toBe(false);
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '4' }));
-    expect(document.querySelector('[data-filter="rejected"]').classList.contains('active')).toBe(true);
-    document.querySelector('#search-input').value = 'engineer';
-    vi.useFakeTimers();
-    document.querySelector('#search-input').dispatchEvent(new Event('input'));
-    vi.advanceTimersByTime(220);
-    vi.useRealTimers();
+    window.dispatchEvent(new Event('war-room:open-technology-library'));
     await flush();
-    expect(mocks.api.getJobs).toHaveBeenLastCalledWith('rejected', 'engineer');
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '6' }));
+    expect(document.querySelector('.modal-title').textContent).toBe('Technology catalog');
+    document.querySelector('#btn-close-technology-library').click();
     await flush();
-    expect(mocks.renderScheduleView).toHaveBeenCalled();
-    expect(window.localStorage.getItem('war-room.active-filter')).toBe('schedule');
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
-    const form = document.querySelector('#new-process-form');
-    expect(form).not.toBeNull();
-    const keyword = form.querySelector('[name="keyword_note"]');
-    keyword.value = 'remote EU'; keyword.dispatchEvent(new Event('input'));
-    expect(document.querySelector('#keyword-char-count').textContent).toBe('9');
-    form.querySelector('[name="salary_min"]').value = '80000';
-    form.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
-    expect(form.querySelector('[name="salary_type"]').value).toBe('no_max');
-    form.querySelector('[name="position_title"]').value = 'Engineer';
-    form.querySelector('[name="experience_notes"]').value = 'Platform migrations';
-    form.querySelector('[name="expected_salary"]').value = 'Flexible by scope';
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await flush();
-    expect(mocks.api.createJob).toHaveBeenCalledWith(expect.objectContaining({
-      company_name: 'Unknown', position_title: 'Engineer', status: 'waiting', salary_type: 'no_max', salary_min: 80000,
-      salary_max: null, keyword_note: 'remote EU', experience_notes: 'Platform migrations', expected_salary: 'Flexible by scope',
-    }));
-    expect(document.querySelector('[data-filter="waiting"]').getAttribute('aria-checked')).toBe('true');
-    expect(mocks.showToast).toHaveBeenCalledWith('Selection process created successfully!', 'success');
-
-    // Cover keyboard shortcuts while typing, search focus, modal closing, and both salary bounds.
-    document.querySelector('#search-input').focus();
-    document.querySelector('#search-input').blur();
-    menuToggle.click();
-    document.querySelector('#search-input').focus();
-    expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
-    expect(headerControls.classList.contains('is-open')).toBe(true);
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
-    expect(document.querySelector('#new-process-form')).toBeNull();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }));
-    expect(document.querySelector('#new-process-form')).toBeNull();
-    document.querySelector('#search-input').blur();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
-    const secondForm = document.querySelector('#new-process-form');
-    secondForm.querySelector('[name="salary_min"]').value = '80000';
-    secondForm.querySelector('[name="salary_max"]').value = '100000';
-    secondForm.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
-    expect(secondForm.querySelector('[name="salary_type"]').value).toBe('limited');
-    secondForm.querySelector('[name="salary_min"]').value = '';
-    secondForm.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
-    expect(secondForm.querySelector('[name="salary_type"]').value).toBe('no_min');
-    secondForm.querySelector('[name="salary_max"]').value = '';
-    secondForm.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
-    expect(secondForm.querySelector('[name="salary_type"]').value).toBe('no_min');
-    secondForm.querySelector('.btn-cancel').click();
-    expect(mocks.closeWithFlip).toHaveBeenCalled();
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
-    expect(document.activeElement).toBe(document.querySelector('#search-input'));
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', metaKey: true }));
-    expect(document.querySelector('#new-process-form')).toBeNull();
-    document.querySelector('#search-input').blur();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
-    const noSalaryForm = document.querySelector('#new-process-form');
-    expect(noSalaryForm).not.toBeNull();
-    noSalaryForm.querySelector('[name="position_title"]').value = 'Engineer';
-    noSalaryForm.querySelector('[name="salary_type"]').value = 'unknown';
-    noSalaryForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await flush();
-    expect(mocks.api.createJob).toHaveBeenLastCalledWith(expect.objectContaining({
-      salary_type: 'unknown', salary_min: null, salary_max: null,
-    }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
-    expect(document.querySelector('#new-process-form')).not.toBeNull();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(document.querySelector('#detail-modal').innerHTML).toBe('');
-    document.querySelector('#modal-backdrop').classList.remove('active');
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    document.querySelector('#detail-modal').click(); // A modal click must not be treated as a backdrop click.
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true }));
-    expect(document.querySelector('#new-process-form')).toBeNull();
-    document.querySelector('#btn-new-process').click();
-    document.querySelector('#modal-backdrop').click();
-    expect(document.querySelector('#detail-modal').innerHTML).toBe('');
-
-    // Logo error handling ignores unrelated elements and reveals the optional fallback.
-    document.dispatchEvent(new Event('error'));
-    const ignoredImage = document.createElement('img');
-    document.body.append(ignoredImage);
-    ignoredImage.dispatchEvent(new Event('error', { bubbles: true }));
-    expect(ignoredImage.style.display).toBe('');
-    const noFallbackImage = document.createElement('img');
-    noFallbackImage.dataset.avatarFallback = 'true';
-    document.body.append(noFallbackImage);
-    noFallbackImage.dispatchEvent(new Event('error', { bubbles: true }));
-    expect(noFallbackImage.style.display).toBe('none');
-    const avatar = document.createElement('img');
-    const fallback = document.createElement('div');
-    avatar.dataset.avatarFallback = 'true';
-    const avatarWrapper = document.createElement('div');
-    avatarWrapper.append(avatar, fallback);
-    document.body.append(avatarWrapper);
-    avatar.dispatchEvent(new Event('error', { bubbles: true }));
-    expect(avatar.style.display).toBe('none');
-    expect(fallback.style.display).toBe('block');
-
-    document.querySelector('#count-meetings').remove();
-    document.querySelector('[data-filter="all"]').click();
-    await flush();
-    expect(mocks.api.getJobs).toHaveBeenLastCalledWith('all', 'engineer');
-
-    // A failed initial API call is logged and does not escape the event handler.
-    const logError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mocks.api.getJobCounts.mockRejectedValueOnce(new Error('offline'));
-    document.querySelector('[data-filter="all"]').click();
-    await flush();
-    expect(logError).toHaveBeenCalledWith('Failed to load jobs data:', expect.any(Error));
-    logError.mockRestore();
-
-    const localStorageSet = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
-      throw new Error('storage unavailable');
-    });
-    document.querySelector('[data-filter="schedule"]').click();
-    await flush();
-    localStorageSet.mockRestore();
-
-    mocks.api.createJob.mockRejectedValueOnce(new Error('offline'));
-    document.querySelector('#btn-new-process').click();
-    const failedForm = document.querySelector('#new-process-form');
-    failedForm.querySelector('[name="position_title"]').value = 'Unavailable role';
-    failedForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await flush();
-    expect(mocks.showToast).toHaveBeenLastCalledWith('offline', 'error');
+    expect(mocks.api.getTechnologies).toHaveBeenCalled();
 
     document.querySelector('[data-filter="invalid"]').click();
-    expect(document.querySelector('[data-filter="schedule"]').classList.contains('active')).toBe(true);
     document.querySelector('#btn-new-process').click();
     const maxOnlyForm = document.querySelector('#new-process-form');
-    maxOnlyForm.querySelector('[name="salary_max"]').value = '100000';
+    const minInput = maxOnlyForm.querySelector('[name="salary_min"]');
+    const maxInput = maxOnlyForm.querySelector('[name="salary_max"]');
+    minInput.value = '50000';
+    minInput.dispatchEvent(new Event('input'));
+    expect(maxOnlyForm.querySelector('[name="salary_type"]').value).toBe('no_max');
+    maxInput.value = '100000';
+    maxInput.dispatchEvent(new Event('input'));
+    expect(maxOnlyForm.querySelector('[name="salary_type"]').value).toBe('limited');
+    minInput.value = '';
+    minInput.dispatchEvent(new Event('input'));
+    expect(maxOnlyForm.querySelector('[name="salary_type"]').value).toBe('no_min');
+    maxInput.value = '';
+    maxInput.dispatchEvent(new Event('input'));
+    expect(maxOnlyForm.querySelector('[name="salary_type"]').value).toBe('no_min');
+    maxInput.value = '100000';
     maxOnlyForm.querySelector('[name="position_title"]').value = 'Maximum-only role';
     maxOnlyForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await flush();
@@ -411,9 +433,16 @@ describe('application entry point', () => {
       salary_type: 'no_min', salary_min: null, salary_max: 100000,
     }));
 
+    document.querySelector('#btn-new-process').click();
+    const failedCreateForm = document.querySelector('#new-process-form');
+    failedCreateForm.querySelector('[name="position_title"]').value = 'Rejected role';
+    mocks.api.createJob.mockRejectedValueOnce(new Error('Create failed'));
+    failedCreateForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('Create failed', 'error');
+
 
     // Export and import use the same ZIP dialog and confirmation regardless of data adapter.
-    document.querySelector('#toolbar-more-trigger').click();
     dataButton.click();
     expect(document.querySelector('#btn-export-backup').textContent).toContain('ZIP backup');
     expect(document.querySelector('#btn-import-backup').disabled).toBe(true);
@@ -480,7 +509,7 @@ describe('application entry point', () => {
 
     // Reload the module with valid saved filters to cover preference restoration and validation.
     window.localStorage.setItem('war-room.process.filters.v1', JSON.stringify({
-      arrangements: ['remote', 'invalid'], expectedSalaryQuery: 'target', postedSalaryMin: 'invalid',
+      arrangements: ['remote', 'invalid'], searchPeriod: 'removed-period', expectedSalaryQuery: 'target', postedSalaryMin: 'invalid',
       postedSalaryMax: '120000', currency: 'EUR', referral: 'no', technologies: ['tech-react', 3],
     }));
     window.localStorage.setItem('war-room.process.sort.ongoing', 'newest');
@@ -494,9 +523,15 @@ describe('application entry point', () => {
     expect(document.querySelector('#process-filter-currency').value).toBe('EUR');
     expect(document.querySelector('#process-filter-no-referral').checked).toBe(true);
     expect(document.querySelector('#process-sort-current').textContent).toBe('Added · Newest');
+    expect(document.querySelector('#search-period-filter').value).toBe('all');
     document.querySelector('#process-filter-chips').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     document.querySelector('#process-filter-clear').click();
     await flush();
+
+    window.localStorage.setItem('war-room.process.filters.v1', JSON.stringify({ searchPeriod: 42 }));
+    await import('../../public/js/app.js?invalid-search-period-type');
+    await flush();
+    expect(document.querySelector('#search-period-filter').value).toBe('all');
 
     ['process-filter-referral', 'process-filter-no-referral', 'process-filter-any-referral',
       'process-filter-expected-salary', 'process-filter-posted-salary-min',

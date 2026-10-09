@@ -55,6 +55,7 @@ beforeEach(() => {
   toast.mockClear();
   closeWithFlip.mockClear();
   Object.values(calls).forEach((fn) => fn.mockReset().mockResolvedValue({}));
+  api.getSearchPeriods.mockResolvedValue([]);
 });
 
 describe('detail modal', () => {
@@ -364,9 +365,23 @@ describe('detail modal', () => {
     const modal = document.querySelector('#detail-modal');
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
     modal.querySelector('.btn-edit-details').click();
+    await tick();
     expect(modal.querySelector('.edit-process-form')).not.toBeNull();
     modal.querySelector('.btn-cancel-edit').click();
     expect(api.getJob).toHaveBeenCalledWith('job-1');
+  });
+
+  it('lets a job move into a search period from its edit form', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.getSearchPeriods.mockResolvedValue([{ id: 'period-1', name: 'March 2026', start_date: '2026-03-01', end_date: '2026-03-31' }]);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    modal.querySelector('[name="search_period_id"]').value = 'period-1';
+    modal.querySelector('.edit-process-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', expect.objectContaining({ search_period_id: 'period-1' }));
   });
 
   it('logs a missing job and handles request failure', async () => {
@@ -505,6 +520,7 @@ describe('detail modal', () => {
     expect(modal.querySelector('.markdown-field-preview h1').textContent).toBe('Draft');
     document.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
     modal.querySelector('.btn-edit-details').click();
+    await tick();
     await tick();
     expect(api.updateJob).not.toHaveBeenCalledWith('job-1', expect.objectContaining({ company_overview: '# Draft' }));
   });
@@ -990,6 +1006,7 @@ describe('detail modal', () => {
 
     await openDetailModal('job-1');
     modal.querySelector('.btn-edit-details').click();
+    await tick();
     api.updateJob.mockRejectedValueOnce(new Error('job update failed'));
     modal.querySelector('.edit-process-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await tick();
@@ -1001,6 +1018,7 @@ describe('detail modal', () => {
     const modal = document.querySelector('#detail-modal');
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
     modal.querySelector('.btn-edit-details').click();
+    await tick();
     const form = modal.querySelector('.edit-process-form');
     form.querySelector('[name="salary_max"]').value = '';
     form.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
@@ -1027,6 +1045,7 @@ describe('detail modal', () => {
     const modal = document.querySelector('#detail-modal');
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
     modal.querySelector('.btn-edit-details').click();
+    await tick();
     const form = modal.querySelector('.edit-process-form');
     form.querySelector('[name="salary_min"]').value = '';
     form.querySelector('[name="salary_max"]').value = '90000';
@@ -1041,6 +1060,7 @@ describe('detail modal', () => {
 
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
     modal.querySelector('.btn-edit-details').click();
+    await tick();
     const minimumOnlyForm = modal.querySelector('.edit-process-form');
     minimumOnlyForm.querySelector('[name="salary_min"]').value = '70000';
     minimumOnlyForm.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
@@ -1060,6 +1080,7 @@ describe('detail modal', () => {
       expected_salary: '', interview_notes: '' });
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
     modal.querySelector('.btn-edit-details').click();
+    await tick();
     expect(modal.querySelector('[name="is_referral"]')).toHaveProperty('checked', true);
     expect(modal.querySelector('[name="company_domain"]').value).toBe('');
     const emptyRangeForm = modal.querySelector('.edit-process-form');

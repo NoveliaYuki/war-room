@@ -89,7 +89,7 @@ describe("demo CV library backup", () => {
 
     const archive = await demoApi.exportBackup();
     const manifest = await readManifest(archive);
-    expect(manifest.version).toBe(3);
+    expect(manifest.version).toBe(4);
     expect(manifest.cv_versions).toHaveLength(1);
     expect(manifest.cv_versions[0].path).toBe(`cvs/${second.sha256}`);
     expect(manifest.cv_versions[0]).not.toHaveProperty("stored_file_id");

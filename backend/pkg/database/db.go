@@ -226,7 +226,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 11
+const latestSchemaVersion = 12
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -307,14 +307,42 @@ func runLaterSchemaMigration(executor schemaExecutor, version int) error {
 	if version >= 7 && version <= 9 {
 		return runDataSchemaMigration(executor, version)
 	}
+	return runFinalSchemaMigration(executor, version)
+}
+
+func runFinalSchemaMigration(executor schemaExecutor, version int) error {
 	switch version {
 	case 10:
 		return migrateJobStatusChangedAt(executor)
 	case 11:
 		return migrateJobProcessDates(executor)
+	case 12:
+		return migrateSearchPeriods(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
+}
+
+func migrateSearchPeriods(executor schemaExecutor) error {
+	statements := []struct{ sql, description string }{
+		{`CREATE TABLE search_periods (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 100),
+			start_date TEXT NOT NULL,
+			end_date TEXT NOT NULL,
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			CHECK (start_date <= end_date)
+		)`, "create search periods table"},
+		{"ALTER TABLE jobs ADD COLUMN search_period_id TEXT NULL REFERENCES search_periods(id) ON DELETE SET NULL", "add jobs.search_period_id"},
+		{"CREATE INDEX idx_jobs_search_period ON jobs(search_period_id)", "index jobs by search period"},
+	}
+	for _, statement := range statements {
+		if err := executeMigrationSQL(executor, statement.sql, statement.description); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runConstraintSchemaMigration(executor schemaExecutor, version int) error {
@@ -810,6 +838,12 @@ func restoreRecoverySnapshot(db *sql.DB, snapshot models.RecoverySnapshot, attac
 	if err := restoreTechnologyCatalog(tx, snapshot.Technologies); err != nil {
 		return err
 	}
+	for _, period := range snapshot.SearchPeriods {
+		if _, err := tx.Exec(`INSERT INTO search_periods (id, name, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			period.ID, period.Name, period.StartDate, period.EndDate, period.CreatedAt, period.UpdatedAt); err != nil {
+			return fmt.Errorf("restore search period %q: %w", period.ID, err)
+		}
+	}
 	for _, job := range snapshot.Jobs {
 		if err := restoreJob(statements, job, attachmentsDir); err != nil {
 			return err
@@ -900,8 +934,8 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
 		is_referral, order_index, status_changed_at, application_sent_date, recruiter_first_contact_date,
-		created_at, updated_at, cv_version_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			created_at, updated_at, cv_version_id, search_period_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, err
@@ -1065,7 +1099,7 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 		job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
 		job.IsReferral, job.OrderIndex, statusChangedAt, job.ApplicationSentDate, job.RecruiterFirstContactDate,
-		job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job))
+		job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job), job.SearchPeriodID)
 	return err
 }
 

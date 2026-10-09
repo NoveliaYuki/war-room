@@ -216,7 +216,7 @@ func validateTechnologyAssignments(tx *sql.Tx, technologyIDs []string) error {
 
 // JobTechnologies returns canonical catalog items assigned to a job.
 func (r *Repository) JobTechnologies(jobID string) ([]models.Technology, error) {
-	rows, err := r.reader.Query(`SELECT t.id, t.name FROM technologies t JOIN job_technologies jt ON jt.technology_id = t.id WHERE jt.job_id = ? ORDER BY t.name COLLATE NOCASE`, jobID)
+	rows, err := r.reader.Query(`SELECT t.id, t.name, COALESCE((SELECT GROUP_CONCAT(alias, char(10)) FROM (SELECT alias FROM technology_aliases WHERE technology_id = t.id ORDER BY length(alias), alias)), '') FROM technologies t JOIN job_technologies jt ON jt.technology_id = t.id WHERE jt.job_id = ? ORDER BY t.name COLLATE NOCASE`, jobID)
 	if err != nil {
 		return nil, err
 	}
@@ -224,9 +224,11 @@ func (r *Repository) JobTechnologies(jobID string) ([]models.Technology, error) 
 	items := []models.Technology{}
 	for rows.Next() {
 		var item models.Technology
-		if err := rows.Scan(&item.ID, &item.Name); err != nil {
+		var aliases string
+		if err := rows.Scan(&item.ID, &item.Name, &aliases); err != nil {
 			return nil, err
 		}
+		item.Aliases = splitTechnologyAliases(aliases)
 		items = append(items, item)
 	}
 	return items, rows.Err()

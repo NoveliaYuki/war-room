@@ -6,6 +6,7 @@
 import { api } from "./api.js";
 import { renderCardGrid } from "./components/cardGrid.js";
 import { renderScheduleView } from "./components/scheduleView.js";
+import { openDetailModal } from "./components/detailModal.js";
 import { openCvLibrary } from "./components/cvLibrary.js";
 import { openTechnologyLibrary } from "./components/technologyLibrary.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
@@ -53,6 +54,7 @@ let searchDebounceTimer = null;
 let processFilters = loadProcessFilters();
 let availableTechnologies = [];
 let technologiesLoaded = false;
+let searchPeriods = [];
 
 /** Infers the salary type from entered range bounds. */
 function resolveSalaryType(minimum, maximum) {
@@ -72,16 +74,15 @@ const scheduleButton = document.querySelector("#tab-schedule");
 const filterMenu = document.querySelector("#filter-menu");
 const filterMenuTrigger = document.querySelector("#filter-menu-trigger");
 const filterCurrentAction = document.querySelector("#filter-current-action");
-const moreActionsMenu = document.querySelector("#toolbar-more-options");
-const moreActionsTrigger = document.querySelector("#toolbar-more-trigger");
 const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 const dataManagementButton = document.querySelector("#btn-data-management");
-const cvLibraryButton = document.querySelector("#btn-cv-library");
 const technologyLibraryButton = document.querySelector("#btn-technology-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
 const processFilterTrigger = document.querySelector("#process-filter-trigger");
+const searchPeriodFilter = document.querySelector("#search-period-filter");
+const manageSearchPeriodsButton = document.querySelector("#btn-manage-search-periods");
 const processFilterPanel = document.querySelector("#process-filter-panel");
 const processFilterArrangements = document.querySelectorAll('input[name="process-filter-arrangement"]');
 const processFilterPostedSalaryMin = document.querySelector("#process-filter-posted-salary-min");
@@ -99,6 +100,7 @@ const processSortCurrent = document.querySelector("#process-sort-current");
 const processSortMenu = document.querySelector("#process-sort-menu");
 const processSortOptions = document.querySelectorAll("[data-sort-mode]");
 const processFilterAnyReferral = document.querySelector("#process-filter-any-referral");
+let managementReturnJobId = "";
 
 /** Returns the selected theme, falling back to the current system preference. */
 function getActiveTheme() {
@@ -151,15 +153,6 @@ function closeFilterMenu(restoreFocus = false) {
   if (restoreFocus || focusWasInMenu) filterMenuTrigger?.focus();
 }
 
-/** Closes the low-frequency actions menu and restores focus if an item hides. */
-function closeMoreActionsMenu(restoreFocus = false) {
-  if (!moreActionsMenu || moreActionsMenu.hidden) return;
-  const focusWasInMenu = moreActionsMenu.contains(document.activeElement);
-  moreActionsMenu.hidden = true;
-  moreActionsTrigger?.setAttribute("aria-expanded", "false");
-  if (restoreFocus || focusWasInMenu) moreActionsTrigger?.focus();
-}
-
 /** Updates the compact view control with the active view and its current count. */
 function updateFilterSummary() {
   const active = [...filterTabs].find((tab) => tab.getAttribute("data-filter") === currentStatusFilter);
@@ -192,6 +185,9 @@ async function refreshApp() {
     updateFilterSummary();
     updateSortControl();
     await loadAvailableTechnologies();
+    searchPeriods = await api.getSearchPeriods();
+    renderSearchPeriodOptions();
+    updateProcessFilterSummary();
 
     if (currentFilter === "schedule") {
       cardGridEl.classList.add("schedule-mode");
@@ -219,6 +215,7 @@ function loadProcessFilters() {
     const saved = JSON.parse(window.localStorage.getItem(PROCESS_FILTER_STORAGE_KEY) || "{}");
     return {
       arrangements: readSavedArrangements(saved),
+      searchPeriod: typeof saved.searchPeriod === "string" ? saved.searchPeriod : "all",
       expectedSalaryQuery: typeof saved.expectedSalaryQuery === "string" ? saved.expectedSalaryQuery : "",
       postedSalaryMin: parseFilterNumber(saved.postedSalaryMin ?? saved.salaryMin),
       postedSalaryMax: parseFilterNumber(saved.postedSalaryMax ?? saved.salaryMax),
@@ -227,8 +224,35 @@ function loadProcessFilters() {
       technologies: readSavedTechnologies(saved.technologies),
     };
   } catch {
-    return { arrangements: [], expectedSalaryQuery: "", postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [] };
+    return { arrangements: [], searchPeriod: "all", expectedSalaryQuery: "", postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [] };
   }
+}
+
+function renderSearchPeriodOptions() {
+  if (!searchPeriodFilter) return;
+  const options = [
+    `<option value="all">All search periods</option>`,
+    `<option value="unassigned">Unassigned</option>`,
+    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}">${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</option>`),
+  ];
+  searchPeriodFilter.innerHTML = options.join("");
+  const selected = searchPeriods.some((period) => period.id === processFilters.searchPeriod)
+    || ["all", "unassigned"].includes(processFilters.searchPeriod) ? processFilters.searchPeriod : "all";
+  processFilters.searchPeriod = selected;
+  searchPeriodFilter.value = selected;
+}
+
+function periodForToday() {
+  const now = new Date();
+  const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
+  return searchPeriods.find((period) => period.start_date <= today && period.end_date >= today);
+}
+
+function searchPeriodOptions(selectedID) {
+  return [
+    `<option value="">Unassigned</option>`,
+    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</option>`),
+  ].join("");
 }
 
 function readSavedArrangements(saved) {
@@ -277,6 +301,7 @@ function renderTechnologyFilterOptions() {
 /** Updates the compact filter count and active filter summary. */
 function updateProcessFilterSummary() {
   const count = Number(processFilters.arrangements.length > 0)
+    + Number(Boolean(processFilters.searchPeriod && processFilters.searchPeriod !== "all"))
     + Number(Boolean(processFilters.expectedSalaryQuery))
     + Number(processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null)
     + Number(Boolean(processFilters.currency))
@@ -301,14 +326,39 @@ function updateProcessFilterSummary() {
 }
 
 function getProcessFilterChips() {
-  const chips = processFilters.arrangements.map((value) => ({ category: "arrangement", value, label: ({ remote: "Remote", hybrid: "Hybrid", on_site: "On-site" })[value] || value }));
-  if (processFilters.referral) chips.push({ category: "referral", label: processFilters.referral === "yes" ? "Referral" : "No referral" });
+  return [
+    ...processFilters.arrangements.map((value) => ({ category: "arrangement", value, label: ({ remote: "Remote", hybrid: "Hybrid", on_site: "On-site" })[value] || value })),
+    ...getSearchPeriodFilterChips(),
+    ...getReferralFilterChips(),
+    ...getSalaryFilterChips(),
+    ...getTechnologyFilterChips(),
+  ];
+}
+
+function getSearchPeriodFilterChips() {
+  if (!processFilters.searchPeriod || processFilters.searchPeriod === "all") return [];
+  const selectedPeriod = searchPeriods.find((period) => period.id === processFilters.searchPeriod);
+  return [{ category: "searchPeriod", value: processFilters.searchPeriod, label: selectedPeriod?.name || "Unassigned" }];
+}
+
+function getReferralFilterChips() {
+  if (!processFilters.referral) return [];
+  return [{ category: "referral", label: processFilters.referral === "yes" ? "Referral" : "No referral" }];
+}
+
+function getSalaryFilterChips() {
+  const chips = [];
   if (processFilters.expectedSalaryQuery) chips.push({ category: "expectedSalary", label: `Target: ${processFilters.expectedSalaryQuery}` });
   if (processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null || processFilters.currency) {
     const lower = processFilters.postedSalaryMin === null ? "Any" : processFilters.postedSalaryMin.toLocaleString();
     const upper = processFilters.postedSalaryMax === null ? "Any" : processFilters.postedSalaryMax.toLocaleString();
     chips.push({ category: "postingSalary", label: `Posting ${lower}–${upper}${processFilters.currency ? ` ${processFilters.currency}` : ""}` });
   }
+  return chips;
+}
+
+function getTechnologyFilterChips() {
+  const chips = [];
   processFilters.technologies.forEach((id) => {
     const name = availableTechnologies.find((item) => item.id === id)?.name;
     if (name) chips.push({ category: "technology", value: id, label: name });
@@ -334,6 +384,7 @@ function saveProcessFilters() {
   const hiddenSelectedTechnologies = processFilters.technologies.filter((id) => !visibleTechnologyIds.includes(id));
   processFilters = {
     arrangements: [...processFilterArrangements].filter((control) => control.checked).map((control) => control.value),
+    searchPeriod: searchPeriodFilter?.value || "all",
     expectedSalaryQuery: processFilterExpectedSalary?.value.trim() || "",
     postedSalaryMin: parseFilterNumber(processFilterPostedSalaryMin?.value),
     postedSalaryMax: parseFilterNumber(processFilterPostedSalaryMax?.value),
@@ -427,6 +478,7 @@ function buildJobPayload(form) {
     expected_salary: data.get("expected_salary"),
     interview_notes: data.get("interview_notes"),
     is_referral: data.get("is_referral") === "on",
+    search_period_id: data.get("search_period_id") || "",
     create_default_stages: data.get("create_default_stages") === "on",
   };
 }
@@ -508,23 +560,155 @@ function closeManagementModal(focusTarget) {
   modalEl.innerHTML = "";
   resetModalAnimation();
   restoreModalFocus();
-  const compact = window.matchMedia("(max-width: 800px)").matches;
-  (compact ? menuToggle : focusTarget)?.focus();
+  focusTarget?.focus();
 }
 
 /** Closes the data transfer dialog and returns focus to its trigger. */
 function closeDataModal() {
-  closeManagementModal(moreActionsTrigger);
+  closeManagementModal(dataManagementButton);
 }
 
-/** Closes the CV library and returns focus to its trigger. */
+function defaultSearchPeriodName(startDate, endDate) {
+  if (!startDate || !endDate) return "";
+  const formatMonth = (value) => new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+  const startLabel = formatMonth(startDate);
+  const endLabel = formatMonth(endDate);
+  return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+}
+
+async function openSearchPeriodsModal() {
+  closeMobileMenu();
+  cancelPendingFlipClose(true);
+  resetModalAnimation();
+  modalEl.classList.add("data-transfer-modal");
+  backdropEl.classList.add("active");
+  modalEl.innerHTML = `
+    <div class="modal-header data-transfer-header">
+      <div><div class="modal-title">Search Periods</div><div class="modal-company">Group jobs by the dates of each job search.</div></div>
+      <button class="btn-secondary" id="btn-close-search-periods" type="button" aria-label="Close">${icon("close", 18)}</button>
+    </div>
+    <div class="search-period-manager">
+      <form id="search-period-form" class="search-period-form">
+        <input type="hidden" name="id" />
+        <label>Name<input name="name" maxlength="100" required placeholder="March 2026" /></label>
+        <div class="form-grid form-grid-two">
+          <label>Start date<input name="start_date" type="date" required /></label>
+          <label>End date<input name="end_date" type="date" required /></label>
+        </div>
+        <div class="search-period-form-actions">
+          <button class="btn-primary" type="submit">Create period</button>
+          <button class="btn-secondary" id="btn-cancel-search-period-edit" type="button" hidden>Cancel edit</button>
+        </div>
+      </form>
+      <div id="search-period-list" class="search-period-list"></div>
+    </div>`;
+  activateModal(modalEl, "#btn-close-search-periods");
+  const closeButton = modalEl.querySelector("#btn-close-search-periods");
+  const form = modalEl.querySelector("#search-period-form");
+  const list = modalEl.querySelector("#search-period-list");
+  const idField = form.elements.id;
+  const nameField = form.elements.name;
+  const startField = form.elements.start_date;
+  const endField = form.elements.end_date;
+  const submitButton = form.querySelector('[type="submit"]');
+  const cancelEdit = modalEl.querySelector("#btn-cancel-search-period-edit");
+  let autoName = true;
+
+  const resetForm = () => {
+    form.reset();
+    idField.value = "";
+    autoName = true;
+    submitButton.textContent = "Create period";
+    cancelEdit.hidden = true;
+  };
+  const renderList = () => {
+    list.innerHTML = searchPeriods.length ? searchPeriods.map((period) => `
+      <article class="search-period-row">
+        <div><strong>${escapeHtml(period.name)}</strong><span>${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</span><small>${period.job_count} job${period.job_count === 1 ? "" : "s"}</small></div>
+        <div class="search-period-actions">
+          <button class="btn-secondary" type="button" data-edit-period="${escapeHtml(period.id)}">Edit</button>
+          <button class="btn-secondary" type="button" data-delete-period="${escapeHtml(period.id)}">Delete</button>
+        </div>
+      </article>`).join("") : '<p class="search-period-empty">No search periods yet.</p>';
+  };
+  const reload = async () => {
+    searchPeriods = await api.getSearchPeriods();
+    renderList();
+    renderSearchPeriodOptions();
+  };
+  closeButton.addEventListener("click", () => closeManagementModal(manageSearchPeriodsButton));
+  cancelEdit.addEventListener("click", resetForm);
+  nameField.addEventListener("input", () => { autoName = false; });
+  [startField, endField].forEach((input) => input.addEventListener("change", () => {
+    if (autoName || !nameField.value) nameField.value = defaultSearchPeriodName(startField.value, endField.value);
+  }));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = { name: nameField.value, start_date: startField.value, end_date: endField.value };
+    try {
+      if (idField.value) await api.updateSearchPeriod(idField.value, payload);
+      else await api.createSearchPeriod(payload);
+      resetForm();
+      await reload();
+      await refreshApp();
+      showToast("Search period saved", "success");
+    } catch (error) { showToast(error.message, "error"); }
+  });
+  list.addEventListener("click", async (event) => {
+    const editButton = event.target.closest("[data-edit-period]");
+    const deleteButton = event.target.closest("[data-delete-period]");
+    if (editButton) {
+      const period = searchPeriods.find((item) => item.id === editButton.dataset.editPeriod);
+      if (!period) return;
+      idField.value = period.id;
+      nameField.value = period.name;
+      startField.value = period.start_date;
+      endField.value = period.end_date;
+      autoName = false;
+      submitButton.textContent = "Save changes";
+      cancelEdit.hidden = false;
+      nameField.focus();
+    }
+    if (deleteButton) {
+      const period = searchPeriods.find((item) => item.id === deleteButton.dataset.deletePeriod);
+      if (!period || !window.confirm(`Delete “${period.name}”? Its ${period.job_count} job${period.job_count === 1 ? "" : "s"} will become unassigned.`)) return;
+      try {
+        await api.deleteSearchPeriod(period.id);
+        if (processFilters.searchPeriod === period.id) {
+          processFilters.searchPeriod = "all";
+          try { window.localStorage.setItem(PROCESS_FILTER_STORAGE_KEY, JSON.stringify(processFilters)); } catch { /* Keep the filter reset for this session. */ }
+        }
+        await reload();
+        await refreshApp();
+        showToast("Search period deleted; its jobs are unassigned", "success");
+      } catch (error) { showToast(error.message, "error"); }
+    }
+  });
+  try {
+    await reload();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+/** Closes the CV library and returns to the job where it was opened. */
 function closeCvLibraryModal() {
-  closeManagementModal(moreActionsTrigger);
+  const jobId = managementReturnJobId;
+  managementReturnJobId = "";
+  closeManagementModal(dataManagementButton);
+  if (jobId) void openDetailModal(modalEl, backdropEl, jobId, refreshApp);
 }
 
-/** Closes the technology catalog and returns focus to its trigger. */
+/** Closes the technology catalog and returns to its launch context. */
 function closeTechnologyLibraryModal() {
-  closeManagementModal(moreActionsTrigger);
+  const jobId = managementReturnJobId;
+  managementReturnJobId = "";
+  closeManagementModal(jobId ? technologyLibraryButton : processFilterTrigger);
+  if (jobId) void openDetailModal(modalEl, backdropEl, jobId, refreshApp);
+  else {
+    technologiesLoaded = false;
+    void loadAvailableTechnologies();
+  }
 }
 
 /** Closes whichever data or CV view is currently in the shared dialog. */
@@ -546,7 +730,6 @@ function resetModalAnimation() {
 
 /** Opens the data transfer dialog. */
 function openDataModal() {
-  closeMoreActionsMenu();
   closeMobileMenu();
   cancelPendingFlipClose(true);
   resetModalAnimation();
@@ -594,9 +777,9 @@ function openDataModal() {
   importButton.addEventListener("click", () => importBackup(fileInput.files[0]));
 }
 
-/** Opens CV version management directly from the main toolbar. */
-function openCvLibraryModal() {
-  closeMoreActionsMenu();
+/** Opens the CV library from the active job's CV section. */
+function openCvLibraryModal(event) {
+  managementReturnJobId = event?.detail?.jobId || "";
   closeMobileMenu();
   cancelPendingFlipClose(true);
   resetModalAnimation();
@@ -605,9 +788,11 @@ function openCvLibraryModal() {
   openCvLibrary(modalEl, closeCvLibraryModal);
 }
 
-/** Opens shared technology catalog management from the secondary actions menu. */
-function openTechnologyLibraryModal() {
-  closeMoreActionsMenu();
+/** Opens the shared technology catalog from the filter panel or a job detail. */
+function openTechnologyLibraryModal(event) {
+  managementReturnJobId = event?.detail?.jobId || "";
+  if (processFilterPanel) processFilterPanel.hidden = true;
+  processFilterTrigger?.setAttribute("aria-expanded", "false");
   closeMobileMenu();
   cancelPendingFlipClose(true);
   resetModalAnimation();
@@ -675,10 +860,6 @@ function handleEscape(event) {
     closeFilterMenu(true);
     return true;
   }
-  if (moreActionsMenu && !moreActionsMenu.hidden) {
-    closeMoreActionsMenu(true);
-    return true;
-  }
   return false;
 }
 
@@ -726,6 +907,13 @@ function openNewProcessModal() {
           <label class="meta-label">Position Title *</label>
           <input type="text" name="position_title" placeholder="e.g. Senior AI Systems Engineer" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
+      </div>
+
+      <div>
+        <label class="meta-label" for="create-search-period">Search Period</label>
+        <select id="create-search-period" name="search_period_id">
+          ${searchPeriodOptions(periodForToday()?.id || "")}
+        </select>
       </div>
 
       <div class="form-grid form-grid-three">
@@ -900,6 +1088,7 @@ processFilterTrigger?.addEventListener("click", () => {
 processFilterExpectedSalary?.addEventListener("change", saveProcessFilters);
 processFilterTechnologySearch?.addEventListener("input", renderTechnologyFilterOptions);
 processFilterTechnologyOptions?.addEventListener("change", saveProcessFilters);
+searchPeriodFilter?.addEventListener("change", saveProcessFilters);
 
 processFilterChips?.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-remove-filter]");
@@ -908,6 +1097,10 @@ processFilterChips?.addEventListener("click", (event) => {
 
 function clearProcessFilterCategory(category, value = "") {
   switch (category) {
+    case "searchPeriod":
+      processFilters.searchPeriod = "all";
+      if (searchPeriodFilter) searchPeriodFilter.value = "all";
+      break;
     case "arrangement": clearArrangementFilter(value); break;
     case "referral": clearReferralFilter(); break;
     case "expectedSalary": clearExpectedSalaryFilter(); break;
@@ -954,6 +1147,8 @@ processFilterClear?.addEventListener("click", () => {
   if (processFilterNoReferral) processFilterNoReferral.checked = false;
   if (processFilterTechnologySearch) processFilterTechnologySearch.value = "";
   processFilters.technologies = [];
+  processFilters.searchPeriod = "all";
+  if (searchPeriodFilter) searchPeriodFilter.value = "all";
   renderTechnologyFilterOptions();
   saveProcessFilters();
 });
@@ -985,34 +1180,8 @@ filterMenu?.addEventListener("keydown", (event) => {
   }
 });
 
-moreActionsTrigger?.addEventListener("click", () => {
-  if (!moreActionsMenu) return;
-  const willOpen = moreActionsMenu.hidden;
-  moreActionsMenu.hidden = !willOpen;
-  moreActionsTrigger.setAttribute("aria-expanded", String(willOpen));
-});
-
-moreActionsTrigger?.addEventListener("keydown", (event) => {
-  if (!moreActionsMenu || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
-  event.preventDefault();
-  moreActionsMenu.hidden = false;
-  moreActionsTrigger.setAttribute("aria-expanded", "true");
-  const options = [...moreActionsMenu.querySelectorAll('[role="menuitem"]')];
-  (event.key === "ArrowDown" ? options[0] : options.at(-1))?.focus();
-});
-
-moreActionsMenu?.addEventListener("keydown", (event) => {
-  const options = [...moreActionsMenu.querySelectorAll('[role="menuitem"]')];
-  const index = options.indexOf(document.activeElement);
-  if (index < 0 || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
-  event.preventDefault();
-  const direction = event.key === "ArrowDown" ? 1 : -1;
-  options[(index + direction + options.length) % options.length]?.focus();
-});
-
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".filter-tabs")) closeFilterMenu();
-  if (!event.target.closest(".more-actions-menu")) closeMoreActionsMenu();
   if (!event.target.closest(".process-filter-control") && processFilterPanel && !processFilterPanel.hidden) {
     processFilterPanel.hidden = true;
     processFilterTrigger?.setAttribute("aria-expanded", "false");
@@ -1031,9 +1200,11 @@ searchInput.addEventListener("input", () => {
 searchFocusButton?.addEventListener("click", () => searchInput.focus());
 
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
+manageSearchPeriodsButton?.addEventListener("click", openSearchPeriodsModal);
 dataManagementButton?.addEventListener("click", openDataModal);
-cvLibraryButton?.addEventListener("click", openCvLibraryModal);
 technologyLibraryButton?.addEventListener("click", openTechnologyLibraryModal);
+window.addEventListener("war-room:open-cv-library", openCvLibraryModal);
+window.addEventListener("war-room:open-technology-library", openTechnologyLibraryModal);
 menuToggle?.addEventListener("click", () => {
   const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
   menuToggle.setAttribute("aria-expanded", String(!isOpen));

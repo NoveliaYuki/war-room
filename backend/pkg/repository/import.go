@@ -28,6 +28,11 @@ func (r *Repository) ReplaceAllJobsWithCV(jobs []models.Job, versions []models.C
 
 // ReplaceAllWithTechnologyCatalog atomically replaces jobs, their technology catalog, and optional CV data.
 func (r *Repository) ReplaceAllWithTechnologyCatalog(jobs []models.Job, technologies []models.Technology, versions []models.CVVersion, replaceCV bool, nextCVVersion int) error {
+	return r.ReplaceAllWithSearchPeriods(jobs, nil, technologies, versions, replaceCV, nextCVVersion)
+}
+
+// ReplaceAllWithSearchPeriods atomically replaces jobs, periods, technologies, and optional CV data.
+func (r *Repository) ReplaceAllWithSearchPeriods(jobs []models.Job, periods []models.SearchPeriod, technologies []models.Technology, versions []models.CVVersion, replaceCV bool, nextCVVersion int) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -42,6 +47,9 @@ func (r *Repository) ReplaceAllWithTechnologyCatalog(jobs []models.Job, technolo
 		}
 	}
 	if err := insertImportedTechnologies(tx, technologies); err != nil {
+		return err
+	}
+	if err := insertImportedSearchPeriods(tx, periods); err != nil {
 		return err
 	}
 	statements, err := prepareImportStatements(tx)
@@ -64,6 +72,19 @@ func clearImportedData(tx *sql.Tx) error {
 	}
 	if _, err := tx.Exec("DELETE FROM technologies"); err != nil {
 		return fmt.Errorf("clear technology catalog: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM search_periods"); err != nil {
+		return fmt.Errorf("clear search periods: %w", err)
+	}
+	return nil
+}
+
+func insertImportedSearchPeriods(tx *sql.Tx, periods []models.SearchPeriod) error {
+	for _, period := range periods {
+		if _, err := tx.Exec(`INSERT INTO search_periods (id, name, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			period.ID, period.Name, period.StartDate, period.EndDate, period.CreatedAt, period.UpdatedAt); err != nil {
+			return fmt.Errorf("import search period %q: %w", period.ID, err)
+		}
 	}
 	return nil
 }
@@ -143,8 +164,8 @@ func prepareImportStatements(tx *sql.Tx) (*importStatements, error) {
 		interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
 		work_arrangement, employment_type, is_referral, order_index, status_changed_at,
-		application_sent_date, recruiter_first_contact_date, created_at, updated_at, cv_version_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		application_sent_date, recruiter_first_contact_date, created_at, updated_at, cv_version_id, search_period_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +230,7 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 		interviewers, job.JobPostURL, job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary, defaultValue(string(job.WorkArrangement), "unknown"),
 		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, statusChangedAt,
-		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, cvVersionID); err != nil {
+		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, cvVersionID, job.SearchPeriodID); err != nil {
 		return err
 	}
 	for _, technology := range job.Technologies {

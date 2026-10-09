@@ -550,22 +550,21 @@ func TestCompactDesktopKeepsDailyScheduleTabVisible(t *testing.T) {
 			const tabs = document.querySelector(".filter-tabs");
 			const views = document.querySelector(".view-controls");
 			const trigger = document.querySelector("#filter-menu-trigger");
-			const search = document.querySelector(".search-wrapper");
-			const more = document.querySelector(".more-actions-menu");
 			const create = document.querySelector("#btn-new-process");
 			const theme = document.querySelector("#btn-theme-toggle");
 			const bounds = trigger.getBoundingClientRect();
-			return getComputedStyle(document.querySelector("#btn-menu-toggle")).display === "none" &&
-				tabs.scrollWidth <= tabs.clientWidth && bounds.right <= window.innerWidth &&
-				bounds.left >= tabs.getBoundingClientRect().left &&
-				views.getBoundingClientRect().right <= search.getBoundingClientRect().left &&
-				search.getBoundingClientRect().right <= more.getBoundingClientRect().left &&
-				more.getBoundingClientRect().right <= create.getBoundingClientRect().left &&
-				create.getBoundingClientRect().right <= theme.getBoundingClientRect().left &&
-				theme.getBoundingClientRect().right <= window.innerWidth &&
-				document.querySelector(".filter-current-group").innerText.includes(document.querySelector("#filter-current-label").innerText);
+			return [
+				getComputedStyle(document.querySelector("#btn-menu-toggle")).display === "none",
+				tabs.scrollWidth <= tabs.clientWidth, bounds.right <= window.innerWidth,
+				bounds.left >= tabs.getBoundingClientRect().left,
+				views.getBoundingClientRect().right <= create.getBoundingClientRect().left,
+				create.getBoundingClientRect().right <= theme.getBoundingClientRect().left,
+				theme.getBoundingClientRect().right <= window.innerWidth,
+				document.querySelector("#btn-data-management") !== null,
+				document.querySelector(".filter-current-group").innerText.includes(document.querySelector("#filter-current-label").innerText),
+			].map(Boolean).join(",");
 		}`, nil)
-		if err != nil || visibleTab != true {
+		if err != nil || visibleTab != "true,true,true,true,true,true,true,true,true" {
 			t.Fatalf("compact desktop controls overlap or clip the process view selector at %dpx (visible=%v, err=%v)", width, visibleTab, err)
 		}
 		if err := page.Locator("#filter-menu-trigger").Click(); err != nil {
@@ -658,7 +657,7 @@ func assertScheduleViewShowsSavedNotes(t *testing.T, page playwright.Page) {
 	if err != nil || !strings.HasPrefix(strings.TrimSpace(text), "Today (") {
 		t.Fatalf("expected schedule day heading, got %q (err=%v)", text, err)
 	}
-	note := page.Locator(".schedule-container .meeting-note-content")
+	note := page.Locator(".schedule-container .meeting-note-content").First()
 	if err := note.WaitFor(); err != nil {
 		t.Fatalf("saved meeting notes are not visible in schedule view: %v", err)
 	}
@@ -933,9 +932,6 @@ func reopenBackupDuringDetailClose(t *testing.T, page playwright.Page, card play
 
 func openBackupDialog(t *testing.T, page playwright.Page) playwright.Locator {
 	t.Helper()
-	if err := page.Locator("#toolbar-more-trigger").Click(); err != nil {
-		t.Fatalf("open more actions menu: %v", err)
-	}
 	if err := page.Locator("#btn-data-management").Click(); err != nil {
 		t.Fatalf("open data and backups: %v", err)
 	}

@@ -20,6 +20,19 @@ func TestReplaceAllJobsRollsBackWhenImportedRecordCannotBeInserted(t *testing.T)
 	}
 }
 
+func TestReplaceAllSearchPeriodsRollsBackDuplicatePeriodImport(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "kept-job")
+	period := models.SearchPeriod{ID: "duplicate-period", Name: "March", StartDate: "2026-03-01", EndDate: "2026-03-31"}
+	if err := repo.ReplaceAllWithSearchPeriods(nil, []models.SearchPeriod{period, period}, nil, nil, false, 1); err == nil {
+		t.Fatal("duplicate search periods unexpectedly imported")
+	}
+	kept, err := repo.GetJobByID("kept-job")
+	if err != nil || kept == nil {
+		t.Fatalf("failed import did not preserve previous jobs: job=%+v err=%v", kept, err)
+	}
+}
+
 func TestReplaceAllJobsClosesPreparedStatementsWhenSchemaIsIncomplete(t *testing.T) {
 	for _, test := range []struct{ name, renameColumn string }{
 		{name: "job insert", renameColumn: "ALTER TABLE jobs RENAME COLUMN company_name TO saved_company_name"},

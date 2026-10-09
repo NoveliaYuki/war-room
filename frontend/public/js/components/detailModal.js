@@ -285,7 +285,7 @@ function renderSelectedCvVersion(job) {
   const summary = version
     ? `<span class="job-cv-version">CV v${escapeHtml(version.version_number)}${version.original_name ? ` · ${escapeHtml(version.original_name)}` : ""}</span>`
     : '<span class="job-cv-version is-empty">No CV version selected</span>';
-  return `<div class="job-cv-row" id="job-cv-row"><span class="inline-icon-text">${icon("fileText", 13)} CV sent</span>${summary}<button type="button" class="btn-secondary job-cv-change" aria-label="Change CV version">${version ? "Change" : "Select"}</button></div>`;
+  return `<div class="job-cv-row" id="job-cv-row"><span class="inline-icon-text">${icon("fileText", 13)} CV sent</span>${summary}<button type="button" class="btn-secondary job-cv-change" aria-label="Change CV version">${version ? "Change" : "Select"}</button><button type="button" class="btn-secondary job-cv-manage">Manage CV versions</button></div>`;
 }
 
 /** Renders recruiter metadata for the active stage. */
@@ -475,7 +475,7 @@ function renderJobDetailsSection(view) {
             <label class="technology-search-label" for="technology-assignment-search">Add technologies from the catalog</label>
             <input id="technology-assignment-search" class="technology-assignment-search" type="search" autocomplete="off" placeholder="Search technologies…" aria-controls="technology-assignment-options" />
             <div id="technology-assignment-options" class="technology-assignment-options" role="listbox" aria-label="Available technologies" hidden></div>
-            <p class="technology-catalog-hint">Manage the catalog from More options.</p>
+            <button type="button" class="btn-secondary technology-catalog-manage">Manage technology catalog</button>
           </div>
 
           <div class="detail-section">
@@ -768,6 +768,7 @@ function attachModalHandlers(context) {
   bindStageRecruiterFields(handlers);
   bindInterviewerActions(handlers);
   bindJobCvSelection(handlers);
+  bindTechnologyCatalogManagement(handlers);
   bindAttachmentAndStageNavigation(handlers);
   if (activeStage) {
     bindActiveStageActions(handlers);
@@ -821,6 +822,9 @@ function bindTechnologyAssignmentEditor(context) {
 
 /** Binds the compact per-job CV version selector; library management stays in Data & Backups. */
 function bindJobCvSelection({ modalEl, job, refreshModal }) {
+  modalEl.querySelector(".job-cv-manage")?.addEventListener("click", () => {
+    window.dispatchEvent(new CustomEvent("war-room:open-cv-library", { detail: { jobId: job.id } }));
+  });
   modalEl.querySelector(".job-cv-change")?.addEventListener("click", async () => {
     const row = modalEl.querySelector("#job-cv-row");
     const trigger = row?.querySelector(".job-cv-change");
@@ -857,6 +861,13 @@ function bindJobCvSelection({ modalEl, job, refreshModal }) {
       trigger.disabled = false;
       showToast(error.message || "Could not load CV versions", "error");
     }
+  });
+}
+
+/** Opens catalog management from the job's technology section. */
+function bindTechnologyCatalogManagement({ modalEl, job }) {
+  modalEl.querySelector(".technology-catalog-manage")?.addEventListener("click", () => {
+    window.dispatchEvent(new CustomEvent("war-room:open-technology-library", { detail: { jobId: job.id } }));
   });
 }
 
@@ -1628,7 +1639,11 @@ ${renderActiveStageWorkspace(view)}
  * Opens inline edit modal for company, title, salary, recruiter, and URLs.
  */
 /** Renders the editable general job form. */
-function renderEditDetailsMarkup(job) {
+function renderEditDetailsMarkup(job, periods = []) {
+  const searchPeriodOptions = [
+    '<option value="">Unassigned</option>',
+    ...periods.map((period) => `<option value="${escapeAttr(period.id)}" ${period.id === job.search_period_id ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</option>`),
+  ].join("");
   return `
     <div class="modal-header">
       <h2 class="modal-title">Edit Selection Process Details</h2>
@@ -1696,6 +1711,11 @@ function renderEditDetailsMarkup(job) {
           <label class="meta-label">Company Domain (For Logo)</label>
           <input type="text" name="company_domain" value="${formValue(job, "company_domain")}" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
+      </div>
+
+      <div>
+        <label class="meta-label" for="edit-search-period">Search Period</label>
+        <select id="edit-search-period" name="search_period_id">${searchPeriodOptions}</select>
       </div>
 
       <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
@@ -1775,8 +1795,14 @@ function syncSalaryType(minInput, maxInput, salaryTypeSelect) {
   if (type && salaryTypeSelect) salaryTypeSelect.value = type;
 }
 
-function openEditDetailsForm(modalEl, backdropEl, job, onSaved) {
-  modalEl.innerHTML = renderEditDetailsMarkup(job);
+async function openEditDetailsForm(modalEl, backdropEl, job, onSaved) {
+  try {
+    const periods = await api.getSearchPeriods();
+    modalEl.innerHTML = renderEditDetailsMarkup(job, periods);
+  } catch (error) {
+    showToast(error.message, "error");
+    return;
+  }
 
   const form = modalEl.querySelector(".edit-process-form");
   const cancelBtn = modalEl.querySelector(".btn-cancel-edit");
@@ -1799,27 +1825,12 @@ function openEditDetailsForm(modalEl, backdropEl, job, onSaved) {
     try {
       e.preventDefault();
       const data = new FormData(form);
-
-      const minVal = data.get("salary_min");
-      const maxVal = data.get("salary_max");
-      const parsedMin = minVal ? parseInt(minVal, 10) : null;
-      const parsedMax = maxVal ? parseInt(maxVal, 10) : null;
-
-      let derivedSalaryType = data.get("salary_type");
-      if (parsedMin && parsedMax) {
-        derivedSalaryType = "limited";
-      } else if (parsedMin && !parsedMax) {
-        derivedSalaryType = "no_max";
-      } else if (!parsedMin && parsedMax) {
-        derivedSalaryType = "no_min";
-      }
+      const salary = getSalaryUpdateValues(data);
 
       const payload = {
         company_name: data.get("company_name"),
         position_title: data.get("position_title"),
-        salary_type: derivedSalaryType,
-        salary_min: parsedMin,
-        salary_max: parsedMax,
+        ...salary,
         recruiter_type: data.get("recruiter_type"),
         recruiter_name: data.get("recruiter_name"),
         recruiter_agency: data.get("recruiter_agency"),
@@ -1832,6 +1843,7 @@ function openEditDetailsForm(modalEl, backdropEl, job, onSaved) {
         expected_salary: data.get("expected_salary"),
         interview_notes: data.get("interview_notes"),
         is_referral: data.get("is_referral") === "on",
+        search_period_id: data.get("search_period_id") || "",
       };
 
       await api.updateJob(job.id, payload);
@@ -1840,6 +1852,18 @@ function openEditDetailsForm(modalEl, backdropEl, job, onSaved) {
       showToast(err.message, "error");
     }
   });
+}
+
+function getSalaryUpdateValues(data) {
+  const minValue = data.get("salary_min");
+  const maxValue = data.get("salary_max");
+  const salaryMin = minValue ? parseInt(minValue, 10) : null;
+  const salaryMax = maxValue ? parseInt(maxValue, 10) : null;
+  let salaryType = data.get("salary_type");
+  if (salaryMin && salaryMax) salaryType = "limited";
+  else if (salaryMin) salaryType = "no_max";
+  else if (salaryMax) salaryType = "no_min";
+  return { salary_type: salaryType, salary_min: salaryMin, salary_max: salaryMax };
 }
 
 /**

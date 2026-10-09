@@ -36,6 +36,29 @@ func TestAddCVVersionJobReferenceLeavesExistingColumnUntouched(t *testing.T) {
 	}
 }
 
+func TestSearchPeriodMigrationPreservesExistingJobsAsUnassigned(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO schema_migrations (version) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateSchema(db); err != nil {
+		t.Fatalf("apply search period migration: %v", err)
+	}
+	var periodID sql.NullString
+	if err := db.QueryRow("SELECT search_period_id FROM jobs WHERE id = 'legacy-job'").Scan(&periodID); err != nil {
+		t.Fatal(err)
+	}
+	if periodID.Valid {
+		t.Fatalf("legacy job should remain unassigned, got %q", periodID.String)
+	}
+}
+
 func TestInitDBReturnsDatabaseOpenErrors(t *testing.T) {
 	openError := errors.New("driver unavailable")
 	_, err := initDBWithOpener(&config.Config{DBPath: filepath.Join(t.TempDir(), "db.sqlite")}, func(string, string) (*sql.DB, error) {
@@ -411,6 +434,30 @@ func TestRecoverySnapshotRestoresTechnologyCatalogAndAssignments(t *testing.T) {
 	}
 }
 
+func TestRecoverySnapshotRestoresSearchPeriodsAndAssignments(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{DataDir: dir, DBPath: filepath.Join(dir, "recovery-search-period.sqlite"),
+		BackupPath: filepath.Join(dir, "backup.json"), AttachmentsDir: filepath.Join(dir, "attachments"),
+		CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	periodID := "period-march"
+	job := models.Job{ID: "job-march", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone,
+		SearchPeriodID: &periodID}
+	period := models.SearchPeriod{ID: periodID, Name: "March 2026", StartDate: "2026-03-01", EndDate: "2026-03-31"}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: []models.Job{job}, SearchPeriods: []models.SearchPeriod{period}}, cfg.AttachmentsDir, cfg.CVDir); err != nil {
+		t.Fatalf("restore search period snapshot: %v", err)
+	}
+	var got string
+	if err := db.QueryRow("SELECT search_period_id FROM jobs WHERE id = ?", job.ID).Scan(&got); err != nil || got != periodID {
+		t.Fatalf("restored period assignment=%q err=%v", got, err)
+	}
+}
+
 func TestRecoverySnapshotRollsBackInvalidTechnologyReferences(t *testing.T) {
 	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "invalid-technology-recovery.db")}
 	db, err := InitDB(cfg)
@@ -615,7 +662,7 @@ func TestSchemaMigrationDispatchReportsFailures(t *testing.T) {
 	if _, err := dispatchDB.Exec(schemaSQL); err != nil {
 		t.Fatal(err)
 	}
-	for _, version := range []int{4, 5, 6, 7, 8, 9, 10, 11} {
+	for _, version := range []int{4, 5, 6, 7, 8, 9, 10, 11, 12} {
 		if err := runSchemaMigration(dispatchDB, version); err != nil {
 			t.Errorf("migration %d dispatch failed: %v", version, err)
 		}
