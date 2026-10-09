@@ -11,7 +11,7 @@ services:
       HOST: "${BACKEND_HOST:-0.0.0.0}"
       WARROOM_DATA_DIR: /data
       LOGO_LOOKUP_ENABLED: "${LOGO_LOOKUP_ENABLED:-false}"
-      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000},http://frontend"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}"
     volumes:
       - warroom-data:/data
     healthcheck:

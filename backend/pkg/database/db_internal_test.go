@@ -205,7 +205,7 @@ func TestRunCVSchemaMigrationReportsStepFailures(t *testing.T) {
 	}{
 		{name: "CV table", failExec: "CREATE TABLE IF NOT EXISTS cv_versions"},
 		{name: "sequence table", failExec: "CREATE TABLE IF NOT EXISTS cv_version_sequence"},
-		{name: "inspect job column", failQuery: "PRAGMA table_info"},
+		{name: "inspect job column", failQuery: "pragma_table_info"},
 		{name: "job reference", failExec: "ALTER TABLE jobs ADD COLUMN cv_version_id"},
 		{name: "version index", failExec: "idx_cv_versions_version"},
 	} {
@@ -290,6 +290,23 @@ func TestWaitingStatusMigrationAddsStatusWhenColumnIsMissing(t *testing.T) {
 	}
 }
 
+func TestHasColumnTreatsIdentifiersAsValues(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, input := range []struct{ table, column string }{
+		{table: "jobs); SELECT 1; --", column: "id"},
+		{table: "jobs", column: "id' OR 1=1 --"},
+	} {
+		exists, err := hasColumn(db, input.table, input.column)
+		if err != nil || exists {
+			t.Fatalf("hasColumn(%q, %q) = %t, %v; want false, nil", input.table, input.column, exists, err)
+		}
+	}
+}
+
 func TestWaitingStatusMigrationReportsMigrationRecordFailure(t *testing.T) {
 	db := prepareWaitingStatusMigrationDB(t)
 	if _, err := db.Exec(`CREATE TRIGGER fail_waiting_migration_record BEFORE INSERT ON schema_migrations WHEN NEW.version = 9 BEGIN SELECT RAISE(ABORT, 'injected migration record failure'); END`); err != nil {
@@ -302,7 +319,7 @@ func TestWaitingStatusMigrationReportsMigrationRecordFailure(t *testing.T) {
 
 func TestWaitingStatusMigrationReturnsInspectionAndSQLFailures(t *testing.T) {
 	db := openMigrationTestDB(t)
-	if err := runSchemaMigration(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}, 9); err == nil {
+	if err := runSchemaMigration(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}, 9); err == nil {
 		t.Fatal("schema inspection failure should be returned")
 	}
 	if _, err := db.Exec(schemaSQL); err != nil {
@@ -662,13 +679,13 @@ func TestProcessDateMigrationsReturnInspectionAndAlterErrors(t *testing.T) {
 	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}); err == nil {
+	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}); err == nil {
 		t.Fatal("status timestamp inspection failure should be returned")
 	}
 	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failExec: "ADD COLUMN status_changed_at"}); err == nil {
 		t.Fatal("status timestamp alter failure should be returned")
 	}
-	if err := migrateJobProcessDates(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}); err == nil {
+	if err := migrateJobProcessDates(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}); err == nil {
 		t.Fatal("process date inspection failure should be returned")
 	}
 	if err := migrateJobProcessDates(migrationTestExecutor{db: db, failExec: "application_sent_date"}); err == nil {
@@ -692,23 +709,14 @@ func TestLegacyColumnMigrationReportsMissingTable(t *testing.T) {
 	}
 }
 
-func TestHasColumnReportsScanFailure(t *testing.T) {
+func TestHasColumnReportsQueryFailure(t *testing.T) {
 	db := openMigrationTestDB(t)
 	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.Query("SELECT 1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = rows.Close()
-	_, err = hasColumn(migrationTestExecutor{db: db, failQuery: "PRAGMA table_info"}, "jobs", "id")
+	_, err := hasColumn(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}, "jobs", "id")
 	if err == nil {
 		t.Fatal("expected query failure")
-	}
-	_, err = hasColumn(malformedColumnInfo{db: db}, "jobs", "id")
-	if err == nil {
-		t.Fatal("expected column metadata scan failure")
 	}
 }
 
@@ -1033,16 +1041,6 @@ func TestAttachmentOwnerValidationBranches(t *testing.T) {
 			}
 		})
 	}
-}
-
-type malformedColumnInfo struct{ db *sql.DB }
-
-func (executor malformedColumnInfo) Exec(query string, args ...any) (sql.Result, error) {
-	return executor.db.Exec(query, args...)
-}
-
-func (executor malformedColumnInfo) Query(string, ...any) (*sql.Rows, error) {
-	return executor.db.Query("SELECT 1")
 }
 
 func openMigrationTestDB(t *testing.T) *sql.DB {

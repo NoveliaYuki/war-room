@@ -203,7 +203,11 @@ async function refreshApp() {
     const jobs = await api.getJobs(currentFilter, currentSearch);
     const filteredJobs = filterJobs(jobs, processFilters);
     const sortMode = currentFilter === "all" ? "manual" : readSavedSortMode(window.localStorage, currentFilter);
-    renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode);
+    renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode, {
+      filter: currentFilter,
+      totalCount: counts.all,
+      statusCount: counts[currentFilter] ?? counts.all,
+    });
   } catch (err) {
     console.error("Failed to load jobs data:", err);
   }

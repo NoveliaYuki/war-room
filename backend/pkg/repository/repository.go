@@ -469,8 +469,8 @@ func (r *Repository) UpdateJob(id string, fields map[string]interface{}) error {
 	}
 
 	clauses = append(clauses, "updated_at = unixepoch()")
-	// Column names in clauses come only from the allowlist above; values remain parameterized.
-	query := fmt.Sprintf("UPDATE jobs SET %s WHERE id = ?", strings.Join(clauses, ", ")) // #nosec G201
+	// Column names are allowlisted above; values remain parameterized.
+	query := fmt.Sprintf("UPDATE jobs SET %s WHERE id = ?", strings.Join(clauses, ", ")) // #nosec G201 // nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	args = append(args, id)
 
 	res, err := r.db.Exec(query, args...)
@@ -726,8 +726,8 @@ func (r *Repository) UpdateStage(id string, fields map[string]interface{}) error
 		return nil
 	}
 
-	// Column names in clauses come only from the allowlist above; values remain parameterized.
-	query := fmt.Sprintf("UPDATE stages SET %s WHERE id = ?", strings.Join(clauses, ", ")) // #nosec G201
+	// Column names are allowlisted above; values remain parameterized.
+	query := fmt.Sprintf("UPDATE stages SET %s WHERE id = ?", strings.Join(clauses, ", ")) // #nosec G201 // nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	args = append(args, id)
 
 	res, err := r.db.Exec(query, args...)
@@ -911,8 +911,8 @@ func (r *Repository) UpdateQuestion(id string, fields map[string]interface{}) er
 	if len(clauses) == 0 {
 		return nil
 	}
-	// Column names in clauses come only from the allowlist above; values remain parameterized.
-	query := fmt.Sprintf("UPDATE stage_questions SET %s WHERE id = ?", strings.Join(clauses, ", ")) // #nosec G201
+	// Column names are allowlisted above; values remain parameterized.
+	query := fmt.Sprintf("UPDATE stage_questions SET %s WHERE id = ?", strings.Join(clauses, ", ")) // #nosec G201 // nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	args = append(args, id)
 
 	res, err := r.db.Exec(query, args...)

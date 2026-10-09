@@ -119,6 +119,13 @@ describe('cardGrid', () => {
     expect(card.style.touchAction).toBe('none');
   });
 
+  it('keeps cards natively scrollable when automatic ordering is active', () => {
+    const container = document.createElement('main');
+    renderCardGrid(container, [makeJob()], null, null, null, 'added-newest');
+
+    expect(container.querySelector('.process-card').style.touchAction).toBe('pan-y');
+  });
+
   it('expands landscape logos while keeping square logos in the compact frame', () => {
     const { container } = setup([
       makeJob({ id: 'wide-logo', company_name: 'Wide Logo' }),
@@ -224,7 +231,39 @@ describe('cardGrid', () => {
   it('renders the empty state and quick create action', () => {
     const { container } = setup([]);
     expect(container.querySelector('.empty-state').textContent).toContain('No selection processes found');
+    expect(container.querySelector('.btn-create-first-process').textContent).toContain('Create First Selection Process');
     expect(container.querySelector('.btn-create-first-process').getAttribute('onclick')).toBeNull();
+  });
+
+  it.each([
+    ['waiting', 'No waiting processes yet'],
+    ['ongoing', 'No ongoing processes yet'],
+    ['accepted', 'No accepted processes yet'],
+    ['rejected', 'No rejected processes yet'],
+  ])('explains an empty %s tab when other processes exist', (filter, heading) => {
+    const container = document.createElement('main');
+    renderCardGrid(container, [], null, null, null, 'added-newest', {
+      filter,
+      totalCount: 4,
+      statusCount: 0,
+    });
+
+    expect(container.querySelector('.empty-state h3').textContent).toBe(heading);
+    expect(container.querySelector('.empty-state p').textContent).toContain(`Processes you mark as ${filter} will appear here.`);
+    expect(container.querySelector('.btn-create-first-process').textContent).toContain('Create Selection Process');
+    expect(container.querySelector('.btn-create-first-process').textContent).not.toContain('Create First Selection Process');
+  });
+
+  it('shows a filtered-results message when the selected status has processes', () => {
+    const container = document.createElement('main');
+    renderCardGrid(container, [], null, null, null, 'added-newest', {
+      filter: 'accepted',
+      totalCount: 4,
+      statusCount: 1,
+    });
+
+    expect(container.querySelector('.empty-state h3').textContent).toBe('No selection processes match your current search or filters');
+    expect(container.querySelector('.btn-create-first-process').textContent).toContain('Create Selection Process');
   });
 
   it("removes duplicated metadata from role highlights", () => {
