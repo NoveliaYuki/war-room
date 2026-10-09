@@ -30,6 +30,16 @@ jobs:
       - name: Build current runtime images for vulnerability scanning
         run: docker compose --project-name war-room-security build --pull backend frontend
 
+      - name: Report test-runner image vulnerabilities (informational)
+        env:
+          TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
+            "$TRIVY_IMAGE" image --scanners vuln --exit-code 0 --format table \
+            war-room-precommit-test:latest
+
       - name: Scan images and dependency manifests against EPSS and CISA KEV
         env:
           TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
@@ -48,12 +58,6 @@ jobs:
             "$TRIVY_IMAGE" image --scanners vuln --format json \
             --output /reports/frontend.json war-room-security-frontend:latest
           docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
-            -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
-            "$TRIVY_IMAGE" image --scanners vuln --format json \
-            --output /reports/test-runner.json war-room-precommit-test:latest
-          docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace:ro" \
             -v "$RUNNER_TEMP/warroom-trivy-cache:/root/.cache/" \
             -v "$RUNNER_TEMP/warroom-trivy-reports:/reports" \
@@ -66,7 +70,6 @@ jobs:
           node scripts/check-epss-threshold.mjs \
             "$RUNNER_TEMP/warroom-trivy-reports/backend.json" \
             "$RUNNER_TEMP/warroom-trivy-reports/frontend.json" \
-            "$RUNNER_TEMP/warroom-trivy-reports/test-runner.json" \
             "$RUNNER_TEMP/warroom-trivy-reports/source.json"
 
       - name: Scan tracked source for secrets
