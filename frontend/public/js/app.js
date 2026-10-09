@@ -410,7 +410,7 @@ function buildJobPayload(form) {
   return {
     company_name: data.get("company_name") || "Unknown",
     position_title: data.get("position_title"),
-    status: "ongoing",
+    status: "waiting",
     salary_type: resolveSubmittedSalaryType(data, salaryMin, salaryMax),
     salary_min: salaryMin,
     salary_max: salaryMax,
@@ -438,6 +438,7 @@ async function submitNewJobForm(event, form, closeForm) {
     await api.createJob(buildJobPayload(form));
     showToast("Selection process created successfully!", "success");
     closeForm();
+    setFilter("waiting");
     refreshApp();
   } catch (err) {
     showToast(err.message, "error");
@@ -788,7 +789,7 @@ function openNewProcessModal() {
 
       <div>
         <label class="meta-label inline-icon-text">${icon("building", 13)} Company & Role Overview</label>
-        <textarea name="company_overview" rows="3" placeholder="Summarize what the company does and what the role involves." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+        <textarea name="company_overview" rows="3" placeholder="Paste the complete role description from the job posting, preserving its Markdown formatting." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
       </div>
 
       <h3 class="edit-section-heading">My notes</h3>

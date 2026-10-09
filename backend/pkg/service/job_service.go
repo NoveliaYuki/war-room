@@ -105,33 +105,68 @@ func getFullJobDetails(repo *repository.Repository, id string) (*models.Job, err
 
 // CreateJob validates and persists a job and its default stages.
 func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error) {
-	if input.TechnologyIDs != nil {
-		if err := s.validateJobTechnologyIDs(input.TechnologyIDs); err != nil {
-			return nil, err
-		}
+	if err := s.validateCreateTechnologies(input.TechnologyIDs); err != nil {
+		return nil, err
 	}
 	job, err := buildJob(input)
 	if err != nil {
 		return nil, err
 	}
 	job.ID = uuid.NewString()
+	if err := s.assignLatestCV(job); err != nil {
+		return nil, err
+	}
 	if err := s.repo.InsertJob(job); err != nil {
 		return nil, err
 	}
-	if input.TechnologyIDs != nil {
-		if err := s.repo.SetJobTechnologies(job.ID, input.TechnologyIDs); err != nil {
-			_ = s.repo.DeleteJob(job.ID)
-			return nil, fmt.Errorf("%w: %v", ErrInvalidField, err)
-		}
+	if err := s.assignCreateTechnologies(job, input.TechnologyIDs); err != nil {
+		_ = s.repo.DeleteJob(job.ID)
+		return nil, err
 	}
-	if input.CreateDefaultStages == nil || *input.CreateDefaultStages {
-		if err := s.createDefaultStages(job, input); err != nil {
-			_ = s.repo.DeleteJob(job.ID)
-			return nil, err
-		}
+	if err := s.createStagesIfRequested(job, input); err != nil {
+		_ = s.repo.DeleteJob(job.ID)
+		return nil, err
 	}
 	s.mirrorAfterMutation()
 	return s.GetFullJobDetails(job.ID)
+}
+
+func (s *JobService) validateCreateTechnologies(ids []string) error {
+	if ids == nil {
+		return nil
+	}
+	return s.validateJobTechnologyIDs(ids)
+}
+
+func (s *JobService) assignCreateTechnologies(job *models.Job, ids []string) error {
+	if ids == nil {
+		return nil
+	}
+	if err := s.repo.SetJobTechnologies(job.ID, ids); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidField, err)
+	}
+	return nil
+}
+
+func (s *JobService) createStagesIfRequested(job *models.Job, input models.CreateJobInput) error {
+	if input.CreateDefaultStages != nil && !*input.CreateDefaultStages {
+		return nil
+	}
+	return s.createDefaultStages(job, input)
+}
+
+func (s *JobService) assignLatestCV(job *models.Job) error {
+	if job.IsReferral {
+		return nil
+	}
+	versions, err := s.repo.ListCVVersions()
+	if err != nil {
+		return err
+	}
+	if len(versions) > 0 {
+		job.SelectedCVVersion = &versions[0]
+	}
+	return nil
 }
 
 func buildJob(input models.CreateJobInput) (*models.Job, error) {
@@ -153,17 +188,20 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 	keyword := normalizeKeyword(input.KeywordNote)
 	avatar := jobAvatar(company, position, input.AvatarSeed)
 	salaryType, minSalary, maxSalary := normalizeSalary(input)
-	status, recruiterType, currency := models.StatusOngoing, models.RecruiterNone, "EUR"
+	status, recruiterType, currency := defaultJobCreationValues()
 	if input.Status != nil {
 		status = *input.Status
 	}
 	if input.RecruiterType != nil {
 		recruiterType = *input.RecruiterType
 	}
-	if input.SalaryCurrency != nil && *input.SalaryCurrency != "" {
-		currency = *input.SalaryCurrency
-	}
+	currency = submittedCurrency(input.SalaryCurrency, currency)
 	referral := input.IsReferral != nil && *input.IsReferral
+	applicationSentDate := normalizeOptionalDate(input.ApplicationSentDate)
+	if !referral && applicationSentDate == nil {
+		today := time.Now().Format("2006-01-02")
+		applicationSentDate = &today
+	}
 	return &models.Job{
 		CompanyName: company, PositionTitle: position, Status: status,
 		SalaryType: salaryType, SalaryMin: minSalary, SalaryMax: maxSalary,
@@ -173,7 +211,7 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 		JobPostURL: input.JobPostURL, AvatarSeed: avatar, KeywordNote: keyword,
 		Description: valueOrEmpty(input.Description), CompanyOverview: valueOrEmpty(input.CompanyOverview),
 		CompanyDomain: input.CompanyDomain, InterviewNotes: valueOrEmpty(input.InterviewNotes),
-		ApplicationSentDate:       normalizeOptionalDate(input.ApplicationSentDate),
+		ApplicationSentDate:       applicationSentDate,
 		RecruiterFirstContactDate: normalizeOptionalDate(input.RecruiterFirstContactDate),
 		ReasonsToChange:           valueOrEmpty(input.ReasonsToChange),
 		ExperienceNotes:           strings.TrimSpace(valueOrEmpty(input.ExperienceNotes)),
@@ -183,6 +221,17 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 		IsReferral:                referral,
 		Technologies:              []models.Technology{},
 	}, nil
+}
+
+func submittedCurrency(value *string, fallback string) string {
+	if value == nil || *value == "" {
+		return fallback
+	}
+	return *value
+}
+
+func defaultJobCreationValues() (models.JobStatus, models.RecruiterType, string) {
+	return models.StatusWaiting, models.RecruiterNone, "EUR"
 }
 
 func validateCreateJobEnums(input models.CreateJobInput) error {
