@@ -24,12 +24,21 @@
 
 .process-filter-control { position: relative; }
 .search-period-control { display: inline-flex; align-items: center; gap: 8px; }
-.search-period-select-wrap { position: relative; min-width: 0; }
-.search-period-control select { display: block; min-height: 38px; max-width: 290px; appearance: none; -webkit-appearance: none; padding: 7px 38px 7px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: 500 12px var(--font-sans); line-height: 1.2; cursor: pointer; }
-.search-period-control select:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
-.search-period-select-chevron { position: absolute; top: 50%; right: 12px; width: 14px; height: 14px; color: var(--text-muted); transform: translateY(-50%); pointer-events: none; }
+.search-period-select-wrap { position: relative; width: 290px; min-width: 0; }
+.search-period-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 38px; padding: 7px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: 500 12px var(--font-sans); line-height: 1.2; text-align: left; cursor: pointer; }
+.search-period-trigger:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.search-period-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-period-select-chevron { flex: 0 0 14px; width: 14px; height: 14px; color: var(--text-muted); transition: transform .15s ease; }
+.search-period-trigger[aria-expanded="true"] .search-period-select-chevron { transform: rotate(180deg); }
+.search-period-menu { position: absolute; z-index: 30; top: calc(100% + 5px); left: 0; display: grid; width: 100%; max-height: min(280px, 50vh); overflow: auto; padding: 4px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface-elevated); box-shadow: var(--shadow-lg); }
+.search-period-menu[hidden] { display: none; }
+.search-period-menu button { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 34px; padding: 7px 9px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font: 500 12px var(--font-sans); text-align: left; cursor: pointer; }
+.search-period-menu button::before { flex: 0 0 14px; width: 14px; color: transparent; content: "✓"; }
+.search-period-menu button[aria-checked="true"] { background: var(--bg-surface); color: var(--text-primary); }
+.search-period-menu button[aria-checked="true"]::before { color: var(--accent-blue); }
+.search-period-menu button:hover { background: var(--bg-surface); color: var(--text-primary); }
+.search-period-menu button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
 .search-period-control .btn-secondary { min-height: 32px; padding: 5px 9px; font-size: 11px; }
-.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .process-filter-trigger,
 .process-sort-trigger {
   display: inline-flex;
@@ -190,8 +199,7 @@
   .process-filter-clear { grid-column: 1; justify-self: start; }
   .process-filter-summary { grid-column: 1 / -1; }
   .search-period-control { grid-column: 1 / -1; display: flex; }
-  .search-period-select-wrap { flex: 1 1 auto; }
-  .search-period-control select { width: 100%; min-width: 0; max-width: none; }
+  .search-period-select-wrap { flex: 1 1 auto; width: auto; }
   .process-filter-panel { width: min(310px, calc(100vw - 36px)); }
   .process-filter-arrangements { grid-template-columns: 1fr 1fr; }
   .process-filter-arrangements label { min-height: 28px; }
