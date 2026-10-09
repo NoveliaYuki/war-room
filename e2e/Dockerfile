@@ -3,7 +3,9 @@ WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-FROM golangci/golangci-lint:v2.14.0 AS golangci
+# Rebuild the linter with patched Go standard-library security fixes.
+FROM golang:1.27.2-bookworm AS golangci
+RUN GOBIN=/out go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 
 FROM mcr.microsoft.com/playwright:v1.64.0-noble
 RUN apt-get update \
@@ -12,7 +14,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=go-runtime /usr/local/go /usr/local/go
 COPY --from=go-runtime /go/pkg/mod /go/pkg/mod
-COPY --from=golangci /usr/bin/golangci-lint /usr/bin/golangci-lint
+COPY --from=golangci /out/golangci-lint /usr/bin/golangci-lint
 ENV PATH="/usr/local/go/bin:${PATH}" GOCACHE=/tmp/go-cache CI=true
 
 WORKDIR /workspace
