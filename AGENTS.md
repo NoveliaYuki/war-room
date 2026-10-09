@@ -83,6 +83,7 @@ Check both `/` and `/?demo` at phone-sized viewports in Firefox, Google Chrome, 
 - Keep production Docker images multi-stage and minimal. Health checks run every 5 seconds; the test runner must wait for both isolated test services to be healthy.
 - Use the root `VERSION` file as the only application release version for the frontend and backend together. Change only this file when the user requests a release bump; do not add duplicate app versions to package metadata or image labels. Keep `VERSION` at `0.0.1` for the initial release.
 - For release commits, follow `.agents/skills/git-workflow/SKILL.md`: use `type: [vX.Y.Z] - summary`, assign one version per PR, and reuse it for every commit in that PR. Push only when the user explicitly requests it.
+- For every minor or major release, add a dated `CHANGELOG.md` entry with `Highlights` and `What changed` sections, covering all changes since the previous published release. Add `Upgrade notes` when users must take manual action. After the release PR merges and CI passes, create and publish the matching GitHub Release tagged `vX.Y.Z`, using those notes as its release description; do not leave a completed release as version or changelog changes only. Never publish patch releases; include them in the next minor or major release.
 
 ## Checks before handoff
 
