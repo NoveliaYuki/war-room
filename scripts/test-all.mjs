@@ -18,6 +18,18 @@ const suites = [
     cwd: root,
   },
   {
+    name: 'Trivy secret report redaction tests',
+    command: process.execPath,
+    args: ['--test', 'scripts/check-trivy-secrets.test.mjs'],
+    cwd: root,
+  },
+  {
+    name: 'Semgrep finding report redaction tests',
+    command: process.execPath,
+    args: ['--test', 'scripts/check-semgrep-report.test.mjs'],
+    cwd: root,
+  },
+  {
     name: 'Frontend dependency vulnerability audit (high severity)',
     command: npm,
     args: ['audit', '--prefix', 'frontend', '--audit-level=high'],
@@ -27,6 +39,18 @@ const suites = [
     name: 'Backend and frontend quality gates',
     command: npm,
     args: ['run', 'lint'],
+    cwd: root,
+  },
+  {
+    name: 'Static demo package build',
+    command: npm,
+    args: ['run', 'build:demo'],
+    cwd: resolve(root, 'frontend'),
+  },
+  {
+    name: 'Static demo output and security headers',
+    command: process.execPath,
+    args: ['frontend/scripts/check-demo-build.mjs'],
     cwd: root,
   },
   {

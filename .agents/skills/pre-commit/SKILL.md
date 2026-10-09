@@ -17,7 +17,7 @@ Do not stage or commit unless the user explicitly authorizes it.
 | Fresh install | New databases start empty; no company-specific images are bundled |
 | Configuration | `.env` values flow through Compose to their consuming service |
 | Code and schema | Quality, complexity, security, and data-model checks pass |
-| Tests | Unit, integration, and Go Playwright suites pass in order |
+| Tests | Static demo build, unit, integration, and Go Playwright suites pass in order |
 | UI runtime | Reloaded app is visually and behaviorally verified in Chrome and mobile simulators |
 | Containers | Compose is valid; runtime images are multi-stage and healthy |
 
@@ -75,18 +75,24 @@ docker compose --project-name war-room-precommit up --build --abort-on-container
 docker compose --project-name war-room-precommit down
 ```
 
-The test container has no Git history, so ordinary runs verify that root `VERSION` is the only application version without a release baseline. When validating a release bump, pass the prior version and bump type through the shell, for example `BASE_VERSION=0.0.2 VERSION_BUMP=patch docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test`.
+The test container has no Git history, so ordinary runs verify that root `VERSION` is the only application version without a release baseline. The test sequence also builds `frontend/dist-demo` and checks its demo runtime config, app entry files, and root-level Cloudflare Pages security headers. When validating a release bump, pass the prior version and bump type through the shell, for example `BASE_VERSION=0.0.2 VERSION_BUMP=patch docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test`.
 
 Run `down` even if tests fail; never add `--volumes` to routine cleanup.
+
+GitHub Actions supplements this local suite with production-image and dependency
+vulnerability scans, a tracked-source secret scan, and Semgrep Community Edition
+SAST using the `p/security-audit` ruleset. Confirm these CI checks pass before
+requesting a merge.
 
 | Order | Gate | Minimum result |
 | --- | --- | --- |
 | 1 | Version synchronization | Exact authorized SemVer bump |
 | 2 | Format and lint | Go and frontend checks pass; complexity ≤10 |
-| 3 | Backend unit tests | At least 90% statement coverage |
-| 4 | Frontend unit tests | At least 90% configured coverage |
-| 5 | Backend integration tests | All pass |
-| 6 | Go Playwright tests | All pass after both test services are healthy |
+| 3 | Static demo output | Build contains demo mode config and root security headers |
+| 4 | Backend unit tests | At least 90% statement coverage |
+| 5 | Frontend unit tests | At least 90% configured coverage |
+| 6 | Backend integration tests | All pass |
+| 7 | Go Playwright tests | All pass after both test services are healthy |
 
 ## 6. Step 4 — Verify the Reloaded UI in Browsers and Mobile Simulators
 

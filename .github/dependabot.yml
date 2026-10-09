@@ -36,6 +36,10 @@ updates:
     directory: /e2e
     schedule:
       interval: weekly
+  - package-ecosystem: docker
+    directory: /security
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:
