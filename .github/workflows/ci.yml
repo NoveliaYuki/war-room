@@ -69,6 +69,33 @@ jobs:
             "$RUNNER_TEMP/warroom-trivy-reports/test-runner.json" \
             "$RUNNER_TEMP/warroom-trivy-reports/source.json"
 
+      - name: Scan tracked source for secrets
+        env:
+          TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+        run: |
+          set -o pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            "$TRIVY_IMAGE" fs --scanners secret --format json \
+            --skip-dirs /workspace/.git \
+            --skip-dirs /workspace/data \
+            --skip-dirs /workspace/backend/data \
+            --skip-dirs /workspace/frontend/node_modules \
+            /workspace | node scripts/check-trivy-secrets.mjs
+
+      - name: Run Semgrep Community Edition SAST
+        run: |
+          set -o pipefail
+          docker build --pull -t war-room-semgrep ./security
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            -w /src \
+            war-room-semgrep \
+            semgrep scan --config p/security-audit --error --metrics off --json \
+            --exclude data \
+            --exclude backend/data \
+            --exclude frontend/node_modules . | node scripts/check-semgrep-report.mjs
+
       - name: Remove isolated test services
         if: always()
         run: |

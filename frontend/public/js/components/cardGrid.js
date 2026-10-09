@@ -20,6 +20,13 @@ const EMPLOYMENT_TYPE_LABELS = new Map([
 	["permanent_b2b", "Permanent / B2B"],
 ]);
 
+const EMPTY_STATUS_COPY = {
+	waiting: { title: "No waiting processes yet", description: "Processes you mark as waiting will appear here." },
+	ongoing: { title: "No ongoing processes yet", description: "Processes you mark as ongoing will appear here." },
+	accepted: { title: "No accepted processes yet", description: "Processes you mark as accepted will appear here." },
+	rejected: { title: "No rejected processes yet", description: "Processes you mark as rejected will appear here." },
+};
+
 /**
  * Formats the salary label used on preview cards.
  *
@@ -139,7 +146,7 @@ function renderCardProcessDates(job) {
 function createCardElement(job) {
   const card = document.createElement("div");
   card.className = "process-card";
-  card.style.touchAction = "none";
+  card.style.touchAction = "pan-y";
   card.setAttribute("data-id", job.id);
   card.addEventListener("mousemove", (event) => updateCardGlow(card, event));
   const avatarHtml = renderCompanyAvatar(job.company_name, job.avatar_seed, 64, job.company_domain, job.id);
@@ -295,6 +302,38 @@ function bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isD
   });
 }
 
+function renderEmptyState(containerEl, context) {
+  const hasProcesses = (context.totalCount ?? 0) > 0;
+  const statusCopy = Object.hasOwn(EMPTY_STATUS_COPY, context.filter)
+    ? EMPTY_STATUS_COPY[context.filter]
+    : null;
+  const statusTabIsEmpty = Boolean(statusCopy && context.statusCount === 0 && hasProcesses);
+  const title = statusTabIsEmpty
+    ? statusCopy.title
+    : hasProcesses
+      ? "No selection processes match your current search or filters"
+      : "No selection processes found";
+  const description = statusTabIsEmpty
+    ? statusCopy.description
+    : hasProcesses
+      ? "Try adjusting or clearing your search and filters."
+      : "Track your interviews, recruiters, salary negotiations, and interview questions in one place.";
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.innerHTML = `
+    <div class="empty-icon">${icon("briefcase", 36)}</div>
+    <h3 style="margin-bottom: 8px;">${title}</h3>
+    <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 16px;">${description}</p>
+    <button class="btn-primary btn-create-first-process" type="button">
+      <span class="inline-icon-text">${icon("plus", 14)} ${hasProcesses ? "Create Selection Process" : "Create First Selection Process"}</span>
+    </button>
+  `;
+  empty.querySelector(".btn-create-first-process")?.addEventListener("click", () => {
+    document.getElementById("btn-new-process")?.click();
+  });
+  containerEl.appendChild(empty);
+}
+
 /**
  * Renders all job selection cards into the grid container.
  *
@@ -304,27 +343,13 @@ function bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isD
  * @param {HTMLElement} backdropEl - The modal backdrop element.
  * @param {Function} onGlobalRefresh - Global refresh callback.
  * @param {string} [sortMode='manual'] - Recent ordering or the user's saved manual order.
+ * @param {{filter?: string, totalCount?: number, statusCount?: number}} [emptyStateContext] - Counts and active tab for an empty grid.
  */
-export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropEl = null, onGlobalRefresh = null, sortMode = "manual") {
+export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropEl = null, onGlobalRefresh = null, sortMode = "manual", emptyStateContext = {}) {
   containerEl.innerHTML = "";
 
   if (jobs.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.innerHTML = `
-      <div class="empty-icon">${icon("briefcase", 36)}</div>
-      <h3 style="margin-bottom: 8px;">No selection processes found</h3>
-      <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 16px;">
-        Track your interviews, recruiters, salary negotiations, and interview questions in one place.
-      </p>
-      <button class="btn-primary btn-create-first-process" type="button">
-        <span class="inline-icon-text">${icon("plus", 14)} Create First Selection Process</span>
-      </button>
-    `;
-    empty.querySelector(".btn-create-first-process")?.addEventListener("click", () => {
-      document.getElementById("btn-new-process")?.click();
-    });
-    containerEl.appendChild(empty);
+    renderEmptyState(containerEl, emptyStateContext);
     return;
   }
 
@@ -365,6 +390,7 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
  * @returns {Function} Function returning true if drag or suppression is currently active.
  */
 function enableHoldToDrag(card, containerEl, onReorderFinished) {
+  card.style.touchAction = "none";
   const MOUSE_HOLD_DELAY_MS = 180;
   const TOUCH_HOLD_DELAY_MS = 500;
   const HOLD_MOVE_THRESHOLD_PX = 32;

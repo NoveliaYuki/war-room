@@ -700,21 +700,13 @@ func ensureLegacyColumns(db schemaExecutor) error {
 }
 
 func hasColumn(db schemaExecutor, table, column string) (bool, error) {
-	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	rows, err := db.Query("SELECT name FROM pragma_table_info(?) WHERE name = ?", table, column)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var position, notNull, primaryKey int
-		var name, dataType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&position, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return false, err
-		}
-		if name == column {
-			return true, nil
-		}
+	if rows.Next() {
+		return true, nil
 	}
 	return false, rows.Err()
 }
