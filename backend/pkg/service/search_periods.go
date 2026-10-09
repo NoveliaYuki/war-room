@@ -63,12 +63,14 @@ func normalizeSearchPeriod(input models.SearchPeriodInput) (*models.SearchPeriod
 	if err != nil {
 		return nil, err
 	}
-	end, err := parseSearchPeriodDate(input.EndDate)
-	if err != nil {
-		return nil, err
-	}
-	if end.Before(start) {
-		return nil, fmt.Errorf("%w: end date must be on or after start date", ErrInvalidField)
+	if input.EndDate != "" {
+		end, err := parseSearchPeriodDate(input.EndDate)
+		if err != nil {
+			return nil, err
+		}
+		if end.Before(start) {
+			return nil, fmt.Errorf("%w: end date must be on or after start date", ErrInvalidField)
+		}
 	}
 	return &models.SearchPeriod{Name: name, StartDate: input.StartDate, EndDate: input.EndDate}, nil
 }

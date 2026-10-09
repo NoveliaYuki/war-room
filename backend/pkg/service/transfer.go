@@ -614,6 +614,7 @@ func validateImportedSearchPeriods(periods []models.SearchPeriod, jobs []models.
 	sorted := append([]models.SearchPeriod(nil), periods...)
 	sort.Slice(sorted, func(left, right int) bool { return sorted[left].StartDate < sorted[right].StartDate })
 	previousEnd := ""
+	hasPreviousPeriod := false
 	for _, period := range sorted {
 		if strings.TrimSpace(period.ID) == "" || known[period.ID] {
 			return errors.New("backup contains a missing or duplicate search period ID")
@@ -621,11 +622,12 @@ func validateImportedSearchPeriods(periods []models.SearchPeriod, jobs []models.
 		if _, err := normalizeSearchPeriod(models.SearchPeriodInput{Name: period.Name, StartDate: period.StartDate, EndDate: period.EndDate}); err != nil {
 			return fmt.Errorf("invalid search period in backup: %w", err)
 		}
-		if previousEnd != "" && period.StartDate <= previousEnd {
+		if hasPreviousPeriod && searchPeriodsOverlap(previousEnd, period.StartDate) {
 			return errors.New("backup contains overlapping search periods")
 		}
 		known[period.ID] = true
 		previousEnd = period.EndDate
+		hasPreviousPeriod = true
 	}
 	for _, job := range jobs {
 		if job.SearchPeriodID != nil && !known[*job.SearchPeriodID] {
@@ -633,6 +635,10 @@ func validateImportedSearchPeriods(periods []models.SearchPeriod, jobs []models.
 		}
 	}
 	return nil
+}
+
+func searchPeriodsOverlap(previousEnd, currentStart string) bool {
+	return previousEnd == "" || currentStart <= previousEnd
 }
 
 func validateImportedMeetingDates(jobs []models.Job) error {

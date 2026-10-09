@@ -73,10 +73,15 @@ func TestSearchPeriodRejectsInvalidDatesAndOverlaps(t *testing.T) {
 	if _, err := fixture.service.CreateSearchPeriod(models.SearchPeriodInput{Name: "Second", StartDate: "2026-04-01", EndDate: "2026-04-30"}); err != nil {
 		t.Fatal(err)
 	}
+	ongoing, err := fixture.service.CreateSearchPeriod(models.SearchPeriodInput{Name: "Ongoing", StartDate: "2026-05-01"})
+	if err != nil || ongoing.EndDate != "" {
+		t.Fatalf("open-ended period=%+v err=%v", ongoing, err)
+	}
 	for _, input := range []models.SearchPeriodInput{
 		{Name: "Invalid calendar", StartDate: "2026-02-30", EndDate: "2026-03-01"},
 		{Name: "Reversed", StartDate: "2026-04-01", EndDate: "2026-03-31"},
 		{Name: "Overlap", StartDate: "2026-03-31", EndDate: "2026-04-10"},
+		{Name: "After ongoing period", StartDate: "2026-06-01", EndDate: "2026-06-30"},
 	} {
 		if _, err := fixture.service.CreateSearchPeriod(input); !errors.Is(err, ErrInvalidField) {
 			t.Errorf("create period %+v error=%v, want ErrInvalidField", input, err)

@@ -46,7 +46,7 @@ func (r *Repository) GetSearchPeriod(id string) (*models.SearchPeriod, error) {
 // SearchPeriodForDate returns the one period containing date, if present.
 func (r *Repository) SearchPeriodForDate(date string) (*models.SearchPeriod, error) {
 	var period models.SearchPeriod
-	err := r.reader.QueryRow(`SELECT id, name, start_date, end_date, created_at, updated_at FROM search_periods WHERE start_date <= ? AND end_date >= ?`, date, date).
+	err := r.reader.QueryRow(`SELECT id, name, start_date, end_date, created_at, updated_at FROM search_periods WHERE start_date <= ? AND COALESCE(NULLIF(end_date, ''), '9999-12-31') >= ?`, date, date).
 		Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.CreatedAt, &period.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -69,6 +69,9 @@ func (r *Repository) CreateSearchPeriod(period *models.SearchPeriod) error {
 	if _, err := tx.Exec(`INSERT INTO search_periods (id, name, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, period.ID, period.Name, period.StartDate, period.EndDate, now, now); err != nil {
 		return err
 	}
+	if err := assignUnassignedJobsInPeriod(tx, period.StartDate, period.EndDate, period.ID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -89,12 +92,18 @@ func (r *Repository) UpdateSearchPeriod(id string, period models.SearchPeriodInp
 	if count, _ := result.RowsAffected(); count == 0 {
 		return sql.ErrNoRows
 	}
+	if err := assignUnassignedJobsInPeriod(tx, period.StartDate, period.EndDate, id); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 func ensureNoPeriodOverlap(tx *sql.Tx, startDate, endDate, excludeID string) error {
 	var overlap int
-	err := tx.QueryRow(`SELECT COUNT(*) FROM search_periods WHERE start_date <= ? AND end_date >= ? AND id <> ?`, endDate, startDate, excludeID).Scan(&overlap)
+	if endDate == "" {
+		endDate = "9999-12-31"
+	}
+	err := tx.QueryRow(`SELECT COUNT(*) FROM search_periods WHERE start_date <= ? AND COALESCE(NULLIF(end_date, ''), '9999-12-31') >= ? AND id <> ?`, endDate, startDate, excludeID).Scan(&overlap)
 	if err != nil {
 		return fmt.Errorf("check overlapping search periods: %w", err)
 	}
@@ -102,6 +111,26 @@ func ensureNoPeriodOverlap(tx *sql.Tx, startDate, endDate, excludeID string) err
 		return ErrSearchPeriodOverlap
 	}
 	return nil
+}
+
+func assignUnassignedJobsInPeriod(tx *sql.Tx, startDate, endDate, periodID string) error {
+	start, err := time.ParseInLocation("2006-01-02", startDate, time.Local)
+	if err != nil {
+		return fmt.Errorf("parse search period start date: %w", err)
+	}
+	if endDate == "" {
+		_, err = tx.Exec(`UPDATE jobs SET search_period_id = ?, updated_at = unixepoch()
+			WHERE search_period_id IS NULL AND created_at >= ?`, periodID, start.Unix())
+		return err
+	}
+	end, err := time.ParseInLocation("2006-01-02", endDate, time.Local)
+	if err != nil {
+		return fmt.Errorf("parse search period end date: %w", err)
+	}
+	end = end.AddDate(0, 0, 1)
+	_, err = tx.Exec(`UPDATE jobs SET search_period_id = ?, updated_at = unixepoch()
+		WHERE search_period_id IS NULL AND created_at >= ? AND created_at < ?`, periodID, start.Unix(), end.Unix())
+	return err
 }
 
 // DeleteSearchPeriod deletes the period; the foreign key leaves its jobs unassigned.

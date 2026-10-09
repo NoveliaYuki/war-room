@@ -26,6 +26,8 @@ func TestValidateImportedSearchPeriods(t *testing.T) {
 		valid   bool
 	}{
 		{name: "valid reference", periods: []models.SearchPeriod{validPeriod}, jobs: []models.Job{validJob}, valid: true},
+		{name: "ongoing period", periods: []models.SearchPeriod{{ID: "current", Name: "Current", StartDate: "2026-09-01"}}, valid: true},
+		{name: "period after ongoing period", periods: []models.SearchPeriod{{ID: "current", Name: "Current", StartDate: "2026-09-01"}, {ID: "later", Name: "Later", StartDate: "2026-10-01", EndDate: "2026-10-31"}}},
 		{name: "unassigned job", jobs: []models.Job{{ID: "job-2"}}, valid: true},
 		{name: "missing ID", periods: []models.SearchPeriod{{Name: "March", StartDate: "2026-03-01", EndDate: "2026-03-31"}}},
 		{name: "duplicate ID", periods: []models.SearchPeriod{validPeriod, validPeriod}},

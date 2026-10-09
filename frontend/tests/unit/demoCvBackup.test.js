@@ -35,6 +35,21 @@ describe("demo CV library backup", () => {
     window.localStorage.setItem("war-room-demo-schedule-date", localToday);
   });
 
+  it("creates ongoing search periods and assigns matching existing and new jobs", async () => {
+    const { demoApi } = await import("../../demo/demoStore.js");
+    const period = await demoApi.createSearchPeriod({ name: "Current search", start_date: "2030-01-01", end_date: "" });
+    const existing = await demoApi.getJob("demo-cv-job");
+    expect(period.end_date).toBe("");
+    expect(existing.search_period_id).toBeFalsy();
+    await demoApi.updateSearchPeriod(period.id, { name: period.name, start_date: "2000-01-01", end_date: "" });
+    expect((await demoApi.getJob("demo-cv-job")).search_period_id).toBe(period.id);
+    const created = await demoApi.createJob({ position_title: "New role" });
+    expect(created.search_period_id).toBe(period.id);
+    const archive = await demoApi.exportBackup();
+    await demoApi.importBackup(archive);
+    expect((await demoApi.getSearchPeriods())[0].end_date).toBe("");
+  });
+
   it("adds waiting samples with varied, second-based process and status dates", async () => {
     const { demoApi } = await import("../../demo/demoStore.js");
     const waiting = await demoApi.getJobs("waiting");

@@ -226,7 +226,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 12
+const latestSchemaVersion = 13
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -248,6 +248,9 @@ func applySchemaMigration(db *sql.DB, version int) error {
 	if version == 9 {
 		return applyWaitingStatusMigration(db, version)
 	}
+	if version == 13 {
+		return applyOpenEndedSearchPeriodMigration(db, version)
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -260,6 +263,53 @@ func applySchemaMigration(db *sql.DB, version int) error {
 		return fmt.Errorf("record migration: %w", err)
 	}
 	return tx.Commit()
+}
+
+func applyOpenEndedSearchPeriodMigration(db *sql.DB, version int) error {
+	connection, err := db.Conn(context.Background())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = connection.Close() }()
+	if _, err := connection.ExecContext(context.Background(), "PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("disable foreign keys for open-ended search period migration: %w", err)
+	}
+	defer func() { _, _ = connection.ExecContext(context.Background(), "PRAGMA foreign_keys = ON") }()
+	tx, err := connection.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := migrateOpenEndedSearchPeriods(tx); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
+		return fmt.Errorf("record migration: %w", err)
+	}
+	return tx.Commit()
+}
+
+func migrateOpenEndedSearchPeriods(executor schemaExecutor) error {
+	statements := []struct{ sql, description string }{
+		{`CREATE TABLE search_periods_new (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 100),
+			start_date TEXT NOT NULL,
+			end_date TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			CHECK (end_date = '' OR start_date <= end_date)
+		)`, "create search periods table with optional end date"},
+		{"INSERT INTO search_periods_new (id, name, start_date, end_date, created_at, updated_at) SELECT id, name, start_date, end_date, created_at, updated_at FROM search_periods", "copy search periods"},
+		{"DROP TABLE search_periods", "replace search periods table"},
+		{"ALTER TABLE search_periods_new RENAME TO search_periods", "rename search periods table"},
+	}
+	for _, statement := range statements {
+		if err := executeMigrationSQL(executor, statement.sql, statement.description); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func applyWaitingStatusMigration(db *sql.DB, version int) error {
