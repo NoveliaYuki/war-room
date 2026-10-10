@@ -58,7 +58,7 @@ try {
   }
 
   const coverage = statements === 0 ? 100 : (covered / statements) * 100;
-  console.log(`Backend unit statement coverage: ${coverage.toFixed(2)}% (required: 95%)`);
+  console.log(`Backend unit statement coverage: ${coverage.toFixed(4)}% (required: 95%)`);
   if (coverage < 95) {
     const uncovered = [...blocks.entries()]
       .filter(([, block]) => block.executions === 0)

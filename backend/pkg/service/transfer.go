@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 
 const (
 	backupFormat          = "war-room-backup"
-	backupFormatVersion   = 3
+	backupFormatVersion   = 4
 	maxImportArchiveBytes = 500 << 20
 	maxExpandedBytes      = 1 << 30
 	maxManifestBytes      = 100 << 20
@@ -36,15 +37,16 @@ const (
 var ErrEmptyBackupRequiresConfirmation = errors.New("empty backup import requires confirmation")
 
 type backupManifest struct {
-	Format           string              `json:"format"`
-	Version          int                 `json:"version"`
-	ExportedAt       time.Time           `json:"exported_at"`
-	Jobs             []models.Job        `json:"jobs"`
-	Technologies     []models.Technology `json:"technologies,omitempty"`
-	NextCVVersion    int                 `json:"next_cv_version,omitempty"`
-	AttachmentSHA256 map[string]string   `json:"attachment_sha256"`
-	Logos            []backupLogo        `json:"logos,omitempty"`
-	CVVersions       []backupCVVersion   `json:"cv_versions,omitempty"`
+	Format           string                `json:"format"`
+	Version          int                   `json:"version"`
+	ExportedAt       time.Time             `json:"exported_at"`
+	Jobs             []models.Job          `json:"jobs"`
+	SearchPeriods    []models.SearchPeriod `json:"search_periods,omitempty"`
+	Technologies     []models.Technology   `json:"technologies,omitempty"`
+	NextCVVersion    int                   `json:"next_cv_version,omitempty"`
+	AttachmentSHA256 map[string]string     `json:"attachment_sha256"`
+	Logos            []backupLogo          `json:"logos,omitempty"`
+	CVVersions       []backupCVVersion     `json:"cv_versions,omitempty"`
 }
 
 type backupCVVersion struct {
@@ -64,40 +66,24 @@ type backupLogo struct {
 func (s *JobService) ExportArchive(output io.Writer) error {
 	cvUploadLock.Lock()
 	defer cvUploadLock.Unlock()
-	var jobs []models.Job
-	var technologies []models.Technology
-	var versions []models.CVVersion
-	var nextCVVersion int
-	if err := s.repo.WithReadSnapshot(func(snapshot *repository.Repository) error {
-		var err error
-		jobs, err = loadFullJobSnapshot(snapshot)
-		if err == nil {
-			technologies, err = snapshot.ListTechnologies()
-		}
-		if err == nil {
-			versions, err = snapshot.ListCVVersions()
-		}
-		if err == nil {
-			nextCVVersion, err = snapshot.GetNextCVVersion()
-		}
-		return err
-	}); err != nil {
+	snapshot, err := loadExportSnapshot(s.repo)
+	if err != nil {
 		return fmt.Errorf("load export snapshot: %w", err)
 	}
-	if jobs == nil {
-		jobs = []models.Job{}
+	if snapshot.jobs == nil {
+		snapshot.jobs = []models.Job{}
 	}
-	logos, err := collectCachedLogos(jobs, s.cfg.LogosDir)
+	logos, err := collectCachedLogos(snapshot.jobs, s.cfg.LogosDir)
 	if err != nil {
 		return err
 	}
-	if err := validateExportArchiveSize(jobs, versions, logos, s.cfg.CVDir); err != nil {
+	if err := validateExportArchiveSize(snapshot.jobs, snapshot.versions, logos, s.cfg.CVDir); err != nil {
 		return err
 	}
 
 	archive := zip.NewWriter(output)
-	manifest := backupManifest{Format: backupFormat, Version: backupFormatVersion, ExportedAt: time.Now().UTC(), Jobs: jobs, Technologies: technologies, NextCVVersion: nextCVVersion, AttachmentSHA256: make(map[string]string), Logos: logos}
-	for _, version := range versions {
+	manifest := backupManifest{Format: backupFormat, Version: backupFormatVersion, ExportedAt: time.Now().UTC(), Jobs: snapshot.jobs, SearchPeriods: snapshot.searchPeriods, Technologies: snapshot.technologies, NextCVVersion: snapshot.nextCVVersion, AttachmentSHA256: make(map[string]string), Logos: logos}
+	for _, version := range snapshot.versions {
 		manifest.CVVersions = append(manifest.CVVersions, backupCVVersion{CVVersion: version, Path: "cvs/" + version.StoredFilename})
 	}
 	if err := writeArchiveFiles(archive, &manifest, s.cfg); err != nil {
@@ -105,6 +91,36 @@ func (s *JobService) ExportArchive(output io.Writer) error {
 		return err
 	}
 	return writeArchiveManifest(archive, manifest)
+}
+
+type exportSnapshot struct {
+	jobs          []models.Job
+	technologies  []models.Technology
+	searchPeriods []models.SearchPeriod
+	versions      []models.CVVersion
+	nextCVVersion int
+}
+
+func loadExportSnapshot(repo *repository.Repository) (exportSnapshot, error) {
+	var result exportSnapshot
+	err := repo.WithReadSnapshot(func(snapshot *repository.Repository) error {
+		var err error
+		result.jobs, err = loadFullJobSnapshot(snapshot)
+		if err == nil {
+			result.technologies, err = snapshot.ListTechnologies()
+		}
+		if err == nil {
+			result.searchPeriods, err = snapshot.ListSearchPeriods()
+		}
+		if err == nil {
+			result.versions, err = snapshot.ListCVVersions()
+		}
+		if err == nil {
+			result.nextCVVersion, err = snapshot.GetNextCVVersion()
+		}
+		return err
+	})
+	return result, err
 }
 
 func writeArchiveFiles(archive *zip.Writer, manifest *backupManifest, cfg *config.Config) error {
@@ -535,7 +551,7 @@ func (s *JobService) commitImportedArchive(manifest *backupManifest, files map[s
 			}
 		}
 	}
-	if err := s.repo.ReplaceAllWithTechnologyCatalog(manifest.Jobs, manifest.Technologies, versions, true, manifest.NextCVVersion); err != nil {
+	if err := s.repo.ReplaceAllWithSearchPeriods(manifest.Jobs, manifest.SearchPeriods, manifest.Technologies, versions, true, manifest.NextCVVersion); err != nil {
 		rollbackImportedLogos(installedLogos)
 		return fmt.Errorf("replace saved processes: %w", err)
 	}
@@ -587,7 +603,42 @@ func decodeBackupManifest(manifestFile *zip.File) (backupManifest, error) {
 	if err := validateImportedMeetingDates(manifest.Jobs); err != nil {
 		return backupManifest{}, err
 	}
+	if err := validateImportedSearchPeriods(manifest.SearchPeriods, manifest.Jobs); err != nil {
+		return backupManifest{}, err
+	}
 	return manifest, nil
+}
+
+func validateImportedSearchPeriods(periods []models.SearchPeriod, jobs []models.Job) error {
+	known := make(map[string]bool, len(periods))
+	sorted := append([]models.SearchPeriod(nil), periods...)
+	sort.Slice(sorted, func(left, right int) bool { return sorted[left].StartDate < sorted[right].StartDate })
+	previousEnd := ""
+	hasPreviousPeriod := false
+	for _, period := range sorted {
+		if strings.TrimSpace(period.ID) == "" || known[period.ID] {
+			return errors.New("backup contains a missing or duplicate search period ID")
+		}
+		if _, err := normalizeSearchPeriod(models.SearchPeriodInput{Name: period.Name, StartDate: period.StartDate, EndDate: period.EndDate}); err != nil {
+			return fmt.Errorf("invalid search period in backup: %w", err)
+		}
+		if hasPreviousPeriod && searchPeriodsOverlap(previousEnd, period.StartDate) {
+			return errors.New("backup contains overlapping search periods")
+		}
+		known[period.ID] = true
+		previousEnd = period.EndDate
+		hasPreviousPeriod = true
+	}
+	for _, job := range jobs {
+		if job.SearchPeriodID != nil && !known[*job.SearchPeriodID] {
+			return fmt.Errorf("job %q refers to a missing search period", job.ID)
+		}
+	}
+	return nil
+}
+
+func searchPeriodsOverlap(previousEnd, currentStart string) bool {
+	return previousEnd == "" || currentStart <= previousEnd
 }
 
 func validateImportedMeetingDates(jobs []models.Job) error {

@@ -110,6 +110,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/jobs/{id}", h.handleGetJob)
 	mux.HandleFunc("PUT /api/jobs/{id}", h.handleUpdateJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", h.handleDeleteJob)
+	mux.HandleFunc("GET /api/search-periods", h.handleListSearchPeriods)
+	mux.HandleFunc("POST /api/search-periods", h.handleCreateSearchPeriod)
+	mux.HandleFunc("PUT /api/search-periods/{id}", h.handleUpdateSearchPeriod)
+	mux.HandleFunc("DELETE /api/search-periods/{id}", h.handleDeleteSearchPeriod)
 	mux.HandleFunc("GET /api/technologies", h.handleListTechnologies)
 	mux.HandleFunc("POST /api/technologies", h.handleCreateTechnology)
 	mux.HandleFunc("PUT /api/technologies/{id}", h.handleUpdateTechnology)
@@ -155,6 +159,69 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 			fs.ServeHTTP(w, r)
 		})
 	}
+}
+
+func (h *Handler) handleListSearchPeriods(w http.ResponseWriter, _ *http.Request) {
+	periods, err := h.jobs.ListSearchPeriods()
+	if err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, periods)
+}
+
+func (h *Handler) handleCreateSearchPeriod(w http.ResponseWriter, r *http.Request) {
+	var input models.SearchPeriodInput
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+	if err := decodeJSONBody(r.Body, &input); err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+		return
+	}
+	period, err := h.jobs.CreateSearchPeriod(input)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidField) {
+			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		ErrorJSON(w, http.StatusConflict, err.Error())
+		return
+	}
+	JSON(w, http.StatusCreated, period)
+}
+
+func (h *Handler) handleUpdateSearchPeriod(w http.ResponseWriter, r *http.Request) {
+	var input models.SearchPeriodInput
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+	if err := decodeJSONBody(r.Body, &input); err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+		return
+	}
+	err := h.jobs.UpdateSearchPeriod(r.PathValue("id"), input)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ErrorJSON(w, http.StatusNotFound, "Search period not found")
+			return
+		}
+		if errors.Is(err, service.ErrInvalidField) {
+			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		ErrorJSON(w, http.StatusConflict, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (h *Handler) handleDeleteSearchPeriod(w http.ResponseWriter, r *http.Request) {
+	if err := h.jobs.DeleteSearchPeriod(r.PathValue("id")); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ErrorJSON(w, http.StatusNotFound, "Search period not found")
+			return
+		}
+		ErrorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
 func (h *Handler) handleListTechnologies(w http.ResponseWriter, _ *http.Request) {

@@ -112,6 +112,10 @@ func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error)
 	if err != nil {
 		return nil, err
 	}
+	job.SearchPeriodID, err = s.resolveNewJobSearchPeriod(input.SearchPeriodID)
+	if err != nil {
+		return nil, err
+	}
 	job.ID = uuid.NewString()
 	if err := s.assignLatestCV(job); err != nil {
 		return nil, err
@@ -382,13 +386,7 @@ func (s *JobService) createDefaultStages(job *models.Job, input models.CreateJob
 
 // UpdateJob applies the supplied fields to an existing job.
 func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.Job, error) {
-	if err := s.validateTechnologyUpdate(input.TechnologyIDs); err != nil {
-		return nil, err
-	}
-	if input.PositionTitle != nil && strings.TrimSpace(*input.PositionTitle) == "" {
-		return nil, ErrPositionTitleRequired
-	}
-	if err := validateUpdateJobEnums(input); err != nil {
+	if err := s.validateJobUpdate(input); err != nil {
 		return nil, err
 	}
 	current, err := s.repo.GetJobByID(id)
@@ -398,7 +396,6 @@ func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.
 	if current == nil {
 		return nil, sql.ErrNoRows
 	}
-
 	fields := jobUpdateFields(current, input)
 
 	if err := s.repo.UpdateJob(id, fields); err != nil {
@@ -412,6 +409,19 @@ func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.
 
 	s.mirrorAfterMutation()
 	return s.GetFullJobDetails(id)
+}
+
+func (s *JobService) validateJobUpdate(input models.UpdateJobInput) error {
+	if err := s.validateTechnologyUpdate(input.TechnologyIDs); err != nil {
+		return err
+	}
+	if input.PositionTitle != nil && strings.TrimSpace(*input.PositionTitle) == "" {
+		return ErrPositionTitleRequired
+	}
+	if err := validateUpdateJobEnums(input); err != nil {
+		return err
+	}
+	return s.validateJobSearchPeriod(input.SearchPeriodID)
 }
 
 func (s *JobService) validateTechnologyUpdate(ids []string) error {
@@ -568,6 +578,13 @@ func jobUpdateFields(current *models.Job, input models.UpdateJobInput) map[strin
 	addJobSalaryFields(fields, current, input)
 	addJobRecruiterFields(fields, input)
 	addJobNotesFields(fields, input)
+	if input.SearchPeriodID != nil {
+		var periodID any
+		if strings.TrimSpace(*input.SearchPeriodID) != "" {
+			periodID = strings.TrimSpace(*input.SearchPeriodID)
+		}
+		fields["search_period_id"] = periodID
+	}
 	return fields
 }
 
@@ -1204,6 +1221,7 @@ func (s *JobService) MirrorDatabaseToJSON() error {
 
 	var fullJobs []models.Job
 	var technologies []models.Technology
+	var searchPeriods []models.SearchPeriod
 	var cvVersions []models.CVVersion
 	var nextCVVersion int
 	err := s.repo.WithReadSnapshot(func(snapshot *repository.Repository) error {
@@ -1211,6 +1229,9 @@ func (s *JobService) MirrorDatabaseToJSON() error {
 		fullJobs, snapshotErr = loadFullJobSnapshot(snapshot)
 		if snapshotErr == nil {
 			technologies, snapshotErr = snapshot.ListTechnologies()
+		}
+		if snapshotErr == nil {
+			searchPeriods, snapshotErr = snapshot.ListSearchPeriods()
 		}
 		if snapshotErr == nil {
 			cvVersions, snapshotErr = snapshot.ListCVVersions()
@@ -1228,7 +1249,7 @@ func (s *JobService) MirrorDatabaseToJSON() error {
 	for _, version := range cvVersions {
 		snapshotVersions = append(snapshotVersions, version.Snapshot())
 	}
-	data, err := json.MarshalIndent(models.RecoverySnapshot{Jobs: fullJobs, Technologies: technologies, CVVersions: snapshotVersions, NextCVVersion: nextCVVersion}, "", "  ")
+	data, err := json.MarshalIndent(models.RecoverySnapshot{Jobs: fullJobs, SearchPeriods: searchPeriods, Technologies: technologies, CVVersions: snapshotVersions, NextCVVersion: nextCVVersion}, "", "  ")
 	if err != nil {
 		return err
 	}

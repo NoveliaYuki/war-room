@@ -1,11 +1,18 @@
 /** Filters saved processes using every selected filter category. */
 export function filterJobs(jobs, filters) {
   return jobs.filter((job) => matchesArrangement(job, filters)
+    && matchesSearchPeriod(job, filters.searchPeriod)
     && matchesReferral(job, filters.referral)
     && matchesExpectedSalary(job, filters.expectedSalaryQuery)
     && matchesSalaryRange(job.salary_min, job.salary_max, filters.postedSalaryMin, filters.postedSalaryMax)
     && (!filters.currency || job.salary_currency === filters.currency)
     && matchesTechnologies(job, filters.technologies));
+}
+
+function matchesSearchPeriod(job, searchPeriod) {
+  if (!searchPeriod || searchPeriod === "all") return true;
+  if (searchPeriod === "unassigned") return !job.search_period_id;
+  return job.search_period_id === searchPeriod;
 }
 
 function matchesArrangement(job, filters) {
