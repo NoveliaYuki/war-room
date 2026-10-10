@@ -24,7 +24,7 @@
 
 .process-filter-control { position: relative; }
 .search-period-control { display: inline-flex; align-items: center; }
-.search-period-select-wrap { position: relative; width: 220px; min-width: 0; }
+.search-period-select-wrap { position: relative; width: 180px; min-width: 0; }
 .search-period-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 38px; padding: 7px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: 500 12px var(--font-sans); line-height: 1.2; text-align: left; cursor: pointer; }
 .search-period-trigger:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .search-period-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -207,7 +207,7 @@
   .process-filter-clear { grid-column: 1; justify-self: start; }
   .process-filter-summary { grid-column: 1 / -1; }
   .search-period-control { grid-column: 1 / -1; display: flex; }
-  .search-period-select-wrap { flex: 0 1 220px; width: min(220px, 100%); }
+  .search-period-select-wrap { flex: 0 1 180px; width: min(180px, 100%); }
   .process-filter-panel { width: min(310px, calc(100vw - 36px)); }
   .process-filter-arrangements { grid-template-columns: 1fr 1fr; }
   .process-filter-arrangements label { min-height: 28px; }
