@@ -1364,6 +1364,7 @@ body.is-resizing-split * {
     overflow-y: auto;
   }
   .split-pane-resizer { display: none; }
+  .split-pane-right { order: -1; }
   .split-pane-left, .split-pane-right { min-width: 0; padding: 16px; overflow: visible; overflow-wrap: anywhere; }
 }
 
