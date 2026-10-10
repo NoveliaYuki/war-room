@@ -65,6 +65,7 @@ function resolveSalaryType(minimum, maximum) {
 }
 
 const cardGridEl = document.querySelector("#cards-grid");
+const processToolbarEl = document.querySelector("#process-toolbar");
 const modalEl = document.querySelector("#detail-modal");
 const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
@@ -78,6 +79,19 @@ const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 const dataManagementButton = document.querySelector("#btn-data-management");
+
+function syncToolbarSearchFilterWidth() {
+  if (!processToolbarEl || !cardGridEl) {
+    processToolbarEl?.style.removeProperty("--toolbar-search-filter-width");
+    return;
+  }
+
+  const gridStyle = window.getComputedStyle(cardGridEl);
+  const columns = gridStyle.gridTemplateColumns.split(" ").filter(Boolean);
+  const width = Number.parseFloat(columns[0]);
+  if (width > 0) processToolbarEl.style.setProperty("--toolbar-search-filter-width", `${width}px`);
+}
+window.addEventListener("resize", () => window.requestAnimationFrame(syncToolbarSearchFilterWidth));
 const technologyLibraryButton = document.querySelector("#btn-technology-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
 const processFilterTrigger = document.querySelector("#process-filter-trigger");
@@ -206,6 +220,7 @@ async function refreshApp() {
       totalCount: counts.all,
       statusCount: counts[currentFilter] ?? counts.all,
     });
+    syncToolbarSearchFilterWidth();
   } catch (err) {
     console.error("Failed to load jobs data:", err);
   }
