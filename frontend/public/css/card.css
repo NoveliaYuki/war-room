@@ -12,42 +12,34 @@
 
 .process-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, var(--toolbar-search-filter-width, 620px)) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, var(--toolbar-search-filter-width, 620px)) minmax(166px, 180px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px 0;
+  gap: 8px;
   min-height: 28px;
   margin: 0 0 10px;
 }
 
 .toolbar-search-filter {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(166px, 180px);
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-column: 1;
   grid-row: 1;
   align-items: center;
   gap: 8px;
   width: 100%;
   min-width: 0;
-  container-type: inline-size;
 }
 .process-search { width: 100%; min-width: 0; max-width: 420px; }
 .process-search .search-input { height: 38px; }
 
 .process-filter-control { position: relative; min-width: 0; }
-.search-period-control { display: inline-flex; align-items: center; width: 100%; min-width: 0; }
+.search-period-control { display: inline-flex; grid-column: 2; grid-row: 1; align-items: center; width: 100%; min-width: 0; }
 .search-period-select-wrap { position: relative; width: 100%; min-width: 0; }
 .search-period-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 38px; padding: 7px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: 500 13px var(--font-sans); line-height: 1.2; text-align: left; cursor: pointer; }
 .search-period-trigger:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .search-period-trigger > span { min-width: 0; white-space: nowrap; }
 .search-period-select-chevron { flex: 0 0 14px; width: 14px; height: 14px; color: var(--text-muted); transition: transform .15s ease; }
 .search-period-trigger[aria-expanded="true"] .search-period-select-chevron { transform: rotate(180deg); }
-@container (max-width: 380px) {
-  .toolbar-search-filter { grid-template-columns: auto minmax(0, 1fr) minmax(166px, 180px); row-gap: 6px; }
-  .process-search { grid-column: 1 / -1; grid-row: 1; }
-  .process-filter-control { grid-column: 1; grid-row: 2; }
-  .search-period-control { grid-column: 3; grid-row: 2; display: flex; width: 100%; justify-self: stretch; }
-  .search-period-select-wrap { width: 100%; }
-}
 .search-period-menu { position: absolute; z-index: 30; top: calc(100% + 5px); left: 0; display: grid; width: max(100%, 220px); max-height: min(300px, 55vh); overflow: hidden; padding: 4px; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface-elevated); box-shadow: var(--shadow-lg); }
 .search-period-menu[hidden] { display: none; }
 .search-period-menu-options { display: grid; max-height: min(240px, 42vh); overflow-y: auto; }
@@ -170,7 +162,7 @@
 .process-filter-salary legend,
 .process-filter-arrangements legend,
 .process-filter-technologies legend { margin-bottom: 1px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
-.process-sort-control { position: relative; grid-column: 3; grid-row: 1; justify-self: end; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font: 500 13px var(--font-sans); }
+.process-sort-control { position: relative; grid-column: 4; grid-row: 1; justify-self: end; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font: 500 13px var(--font-sans); }
 .process-manage-technologies { min-height: 30px; padding: 5px 8px; font-size: 10px; }
 .settings-data-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 14px 0 4px; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); }
 .settings-data-footer > div { display: grid; gap: 3px; }
@@ -227,12 +219,12 @@
   .toolbar-search-filter { display: contents; }
   .process-search { grid-column: 1 / -1; grid-row: 1; width: 100%; min-width: 0; max-width: none; }
   .process-filter-control { grid-column: 1; grid-row: 2; }
-  .process-sort-control { grid-column: 3; grid-row: 2; min-height: 42px; margin-left: 0; }
+  .process-sort-control { grid-column: 3; grid-row: 2; min-height: 42px; margin: 0; }
   .process-filter-chips { grid-column: 1 / -1; grid-row: 3; }
   .process-filter-clear { grid-column: 1; grid-row: 4; justify-self: start; }
   .process-filter-summary { grid-column: 2 / -1; grid-row: 4; }
   .search-period-control { grid-column: 2; grid-row: 2; display: flex; width: 100%; max-width: none; }
-  .search-period-select-wrap { width: min(190px, 100%); }
+  .search-period-select-wrap { width: 100%; }
   .process-filter-trigger { min-height: 42px; padding-inline: 8px; }
   .process-sort-trigger { min-height: 42px; padding-inline: 6px; }
   .search-period-trigger { min-height: 42px; }
@@ -254,17 +246,19 @@
 }
 
 @media (min-width: 381px) and (max-width: 420px) {
-  .process-toolbar { grid-template-columns: auto minmax(120px, 140px) auto; }
-  .toolbar-search-filter { grid-template-columns: minmax(0, 1fr) auto minmax(166px, 190px); }
-  .search-period-select-wrap { width: min(190px, 100%); }
-  .process-sort-control { gap: 3px; font-size: 10px; white-space: nowrap; }
-  .process-sort-trigger { gap: 3px; font-size: 10px; white-space: nowrap; }
+  .process-toolbar { grid-template-columns: auto minmax(0, 1fr); }
+  .process-sort-control { grid-column: 2; grid-row: 3; justify-self: end; }
+  .search-period-control { grid-column: 2; width: min(140px, 100%); justify-self: end; justify-content: flex-end; }
+  .search-period-select-wrap { width: min(140px, 100%); }
+  .search-period-trigger { padding-inline: 8px; font-size: 12px; }
+  .process-sort-control { gap: 5px; font-size: 12px; white-space: nowrap; }
+  .process-sort-trigger { gap: 5px; font-size: 12px; white-space: nowrap; }
 }
 
 @media (max-width: 380px) {
-  .process-toolbar { grid-template-columns: auto minmax(0, 1fr); }
-  .toolbar-search-filter { grid-template-columns: minmax(0, 1fr) auto minmax(150px, 1fr); }
-  .search-period-select-wrap { width: 100%; }
+  .process-toolbar { grid-template-columns: minmax(0, 1fr) minmax(138px, 150px); }
+  .search-period-trigger { padding-inline: 8px; font-size: 12px; }
+  .search-period-control { justify-content: flex-end; }
   .process-filter-control { grid-column: 1; grid-row: 2; }
   .search-period-control { grid-column: 2; grid-row: 2; }
   .process-sort-control { grid-column: 2; grid-row: 3; justify-self: end; }
