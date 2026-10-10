@@ -167,6 +167,7 @@ describe('application entry point', () => {
     const periodMenu = document.querySelector('#search-period-menu');
     periodTrigger.click();
     expect(periodMenu.hidden).toBe(false);
+    expect(document.querySelector('[data-search-period="period-1"]').textContent).toContain('Present');
     periodMenu.click();
     document.querySelector('[data-search-period="period-1"]').click();
     await flush();
@@ -219,7 +220,7 @@ describe('application entry point', () => {
     document.querySelector('#btn-close-search-periods').click();
     document.querySelector('#btn-new-process').click();
     expect(document.querySelector('#create-search-period').value).toBe('period-1');
-    expect(document.querySelector('#create-search-period').selectedOptions[0].textContent).toContain('Ongoing');
+    expect(document.querySelector('#create-search-period').selectedOptions[0].textContent).toContain('Present');
     document.querySelector('.btn-cancel').click();
     document.querySelector('#btn-manage-search-periods').click();
     await flush();

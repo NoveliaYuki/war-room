@@ -235,7 +235,7 @@ function renderSearchPeriodOptions() {
   const options = [
     { value: "all", label: "All periods", menuLabel: "All search periods" },
     { value: "unassigned", label: "Unassigned", menuLabel: "Unassigned" },
-    ...searchPeriods.map((period) => ({ value: period.id, label: period.name, menuLabel: `${period.name} · ${period.start_date} – ${period.end_date || "Ongoing"}` })),
+    ...searchPeriods.map((period) => ({ value: period.id, label: period.name, menuLabel: `${period.name} · ${period.start_date} – ${period.end_date || "Present"}` })),
   ];
   const selected = searchPeriods.some((period) => period.id === processFilters.searchPeriod)
     || ["all", "unassigned"].includes(processFilters.searchPeriod) ? processFilters.searchPeriod : "all";
@@ -258,7 +258,7 @@ function periodForToday() {
 function searchPeriodOptions(selectedID) {
   return [
     `<option value="">Unassigned</option>`,
-    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Ongoing")}</option>`),
+    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</option>`),
   ].join("");
 }
 
@@ -624,7 +624,7 @@ async function openSearchPeriodsModal() {
   const renderList = () => {
     list.innerHTML = searchPeriods.length ? searchPeriods.map((period) => `
       <article class="search-period-row">
-        <div><strong>${escapeHtml(period.name)}</strong><span>${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Ongoing")}</span><small>${period.job_count} job${period.job_count === 1 ? "" : "s"}</small></div>
+        <div><strong>${escapeHtml(period.name)}</strong><span>${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</span><small>${period.job_count} job${period.job_count === 1 ? "" : "s"}</small></div>
         <div class="search-period-actions">
           <button class="btn-secondary" type="button" data-edit-period="${escapeHtml(period.id)}">Edit</button>
           <button class="btn-secondary" type="button" data-delete-period="${escapeHtml(period.id)}">Delete</button>

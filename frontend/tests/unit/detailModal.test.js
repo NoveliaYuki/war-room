@@ -373,11 +373,12 @@ describe('detail modal', () => {
 
   it('lets a job move into a search period from its edit form', async () => {
     api.getJob.mockResolvedValue(job());
-    api.getSearchPeriods.mockResolvedValue([{ id: 'period-1', name: 'March 2026', start_date: '2026-03-01', end_date: '2026-03-31' }]);
+    api.getSearchPeriods.mockResolvedValue([{ id: 'period-1', name: 'March 2026', start_date: '2026-03-01', end_date: '' }]);
     const modal = document.querySelector('#detail-modal');
     await openDetailModal('job-1');
     modal.querySelector('.btn-edit-details').click();
     await tick();
+    expect(modal.querySelector('[name="search_period_id"] option[value="period-1"]').textContent).toContain('Present');
     modal.querySelector('[name="search_period_id"]').value = 'period-1';
     modal.querySelector('.edit-process-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await tick();

@@ -1642,7 +1642,7 @@ ${renderActiveStageWorkspace(view)}
 function renderEditDetailsMarkup(job, periods = []) {
   const searchPeriodOptions = [
     '<option value="">Unassigned</option>',
-    ...periods.map((period) => `<option value="${escapeAttr(period.id)}" ${period.id === job.search_period_id ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date)}</option>`),
+    ...periods.map((period) => `<option value="${escapeAttr(period.id)}" ${period.id === job.search_period_id ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</option>`),
   ].join("");
   return `
     <div class="modal-header">
