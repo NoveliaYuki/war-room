@@ -334,7 +334,11 @@ func assertToolbarHasNoOverflow(t *testing.T, width int, layout toolbarLayout) {
 func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	if width > 650 {
-		assertWideToolbar(t, width, layout)
+		if layout.FirstCard != nil && layout.FirstCard.Width <= 380 {
+			assertNarrowCardToolbar(t, width, layout)
+		} else {
+			assertWideToolbar(t, width, layout)
+		}
 	}
 	if width <= 650 && width > 380 {
 		assertCompactToolbar(t, width, layout)
@@ -343,6 +347,23 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 		assertNarrowToolbar(t, width, layout)
 	}
 	assertHeaderActionAlignment(t, width, layout)
+}
+
+func assertNarrowCardToolbar(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	if layout.Search.Y >= layout.Filter.Y {
+		t.Errorf("%dpx viewport should place search above filters when the first card is narrow", width)
+	}
+	assertToolbarRow(t, width, layout.Filter, layout.Period)
+	if layout.FirstCard == nil || abs(layout.Search.Width-layout.FirstCard.Width) > 2 {
+		t.Errorf("%dpx narrow-card search should match first card width (search %.1fpx, card %v)", width, layout.Search.Width, layout.FirstCard)
+	}
+	if layout.Period.Width > 180 {
+		t.Errorf("%dpx narrow-card period selector should remain compact (got %.0fpx)", width, layout.Period.Width)
+	}
+	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
+		t.Errorf("%dpx toolbar should align sort to the right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
+	}
 }
 
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
