@@ -236,6 +236,7 @@ type toolbarLayout struct {
 	Filter        layoutBox `json:"filter"`
 	Period        layoutBox `json:"period"`
 	Sort          layoutBox `json:"sort"`
+	Toolbar       layoutBox `json:"toolbar"`
 	Header        layoutBox `json:"header"`
 	Theme         layoutBox `json:"theme"`
 	FilterHeight  float64   `json:"filterHeight"`
@@ -282,6 +283,7 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    filter: box(".process-filter-control"),
 	    period: box(".search-period-control"),
 	    sort: box(".process-sort-control"),
+	    toolbar: box(".process-toolbar"),
 	    header: box(".header-inner"),
 	    theme: box("#btn-theme-toggle"),
 	    filterHeight: box("#process-filter-trigger").height,
@@ -327,14 +329,17 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Period, layout.Sort)
-	if layout.Search.Width > 340 {
-		t.Errorf("%dpx toolbar should keep the search at its 340px preferred width (got %.0fpx)", width, layout.Search.Width)
+	if layout.Search.Width > 420 {
+		t.Errorf("%dpx toolbar should keep the search at its 420px preferred width (got %.0fpx)", width, layout.Search.Width)
 	}
 	if layout.Period.Width > 180 {
 		t.Errorf("%dpx toolbar should keep the period selector compact (got %.0fpx)", width, layout.Period.Width)
 	}
-	if layout.Sort.X-layout.Period.Right > 20 {
-		t.Errorf("%dpx toolbar should keep sort next to the period selector (gap %.0fpx)", width, layout.Sort.X-layout.Period.Right)
+	if layout.Period.X-layout.Filter.Right > 20 {
+		t.Errorf("%dpx toolbar should keep the period selector beside filters (gap %.0fpx)", width, layout.Period.X-layout.Filter.Right)
+	}
+	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
+		t.Errorf("%dpx toolbar should align sort to the right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
 	}
 	if width == 800 && layout.Search.Width >= 420 {
 		t.Errorf("search should shrink before wrapping at 800px (width %.0fpx)", layout.Search.Width)
