@@ -293,8 +293,8 @@
   gap: 4px 10px;
   margin: 10px 0 12px;
   color: var(--text-muted);
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .card-process-dates strong { color: var(--text-secondary); font-weight: 600; }
@@ -367,6 +367,11 @@
     width: 44px;
     height: 44px;
     opacity: 0.8;
+  }
+
+  .btn-card-open-details {
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -642,7 +647,7 @@
   padding: 0 4px;
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--text-info) 14%, transparent);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .card-technology-list {
@@ -654,13 +659,13 @@
 
 .card-technology-chip {
   max-width: 100%;
-  padding: 3px 7px;
+  padding: 4px 8px;
   border: 1px solid color-mix(in srgb, var(--text-info) 24%, var(--border-subtle));
   border-radius: var(--radius-full);
   background: var(--bg-surface);
   color: var(--text-primary);
-  font-size: 10px;
-  line-height: 1.25;
+  font-size: 11px;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
@@ -668,7 +673,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
@@ -693,8 +698,8 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   border: 1px solid transparent;
   border-radius: var(--radius-full);
   color: var(--accent-blue);
