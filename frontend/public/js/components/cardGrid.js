@@ -163,7 +163,7 @@ function createCardElement(job) {
     <div class="card-company editable-card-company ${companyClass}" data-raw-value="${escapeAttr(job.company_name)}">${renderCardCompany(job.company_name)}</div>
     <h3 class="card-position editable-card-position" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h3>
   </div><div class="card-header-actions"><span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(job.status)}</span>
-    <button class="btn-card-delete" title="Delete this selection process" data-id="${escapeAttr(job.id)}">${icon("trash", 13)}</button></div></div>
+    <button class="btn-card-delete" type="button" aria-label="Delete this selection process" title="Delete this selection process" data-id="${escapeAttr(job.id)}">${icon("trash", 15)}</button></div></div>
   <div class="card-body"><span class="salary-tag editable-card-salary ${salaryClass}" data-raw-value="${escapeAttr(getCardSalaryRawValue(job))}">${escapeHtml(salaryText)}</span>
     ${renderReferralTag(job)}${renderEmploymentTypeTag(job.employment_type)}${renderWorkArrangementTag(job.work_arrangement)}</div>
   <div class="card-summary"><div class="card-summary-label">Role highlights</div><div class="keyword-note editable-card-keyword" data-raw-value="${escapeAttr(job.keyword_note || "")}" title="Role highlights">${renderCardRoleHighlights(job)}</div></div>
