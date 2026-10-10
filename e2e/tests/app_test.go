@@ -167,6 +167,9 @@ func setPageViewport(t *testing.T, page playwright.Page, width, height int) {
 	if err := page.SetViewportSize(width, height); err != nil {
 		t.Fatalf("set %dx%d viewport: %v", width, height, err)
 	}
+	if _, err := page.Evaluate(`() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`, nil); err != nil {
+		t.Fatalf("wait for %dx%d viewport layout: %v", width, height, err)
+	}
 }
 
 func selectFilter(t *testing.T, page playwright.Page, filter string) {
@@ -230,22 +233,26 @@ type layoutBox struct {
 }
 
 type toolbarLayout struct {
-	ViewportWidth float64   `json:"viewportWidth"`
-	DocumentWidth float64   `json:"documentWidth"`
-	Search        layoutBox `json:"search"`
-	Filter        layoutBox `json:"filter"`
-	Period        layoutBox `json:"period"`
-	Sort          layoutBox `json:"sort"`
-	Toolbar       layoutBox `json:"toolbar"`
-	Header        layoutBox `json:"header"`
-	Theme         layoutBox `json:"theme"`
-	FilterHeight  float64   `json:"filterHeight"`
-	PeriodHeight  float64   `json:"periodHeight"`
-	SortHeight    float64   `json:"sortHeight"`
+	ViewportWidth       float64    `json:"viewportWidth"`
+	DocumentWidth       float64    `json:"documentWidth"`
+	Search              layoutBox  `json:"search"`
+	SearchFilter        layoutBox  `json:"searchFilter"`
+	SearchFiltersPeriod layoutBox  `json:"searchFiltersPeriod"`
+	FirstCard           *layoutBox `json:"firstCard"`
+	Filter              layoutBox  `json:"filter"`
+	Period              layoutBox  `json:"period"`
+	Sort                layoutBox  `json:"sort"`
+	Toolbar             layoutBox  `json:"toolbar"`
+	Header              layoutBox  `json:"header"`
+	Theme               layoutBox  `json:"theme"`
+	FilterHeight        float64    `json:"filterHeight"`
+	PeriodHeight        float64    `json:"periodHeight"`
+	SortHeight          float64    `json:"sortHeight"`
 }
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	page := newPage(t)
+	openDemoPage(t, page)
 	for _, viewport := range []struct{ width, height int }{{1440, 900}, {800, 900}, {500, 900}, {390, 844}, {360, 800}, {320, 720}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
@@ -280,6 +287,18 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    viewportWidth: window.innerWidth,
 	    documentWidth: document.documentElement.scrollWidth,
 	    search: box(".process-search"),
+	    searchFilter: box(".toolbar-search-filter"),
+		searchFiltersPeriod: (() => {
+		  const group = document.querySelector(".toolbar-search-filter").getBoundingClientRect();
+		  const period = document.querySelector(".search-period-control").getBoundingClientRect();
+		  return { x: group.x, y: group.y, width: period.right - group.x, height: group.height, right: period.right };
+		})(),
+	    firstCard: (() => {
+	      const card = document.querySelector("#cards-grid .process-card");
+	      if (!card) return null;
+	      const rect = card.getBoundingClientRect();
+	      return { x: rect.x, y: rect.y, width: card.offsetWidth, height: rect.height, right: rect.x + card.offsetWidth };
+	    })(),
 	    filter: box(".process-filter-control"),
 	    period: box(".search-period-control"),
 	    sort: box(".process-sort-control"),
@@ -329,6 +348,11 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Period, layout.Sort)
+	if layout.FirstCard == nil {
+		t.Errorf("%dpx toolbar should render a first job card for alignment", width)
+	} else if abs(layout.SearchFiltersPeriod.Width-layout.FirstCard.Width) > 2 {
+		t.Errorf("%dpx search, filters, and period should match first card width (toolbar %.1fpx, card %.1fpx)", width, layout.SearchFiltersPeriod.Width, layout.FirstCard.Width)
+	}
 	if layout.Search.Width > 420 {
 		t.Errorf("%dpx toolbar should keep the search at its 420px preferred width (got %.0fpx)", width, layout.Search.Width)
 	}

@@ -106,57 +106,59 @@
 
     <main id="main-content">
       <div class="process-toolbar" id="process-toolbar">
-        <div class="search-wrapper process-search">
-          <button type="button" class="search-focus" aria-label="Focus search field">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </button>
-          <input type="text" id="search-input" class="search-input" aria-label="Search selection processes" placeholder="Search company, title, tag..." />
-          <span class="search-shortcut">/</span>
-        </div>
-        <div class="process-filter-control">
-          <button id="process-filter-trigger" class="process-filter-trigger" type="button" aria-expanded="false" aria-controls="process-filter-panel">
-            <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="12" r="2"/></svg>
-            <span>Filters</span><span id="process-filter-count" class="process-filter-count" hidden>0</span>
-          </button>
-          <div id="process-filter-panel" class="process-filter-panel" hidden>
-            <div class="process-filter-panel-header"><strong>Filter processes</strong></div>
-            <fieldset class="process-filter-arrangements"><legend>Work arrangement</legend>
-              <label><input type="checkbox" name="process-filter-arrangement" value="remote" />Remote</label>
-              <label><input type="checkbox" name="process-filter-arrangement" value="hybrid" />Hybrid</label>
-              <label><input type="checkbox" name="process-filter-arrangement" value="on_site" />On-site</label>
-            </fieldset>
-            <fieldset class="process-filter-referral"><legend>Referral</legend>
-              <label><input type="radio" name="process-filter-referral" id="process-filter-any-referral" />Any</label>
-              <label><input type="radio" name="process-filter-referral" id="process-filter-referral" />Direct referral</label>
-              <label><input type="radio" name="process-filter-referral" id="process-filter-no-referral" />No referral</label>
-            </fieldset>
-            <fieldset class="process-filter-single"><legend>Expected salary</legend>
-              <input id="process-filter-expected-salary" type="text" placeholder="e.g. €85k, negotiable" autocomplete="off" />
-            </fieldset>
-            <fieldset class="process-filter-salary"><legend>Job posting salary range</legend>
-              <label>Minimum<input id="process-filter-posted-salary-min" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" /></label>
-              <label>Maximum<input id="process-filter-posted-salary-max" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" /></label>
-              <label class="process-filter-currency">Currency<select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option></select></label>
-            </fieldset>
-            <fieldset class="process-filter-technologies"><legend>Tech stack</legend>
-              <input id="process-filter-technology-search" type="search" placeholder="Search technologies" autocomplete="off" />
-              <div id="process-filter-technology-options" class="process-filter-technology-options" aria-describedby="process-filter-technologies-help"></div>
-              <button id="btn-technology-library" class="btn-secondary process-manage-technologies" type="button">Manage technology catalog</button>
-            </fieldset>
-            <p id="process-filter-technologies-help" class="process-filter-note">Select one or more technologies; matching roles must include all selected technologies.</p>
-          </div>
-        </div>
-        <div class="search-period-control">
-          <input id="search-period-filter" type="hidden" value="all" />
-          <div class="search-period-select-wrap">
-            <button id="search-period-trigger" class="search-period-trigger" type="button" aria-label="Search period: All search periods" aria-expanded="false" aria-controls="search-period-menu">
-              <span id="search-period-current">All periods</span>
-              <svg class="search-period-select-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+        <div class="toolbar-search-filter">
+          <div class="search-wrapper process-search">
+            <button type="button" class="search-focus" aria-label="Focus search field">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
             </button>
-            <div id="search-period-menu" class="search-period-menu" role="group" aria-label="Search periods" hidden></div>
+            <input type="text" id="search-input" class="search-input" aria-label="Search selection processes" placeholder="Search company, title, tag..." />
+            <span class="search-shortcut">/</span>
+          </div>
+          <div class="process-filter-control">
+            <button id="process-filter-trigger" class="process-filter-trigger" type="button" aria-expanded="false" aria-controls="process-filter-panel">
+              <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="12" r="2"/></svg>
+              <span>Filters</span><span id="process-filter-count" class="process-filter-count" hidden>0</span>
+            </button>
+            <div id="process-filter-panel" class="process-filter-panel" hidden>
+              <div class="process-filter-panel-header"><strong>Filter processes</strong></div>
+              <fieldset class="process-filter-arrangements"><legend>Work arrangement</legend>
+                <label><input type="checkbox" name="process-filter-arrangement" value="remote" />Remote</label>
+                <label><input type="checkbox" name="process-filter-arrangement" value="hybrid" />Hybrid</label>
+                <label><input type="checkbox" name="process-filter-arrangement" value="on_site" />On-site</label>
+              </fieldset>
+              <fieldset class="process-filter-referral"><legend>Referral</legend>
+                <label><input type="radio" name="process-filter-referral" id="process-filter-any-referral" />Any</label>
+                <label><input type="radio" name="process-filter-referral" id="process-filter-referral" />Direct referral</label>
+                <label><input type="radio" name="process-filter-referral" id="process-filter-no-referral" />No referral</label>
+              </fieldset>
+              <fieldset class="process-filter-single"><legend>Expected salary</legend>
+                <input id="process-filter-expected-salary" type="text" placeholder="e.g. €85k, negotiable" autocomplete="off" />
+              </fieldset>
+              <fieldset class="process-filter-salary"><legend>Job posting salary range</legend>
+                <label>Minimum<input id="process-filter-posted-salary-min" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" /></label>
+                <label>Maximum<input id="process-filter-posted-salary-max" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" /></label>
+                <label class="process-filter-currency">Currency<select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option></select></label>
+              </fieldset>
+              <fieldset class="process-filter-technologies"><legend>Tech stack</legend>
+                <input id="process-filter-technology-search" type="search" placeholder="Search technologies" autocomplete="off" />
+                <div id="process-filter-technology-options" class="process-filter-technology-options" aria-describedby="process-filter-technologies-help"></div>
+                <button id="btn-technology-library" class="btn-secondary process-manage-technologies" type="button">Manage technology catalog</button>
+              </fieldset>
+              <p id="process-filter-technologies-help" class="process-filter-note">Select one or more technologies; matching roles must include all selected technologies.</p>
+            </div>
+          </div>
+          <div class="search-period-control">
+            <input id="search-period-filter" type="hidden" value="all" />
+            <div class="search-period-select-wrap">
+              <button id="search-period-trigger" class="search-period-trigger" type="button" aria-label="Search period: All search periods" aria-expanded="false" aria-controls="search-period-menu">
+                <span id="search-period-current">All periods</span>
+                <svg class="search-period-select-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+              </button>
+              <div id="search-period-menu" class="search-period-menu" role="group" aria-label="Search periods" hidden></div>
+            </div>
           </div>
         </div>
         <div id="process-filter-chips" class="process-filter-chips" aria-label="Active filters" aria-live="polite"></div>

@@ -71,6 +71,12 @@ describe('application entry point', () => {
     };
     mocks.api.getJobs.mockResolvedValue([matchingJob, otherJob]);
     localStorageGet.mockRestore();
+    const cardsGrid = document.querySelector('#cards-grid');
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+      if (element === cardsGrid) return { gridTemplateColumns: '400px 400px' };
+      return originalGetComputedStyle(element);
+    });
     await flush();
     const searchInput = document.querySelector('#search-input');
     searchInput.value = 'platform';
@@ -79,6 +85,7 @@ describe('application entry point', () => {
     expect(mocks.api.getJobs).toHaveBeenLastCalledWith('ongoing', 'platform');
     expect(document.body.dataset.appReady).toBe('true');
     expect(mocks.renderCardGrid).toHaveBeenCalled();
+    expect(document.querySelector('#process-toolbar').style.getPropertyValue('--toolbar-search-filter-width')).toBe('400px');
     const avatar = document.createElement('img');
     avatar.dataset.avatarFallback = 'true';
     const fallback = document.createElement('span');
