@@ -299,6 +299,14 @@ describe('cardGrid', () => {
     expect(mocks.openDetailModal).toHaveBeenCalledOnce();
   });
 
+  it('gives the icon-only delete button an accessible name', () => {
+    const { card } = setup();
+    const deleteButton = card.querySelector('.btn-card-delete');
+
+    expect(deleteButton.textContent.trim()).toBe('');
+    expect(deleteButton.getAttribute('aria-label')).toBe('Delete this selection process');
+  });
+
   it('keeps role highlights at the top and stage navigation in the bottom footer', () => {
     const { card } = setup();
     const content = card.querySelector('.card-content');

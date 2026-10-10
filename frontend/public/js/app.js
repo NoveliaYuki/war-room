@@ -65,6 +65,7 @@ function resolveSalaryType(minimum, maximum) {
 }
 
 const cardGridEl = document.querySelector("#cards-grid");
+const processToolbarEl = document.querySelector("#process-toolbar");
 const modalEl = document.querySelector("#detail-modal");
 const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
@@ -78,6 +79,19 @@ const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 const dataManagementButton = document.querySelector("#btn-data-management");
+
+function syncToolbarSearchFilterWidth() {
+  if (!processToolbarEl || !cardGridEl) {
+    processToolbarEl?.style.removeProperty("--toolbar-search-filter-width");
+    return;
+  }
+
+  const gridStyle = window.getComputedStyle(cardGridEl);
+  const columns = gridStyle.gridTemplateColumns.split(" ").filter(Boolean);
+  const width = Number.parseFloat(columns[0]);
+  if (width > 0) processToolbarEl.style.setProperty("--toolbar-search-filter-width", `${width}px`);
+}
+window.addEventListener("resize", () => window.requestAnimationFrame(syncToolbarSearchFilterWidth));
 const technologyLibraryButton = document.querySelector("#btn-technology-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
 const processFilterTrigger = document.querySelector("#process-filter-trigger");
@@ -85,6 +99,7 @@ const searchPeriodFilter = document.querySelector("#search-period-filter");
 const searchPeriodTrigger = document.querySelector("#search-period-trigger");
 const searchPeriodCurrent = document.querySelector("#search-period-current");
 const searchPeriodMenu = document.querySelector("#search-period-menu");
+const searchPeriodSelectWrap = document.querySelector(".search-period-select-wrap");
 const processFilterPanel = document.querySelector("#process-filter-panel");
 const processFilterArrangements = document.querySelectorAll('input[name="process-filter-arrangement"]');
 const processFilterPostedSalaryMin = document.querySelector("#process-filter-posted-salary-min");
@@ -206,6 +221,7 @@ async function refreshApp() {
       totalCount: counts.all,
       statusCount: counts[currentFilter] ?? counts.all,
     });
+    syncToolbarSearchFilterWidth();
   } catch (err) {
     console.error("Failed to load jobs data:", err);
   }
@@ -1140,6 +1156,11 @@ searchPeriodMenu?.addEventListener("keydown", (event) => {
   if (!direction || !options.length) return;
   event.preventDefault();
   options[(index + direction + options.length) % options.length]?.focus();
+});
+searchPeriodSelectWrap?.addEventListener("focusout", (event) => {
+  if (event.relatedTarget instanceof Node && searchPeriodSelectWrap.contains(event.relatedTarget)) return;
+  if (searchPeriodMenu) searchPeriodMenu.hidden = true;
+  searchPeriodTrigger?.setAttribute("aria-expanded", "false");
 });
 
 processFilterChips?.addEventListener("click", (event) => {

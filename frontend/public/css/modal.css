@@ -600,6 +600,17 @@ body.is-resizing-split * {
   gap: 10px;
 }
 
+.keyword-note-box {
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  font: 400 13px/1.5 var(--font-sans);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .technology-detail-section {
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--text-info) 28%, var(--border-subtle));
@@ -929,15 +940,40 @@ body.is-resizing-split * {
 }
 
 /* Stage Tab Bar at Top of Right Pane */
+.stage-tabs-scroll { position: relative; min-width: 0; }
 .stages-tab-bar {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   overflow-x: auto;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
+
+.stage-tabs-scroll-button {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+
+.stage-tabs-scroll-button.is-prev { left: 0; background: linear-gradient(90deg, var(--bg-surface-elevated) 72%, transparent); border-left: 0; }
+.stage-tabs-scroll-button.is-next { right: 0; background: linear-gradient(270deg, var(--bg-surface-elevated) 72%, transparent); border-right: 0; }
+.stage-tabs-scroll-button[hidden] { display: none; }
+.stage-tabs-scroll-button:hover { color: var(--accent-blue); }
+.stage-tabs-scroll-button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
 
 .stage-tab-item {
   display: flex;
@@ -1328,6 +1364,7 @@ body.is-resizing-split * {
     overflow-y: auto;
   }
   .split-pane-resizer { display: none; }
+  .split-pane-right { order: -1; }
   .split-pane-left, .split-pane-right { min-width: 0; padding: 16px; overflow: visible; overflow-wrap: anywhere; }
 }
 
