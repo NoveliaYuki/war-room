@@ -773,7 +773,8 @@ function makeJob(payload) {
   const localToday = new Date();
   const today = [localToday.getFullYear(), String(localToday.getMonth() + 1).padStart(2, "0"), String(localToday.getDate()).padStart(2, "0")].join("-");
   const currentPeriod = searchPeriods.find((period) => period.start_date <= today && (!period.end_date || period.end_date >= today));
-  const requestedPeriod = Object.hasOwn(payload, "search_period_id") ? String(payload.search_period_id || "") : currentPeriod?.id || "";
+  const suppliedPeriod = String(payload.search_period_id || "");
+  const requestedPeriod = suppliedPeriod || currentPeriod?.id || "";
   if (requestedPeriod && !searchPeriods.some((period) => period.id === requestedPeriod)) throw new Error("Search period not found");
   const job = {
     id, company_name: payload.company_name || "Unknown", position_title: payload.position_title,
