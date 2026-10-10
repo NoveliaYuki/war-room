@@ -298,13 +298,13 @@
   min-width: 0;
   max-width: 100%;
   color: var(--text-secondary);
-  background: var(--bg-subtle-hover);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xs);
-  padding: 8px 10px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .meeting-note-content {
@@ -320,7 +320,8 @@
 }
 
 .meeting-note-toggle {
-  padding: 0;
+  min-height: 32px;
+  padding: 4px 0;
   border: 0;
   color: var(--text-accent-soft);
   background: transparent;
