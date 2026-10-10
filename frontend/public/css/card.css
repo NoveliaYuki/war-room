@@ -131,6 +131,7 @@
 .process-filter-technologies { display: grid; gap: 7px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .process-filter-technologies legend { margin-bottom: 1px; color: var(--text-secondary); font-size: 10px; font-weight: 600; }
 .process-filter-technologies > input { box-sizing: border-box; width: 100%; height: 32px; padding: 5px 9px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-primary); font: 11px var(--font-sans); }
+.process-filter-single input[type="search"],
 .process-filter-field input[type="search"] { box-sizing: border-box; width: 100%; min-width: 0; height: 32px; padding: 5px 9px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-primary); font: 11px var(--font-sans); }
 .process-filter-technology-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; max-height: 110px; overflow: auto; }
 .process-filter-technology-options label { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--text-secondary); font-size: 10px; font-weight: 500; }
