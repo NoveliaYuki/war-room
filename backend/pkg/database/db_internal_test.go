@@ -36,6 +36,118 @@ func TestAddCVVersionJobReferenceLeavesExistingColumnUntouched(t *testing.T) {
 	}
 }
 
+func TestSearchPeriodMigrationPreservesExistingJobsAsUnassigned(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO schema_migrations (version) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateSchema(db); err != nil {
+		t.Fatalf("apply search period migration: %v", err)
+	}
+	var periodID sql.NullString
+	if err := db.QueryRow("SELECT search_period_id FROM jobs WHERE id = 'legacy-job'").Scan(&periodID); err != nil {
+		t.Fatal(err)
+	}
+	if periodID.Valid {
+		t.Fatalf("legacy job should remain unassigned, got %q", periodID.String)
+	}
+}
+
+func TestOpenEndedSearchPeriodMigrationPreservesAssignments(t *testing.T) {
+	db := openMigrationTestDB(t)
+	seedVersionTwelveSearchPeriod(t, db)
+	verifyOpenEndedSearchPeriodMigration(t, db)
+}
+
+func TestOpenEndedSearchPeriodMigrationReportsStatementErrors(t *testing.T) {
+	for _, statement := range []string{"CREATE TABLE search_periods_new", "INSERT INTO search_periods_new", "DROP TABLE search_periods", "ALTER TABLE search_periods_new"} {
+		t.Run(statement, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			seedVersionTwelveSearchPeriod(t, db)
+			err := migrateOpenEndedSearchPeriods(migrationTestExecutor{db: db, failExec: statement})
+			if err == nil || !strings.Contains(err.Error(), "injected execution failure") {
+				t.Fatalf("migration error=%v, want injected statement failure", err)
+			}
+		})
+	}
+}
+
+func TestOpenEndedSearchPeriodMigrationReportsVersionInsertError(t *testing.T) {
+	db := openMigrationTestDB(t)
+	seedVersionTwelveSearchPeriod(t, db)
+	if err := applyOpenEndedSearchPeriodMigration(db, 12); err == nil || !strings.Contains(err.Error(), "record migration") {
+		t.Fatalf("duplicate version error=%v, want migration version insert error", err)
+	}
+}
+
+func TestOpenEndedSearchPeriodMigrationReportsConnectionAndCopyErrors(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOpenEndedSearchPeriodMigration(db, 13); err == nil {
+		t.Fatal("closed database should fail to open a migration connection")
+	}
+
+	db = openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOpenEndedSearchPeriodMigration(db, 13); err == nil || !strings.Contains(err.Error(), "copy search periods") {
+		t.Fatalf("missing search_periods copy error=%v", err)
+	}
+}
+
+func seedVersionTwelveSearchPeriod(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO schema_migrations (version) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := applySchemaMigration(db, 12); err != nil {
+		t.Fatalf("apply search period migration: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO search_periods (id, name, start_date, end_date) VALUES ('period', 'September', '2026-09-01', '2026-09-30')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, search_period_id) VALUES ('job', 'Engineer', 'waiting', 'unknown', 'none', 'seed', 'period')`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func verifyOpenEndedSearchPeriodMigration(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := applySchemaMigration(db, 13); err != nil {
+		t.Fatalf("allow open-ended periods: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO search_periods (id, name, start_date, end_date) VALUES ('ongoing', 'Ongoing', '2026-10-01', '')`); err != nil {
+		t.Fatalf("insert ongoing period: %v", err)
+	}
+	var periodName, endDate, assignedPeriod string
+	if err := db.QueryRow(`SELECT p.name, p.end_date, j.search_period_id FROM search_periods p JOIN jobs j ON j.search_period_id = p.id WHERE j.id = 'job'`).Scan(&periodName, &endDate, &assignedPeriod); err != nil {
+		t.Fatal(err)
+	}
+	if periodName != "September" || endDate != "2026-09-30" || assignedPeriod != "period" {
+		t.Fatalf("existing period=%q end=%q assignment=%q", periodName, endDate, assignedPeriod)
+	}
+	rows, err := db.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Next() {
+		t.Fatal("migration left a foreign-key violation")
+	}
+}
+
 func TestInitDBReturnsDatabaseOpenErrors(t *testing.T) {
 	openError := errors.New("driver unavailable")
 	_, err := initDBWithOpener(&config.Config{DBPath: filepath.Join(t.TempDir(), "db.sqlite")}, func(string, string) (*sql.DB, error) {
@@ -411,6 +523,30 @@ func TestRecoverySnapshotRestoresTechnologyCatalogAndAssignments(t *testing.T) {
 	}
 }
 
+func TestRecoverySnapshotRestoresSearchPeriodsAndAssignments(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{DataDir: dir, DBPath: filepath.Join(dir, "recovery-search-period.sqlite"),
+		BackupPath: filepath.Join(dir, "backup.json"), AttachmentsDir: filepath.Join(dir, "attachments"),
+		CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	periodID := "period-march"
+	job := models.Job{ID: "job-march", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone,
+		SearchPeriodID: &periodID}
+	period := models.SearchPeriod{ID: periodID, Name: "March 2026", StartDate: "2026-03-01", EndDate: "2026-03-31"}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: []models.Job{job}, SearchPeriods: []models.SearchPeriod{period}}, cfg.AttachmentsDir, cfg.CVDir); err != nil {
+		t.Fatalf("restore search period snapshot: %v", err)
+	}
+	var got string
+	if err := db.QueryRow("SELECT search_period_id FROM jobs WHERE id = ?", job.ID).Scan(&got); err != nil || got != periodID {
+		t.Fatalf("restored period assignment=%q err=%v", got, err)
+	}
+}
+
 func TestRecoverySnapshotRollsBackInvalidTechnologyReferences(t *testing.T) {
 	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "invalid-technology-recovery.db")}
 	db, err := InitDB(cfg)
@@ -615,7 +751,7 @@ func TestSchemaMigrationDispatchReportsFailures(t *testing.T) {
 	if _, err := dispatchDB.Exec(schemaSQL); err != nil {
 		t.Fatal(err)
 	}
-	for _, version := range []int{4, 5, 6, 7, 8, 9, 10, 11} {
+	for _, version := range []int{4, 5, 6, 7, 8, 9, 10, 11, 12} {
 		if err := runSchemaMigration(dispatchDB, version); err != nil {
 			t.Errorf("migration %d dispatch failed: %v", version, err)
 		}

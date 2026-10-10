@@ -83,6 +83,27 @@ describe('api', () => {
     expect(global.fetch).toHaveBeenCalledWith('/api/jobs/a%2Fb%20%3F');
   });
 
+  it('uses the search period endpoints and reports failures', async () => {
+    mockResponse([{ id: 'period-1', name: 'March 2026' }]);
+    expect(await api.getSearchPeriods()).toEqual([{ id: 'period-1', name: 'March 2026' }]);
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/search-periods');
+    mockResponse({ id: 'period-1' });
+    expect(await api.createSearchPeriod({ name: 'March 2026' })).toEqual({ id: 'period-1' });
+    expect(global.fetch.mock.lastCall[1].body).toBe(JSON.stringify({ name: 'March 2026' }));
+    mockResponse({ success: true });
+    expect(await api.updateSearchPeriod('period/1', { name: 'April' })).toEqual({ success: true });
+    expect(global.fetch.mock.lastCall[0]).toBe('/api/search-periods/period%2F1');
+    mockResponse({ success: true });
+    expect(await api.deleteSearchPeriod('period/1')).toEqual({ success: true });
+
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.reject(new Error('bad json')) });
+    await expect(api.createSearchPeriod({})).rejects.toThrow('Failed to create search period');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({}) });
+    await expect(api.updateSearchPeriod('id', {})).rejects.toThrow('Failed to update search period');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.reject(new Error('bad json')) });
+    await expect(api.deleteSearchPeriod('id')).rejects.toThrow('Failed to delete search period');
+  });
+
   it('reports the create endpoint fallback for unreadable and empty errors', async () => {
     global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.reject(new Error('invalid json')) });
     await expect(api.createJob({})).rejects.toThrow('Failed to create');

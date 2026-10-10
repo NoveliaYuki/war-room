@@ -97,6 +97,47 @@ const backendApi = {
     return res.json();
   },
 
+  /** Lists dated job-search periods and their assignment counts. */
+  async getSearchPeriods() {
+    const res = await fetch("/api/search-periods");
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.json();
+  },
+
+  /** Creates a dated job-search period. */
+  async createSearchPeriod(payload) {
+    const res = await fetch("/api/search-periods", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to create search period" }));
+      throw new Error(error.error || "Failed to create search period");
+    }
+    return res.json();
+  },
+
+  /** Updates a dated job-search period. */
+  async updateSearchPeriod(id, payload) {
+    const res = await fetch(`/api/search-periods/${pathSegment(id)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to update search period" }));
+      throw new Error(error.error || "Failed to update search period");
+    }
+    return res.json();
+  },
+
+  /** Deletes a period and leaves its jobs unassigned. */
+  async deleteSearchPeriod(id) {
+    const res = await fetch(`/api/search-periods/${pathSegment(id)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to delete search period" }));
+      throw new Error(error.error || "Failed to delete search period");
+    }
+    return res.json();
+  },
+
   /**
    * Retrieves aggregate counts for filter tabs.
    */

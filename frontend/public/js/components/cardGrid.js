@@ -122,7 +122,12 @@ function renderCardRoleHighlights(job) {
 function renderCardTechnologyStack(job) {
   const technologies = job.technologies || [];
   const contents = technologies.length
-    ? technologies.map((technology) => `<span class="card-technology-chip">${escapeHtml(technology.name)}</span>`).join("")
+    ? technologies.map((technology) => {
+      const alias = technology.aliases?.find((item) => item.trim() && item.trim().length < technology.name.length);
+      const label = alias || technology.name;
+      const title = alias ? ` title="${escapeAttr(technology.name)}"` : "";
+      return `<span class="card-technology-chip"${title}>${escapeHtml(label)}</span>`;
+    }).join("")
     : '<span class="card-summary-empty">No technologies recorded</span>';
   return `<div class="card-tech-stack"><div class="card-summary-label">Tech stack <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
 }

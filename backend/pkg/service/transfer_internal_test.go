@@ -16,6 +16,36 @@ import (
 	"war-room/backend/pkg/models"
 )
 
+func TestValidateImportedSearchPeriods(t *testing.T) {
+	validPeriod := models.SearchPeriod{ID: "march", Name: "March", StartDate: "2026-03-01", EndDate: "2026-03-31"}
+	validJob := models.Job{ID: "job-1", SearchPeriodID: stringPointer("march")}
+	for _, test := range []struct {
+		name    string
+		periods []models.SearchPeriod
+		jobs    []models.Job
+		valid   bool
+	}{
+		{name: "valid reference", periods: []models.SearchPeriod{validPeriod}, jobs: []models.Job{validJob}, valid: true},
+		{name: "ongoing period", periods: []models.SearchPeriod{{ID: "current", Name: "Current", StartDate: "2026-09-01"}}, valid: true},
+		{name: "period after ongoing period", periods: []models.SearchPeriod{{ID: "current", Name: "Current", StartDate: "2026-09-01"}, {ID: "later", Name: "Later", StartDate: "2026-10-01", EndDate: "2026-10-31"}}},
+		{name: "unassigned job", jobs: []models.Job{{ID: "job-2"}}, valid: true},
+		{name: "missing ID", periods: []models.SearchPeriod{{Name: "March", StartDate: "2026-03-01", EndDate: "2026-03-31"}}},
+		{name: "duplicate ID", periods: []models.SearchPeriod{validPeriod, validPeriod}},
+		{name: "invalid dates", periods: []models.SearchPeriod{{ID: "bad", Name: "Bad", StartDate: "2026-02-30", EndDate: "2026-03-01"}}},
+		{name: "overlap", periods: []models.SearchPeriod{validPeriod, {ID: "april", Name: "April", StartDate: "2026-03-31", EndDate: "2026-04-30"}}},
+		{name: "missing job reference", periods: []models.SearchPeriod{validPeriod}, jobs: []models.Job{{ID: "job-3", SearchPeriodID: stringPointer("unknown")}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateImportedSearchPeriods(test.periods, test.jobs)
+			if (err == nil) != test.valid {
+				t.Fatalf("validation error=%v, valid=%v", err, test.valid)
+			}
+		})
+	}
+}
+
+func stringPointer(value string) *string { return &value }
+
 func TestValidateExportArchiveSizeLimits(t *testing.T) {
 	valid := []models.Job{{Attachments: []models.Attachment{{FileSize: 12}}}}
 	if err := validateExportArchiveSize(valid, nil, []backupLogo{{Size: 8}}, t.TempDir()); err != nil {
