@@ -221,6 +221,193 @@ func TestApplicationShellAndFilters(t *testing.T) {
 	}
 }
 
+type layoutBox struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	Right  float64 `json:"right"`
+}
+
+type toolbarLayout struct {
+	ViewportWidth float64   `json:"viewportWidth"`
+	DocumentWidth float64   `json:"documentWidth"`
+	Search        layoutBox `json:"search"`
+	Filter        layoutBox `json:"filter"`
+	Period        layoutBox `json:"period"`
+	Sort          layoutBox `json:"sort"`
+	Header        layoutBox `json:"header"`
+	Theme         layoutBox `json:"theme"`
+	FilterHeight  float64   `json:"filterHeight"`
+	PeriodHeight  float64   `json:"periodHeight"`
+	SortHeight    float64   `json:"sortHeight"`
+}
+
+func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
+	page := newPage(t)
+	for _, viewport := range []struct{ width, height int }{{1440, 900}, {800, 900}, {500, 900}, {390, 844}, {360, 800}, {320, 720}} {
+		setPageViewport(t, page, viewport.width, viewport.height)
+		layout := readToolbarLayout(t, page, viewport.width)
+		assertToolbarHasNoOverflow(t, viewport.width, layout)
+		assertToolbarAtViewport(t, viewport.width, layout)
+	}
+	assertToolbarWithActiveFilter(t, page)
+	assertExpectedSalaryInputStyle(t, page)
+}
+
+func assertToolbarWithActiveFilter(t *testing.T, page playwright.Page) {
+	t.Helper()
+	setPageViewport(t, page, 390, 844)
+	if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+		t.Fatalf("open process filters: %v", err)
+	}
+	if err := page.Locator(`input[name="process-filter-arrangement"][value="hybrid"]`).Click(); err != nil {
+		t.Fatalf("select hybrid filter: %v", err)
+	}
+	layout := readToolbarLayout(t, page, 390)
+	assertToolbarRow(t, 390, layout.Filter, layout.Period, layout.Sort)
+}
+
+func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLayout {
+	t.Helper()
+	state, err := page.Evaluate(`() => {
+	  const box = selector => {
+	    const rect = document.querySelector(selector).getBoundingClientRect();
+	    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right };
+	  };
+	  return {
+	    viewportWidth: window.innerWidth,
+	    documentWidth: document.documentElement.scrollWidth,
+	    search: box(".process-search"),
+	    filter: box(".process-filter-control"),
+	    period: box(".search-period-control"),
+	    sort: box(".process-sort-control"),
+	    header: box(".header-inner"),
+	    theme: box("#btn-theme-toggle"),
+	    filterHeight: box("#process-filter-trigger").height,
+	    periodHeight: box("#search-period-trigger").height,
+		sortHeight: box("#process-sort-trigger").height,
+	  };
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read toolbar geometry at %dpx: %v", width, err)
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("encode toolbar geometry at %dpx: %v", width, err)
+	}
+	var layout toolbarLayout
+	if err := json.Unmarshal(encoded, &layout); err != nil {
+		t.Fatalf("decode toolbar geometry at %dpx: %v", width, err)
+	}
+	return layout
+}
+
+func assertToolbarHasNoOverflow(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	if layout.DocumentWidth > layout.ViewportWidth {
+		t.Errorf("%dpx toolbar causes horizontal overflow: document %.0fpx, viewport %.0fpx", width, layout.DocumentWidth, layout.ViewportWidth)
+	}
+}
+
+func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	if width > 650 {
+		assertWideToolbar(t, width, layout)
+	}
+	if width <= 650 && width > 380 {
+		assertCompactToolbar(t, width, layout)
+	}
+	if width <= 380 {
+		assertNarrowToolbar(t, width, layout)
+	}
+	assertHeaderActionAlignment(t, width, layout)
+}
+
+func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Period, layout.Sort)
+	if width == 800 && layout.Search.Width >= 420 {
+		t.Errorf("search should shrink before wrapping at 800px (width %.0fpx)", layout.Search.Width)
+	}
+}
+
+func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	assertToolbarRow(t, width, layout.Filter, layout.Period, layout.Sort)
+	if layout.FilterHeight < 40 || layout.PeriodHeight < 40 || layout.SortHeight < 40 {
+		t.Errorf("%dpx viewport has undersized touch controls (filter %.0fpx, period %.0fpx, sort %.0fpx)", width, layout.FilterHeight, layout.PeriodHeight, layout.SortHeight)
+	}
+	if width <= 420 && layout.Period.Width > 140 {
+		t.Errorf("%dpx viewport has an unnecessarily wide period selector (%.0fpx)", width, layout.Period.Width)
+	}
+	if width > 420 && layout.Period.Width > 180 {
+		t.Errorf("%dpx viewport has an unnecessarily wide period selector (%.0fpx)", width, layout.Period.Width)
+	}
+}
+
+func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	assertToolbarRow(t, width, layout.Filter, layout.Period)
+	if layout.Sort.Y <= layout.Period.Y {
+		t.Errorf("%dpx viewport should wrap sort below the filter and period controls", width)
+	}
+}
+
+func assertHeaderActionAlignment(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	if width > 1000 && abs(layout.Header.Right-layout.Theme.Right) > 2 {
+		t.Errorf("desktop actions should align to the header's right inset (header %.1fpx, theme %.1fpx)", layout.Header.Right, layout.Theme.Right)
+	}
+}
+
+func assertToolbarRow(t *testing.T, width int, boxes ...layoutBox) {
+	t.Helper()
+	for _, box := range boxes[1:] {
+		if abs((box.Y+box.Height/2)-(boxes[0].Y+boxes[0].Height/2)) > 1 {
+			t.Errorf("%dpx viewport should keep controls on one row", width)
+			return
+		}
+	}
+}
+
+func assertExpectedSalaryInputStyle(t *testing.T, page playwright.Page) {
+	t.Helper()
+	input := page.Locator("#process-filter-expected-salary")
+	visible, err := input.IsVisible()
+	if err != nil {
+		t.Fatalf("check expected salary input visibility: %v", err)
+	}
+	if !visible {
+		if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+			t.Fatalf("open process filters: %v", err)
+		}
+	}
+	if err := input.Fill("€85k"); err != nil {
+		t.Fatalf("enter expected salary filter: %v", err)
+	}
+	style, err := input.Evaluate(`element => ({
+	  type: element.type,
+	  height: getComputedStyle(element).height,
+	  radius: getComputedStyle(element).borderRadius,
+	  fontSize: getComputedStyle(element).fontSize,
+	})`, nil)
+	if err != nil {
+		t.Fatalf("read expected salary input style: %v", err)
+	}
+	styleValues := style.(map[string]interface{})
+	if styleValues["type"] != "text" || styleValues["radius"] == "0px" || styleValues["height"] != "38px" || styleValues["fontSize"] != "12px" {
+		t.Errorf("expected salary filter should use the styled app input, got %#v", styleValues)
+	}
+}
+
+func abs(value float64) float64 {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
 func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)

@@ -479,6 +479,8 @@
 
   .header-search-actions #btn-new-process,
   .header-search-actions .theme-toggle { flex: 0 0 auto; }
+
+  .header-search-actions #btn-new-process { margin-left: auto; }
 }
 
 @media (max-width: 1000px) {
@@ -563,6 +565,7 @@
   }
   .header-controls:not(.is-open) .view-controls { display: flex; }
   .header-controls:not(.is-open) .header-search-actions > #btn-new-process { display: inline-flex; }
+  .header-search-actions #btn-new-process { margin-left: auto; }
 }
 
 @media (min-width: 801px) and (max-width: 1360px) {
