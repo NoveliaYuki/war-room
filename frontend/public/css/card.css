@@ -21,11 +21,11 @@
 
 .toolbar-search-filter {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(150px, 180px);
+  grid-template-columns: minmax(0, 1fr) auto 140px;
   grid-column: 1;
   grid-row: 1;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 }
