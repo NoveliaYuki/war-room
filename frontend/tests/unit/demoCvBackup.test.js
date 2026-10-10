@@ -45,6 +45,8 @@ describe("demo CV library backup", () => {
     expect((await demoApi.getJob("demo-cv-job")).search_period_id).toBe(period.id);
     const created = await demoApi.createJob({ position_title: "New role" });
     expect(created.search_period_id).toBe(period.id);
+    const createdWithEmptySelection = await demoApi.createJob({ position_title: "Another new role", search_period_id: "" });
+    expect(createdWithEmptySelection.search_period_id).toBe(period.id);
     const archive = await demoApi.exportBackup();
     await demoApi.importBackup(archive);
     expect((await demoApi.getSearchPeriods())[0].end_date).toBe("");

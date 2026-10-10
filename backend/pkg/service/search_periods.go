@@ -112,6 +112,13 @@ func (s *JobService) resolveJobSearchPeriod(input *string) (*string, error) {
 	return &period.ID, nil
 }
 
+func (s *JobService) resolveNewJobSearchPeriod(input *string) (*string, error) {
+	if input != nil && strings.TrimSpace(*input) != "" {
+		return s.resolveJobSearchPeriod(input)
+	}
+	return s.resolveJobSearchPeriod(nil)
+}
+
 func (s *JobService) validateJobSearchPeriod(input *string) error {
 	if input == nil {
 		return nil

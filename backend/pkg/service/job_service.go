@@ -112,7 +112,7 @@ func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error)
 	if err != nil {
 		return nil, err
 	}
-	job.SearchPeriodID, err = s.resolveJobSearchPeriod(input.SearchPeriodID)
+	job.SearchPeriodID, err = s.resolveNewJobSearchPeriod(input.SearchPeriodID)
 	if err != nil {
 		return nil, err
 	}

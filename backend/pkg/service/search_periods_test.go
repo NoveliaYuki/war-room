@@ -13,7 +13,7 @@ func TestSearchPeriodLifecycleAndJobAssignment(t *testing.T) {
 	fixture := newAttachmentOwnerFixture(t)
 	today := time.Now().Format("2006-01-02")
 	createStages := false
-	period, err := fixture.service.CreateSearchPeriod(models.SearchPeriodInput{Name: "Current search", StartDate: today, EndDate: today})
+	period, err := fixture.service.CreateSearchPeriod(models.SearchPeriodInput{Name: "Current search", StartDate: today})
 	if err != nil {
 		t.Fatalf("create search period: %v", err)
 	}
@@ -43,24 +43,28 @@ func TestSearchPeriodCreationWithoutActivePeriod(t *testing.T) {
 	}
 }
 
-func TestSearchPeriodJobAssignmentCanChangeAndClear(t *testing.T) {
+func TestNewJobWithEmptyPeriodUsesCurrentPeriodAndCanBeCleared(t *testing.T) {
 	fixture := newAttachmentOwnerFixture(t)
 	today := time.Now().Format("2006-01-02")
-	period, err := fixture.service.CreateSearchPeriod(models.SearchPeriodInput{Name: "Current search", StartDate: today, EndDate: today})
+	period, err := fixture.service.CreateSearchPeriod(models.SearchPeriodInput{Name: "Current search", StartDate: today})
 	if err != nil {
 		t.Fatal(err)
 	}
 	noPeriod := ""
 	createStages := false
-	unassigned, err := fixture.service.CreateJob(models.CreateJobInput{PositionTitle: "Unassigned", SearchPeriodID: &noPeriod, CreateDefaultStages: &createStages})
-	if err != nil || unassigned.SearchPeriodID != nil {
-		t.Fatalf("unassigned job=%+v err=%v", unassigned, err)
+	created, err := fixture.service.CreateJob(models.CreateJobInput{PositionTitle: "Automatically assigned", SearchPeriodID: &noPeriod, CreateDefaultStages: &createStages})
+	if err != nil || created.SearchPeriodID == nil || *created.SearchPeriodID != period.ID {
+		t.Fatalf("new job with empty period=%+v err=%v", created, err)
 	}
-	if _, err := fixture.service.UpdateJob(unassigned.ID, models.UpdateJobInput{SearchPeriodID: &period.ID}); err != nil {
-		t.Fatalf("assign existing job: %v", err)
-	}
-	if _, err := fixture.service.UpdateJob(unassigned.ID, models.UpdateJobInput{SearchPeriodID: &noPeriod}); err != nil {
+	if _, err := fixture.service.UpdateJob(created.ID, models.UpdateJobInput{SearchPeriodID: &noPeriod}); err != nil {
 		t.Fatalf("clear existing job assignment: %v", err)
+	}
+	cleared, err := fixture.repo.GetJobByID(created.ID)
+	if err != nil || cleared.SearchPeriodID != nil {
+		t.Fatalf("cleared existing job assignment=%v err=%v", cleared.SearchPeriodID, err)
+	}
+	if _, err := fixture.service.UpdateJob(created.ID, models.UpdateJobInput{SearchPeriodID: &period.ID}); err != nil {
+		t.Fatalf("assign existing job: %v", err)
 	}
 }
 
