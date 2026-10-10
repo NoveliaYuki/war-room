@@ -189,27 +189,29 @@
 
 .process-toolbar[hidden] { display: none; }
 
-.search-period-manager { display: grid; gap: 18px; padding: 20px; }
-.search-period-form { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+.search-period-manager { display: grid; gap: 20px; padding: 22px 24px 24px; }
+.search-period-form { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
 .search-period-form > label,
-.search-period-form .form-grid label { display: grid; gap: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
-.search-period-optional { color: var(--text-muted); font-size: 10px; font-weight: 400; }
-.search-period-form input { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font: 400 13px var(--font-sans); }
+.search-period-form .form-grid label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.search-period-optional { color: var(--text-muted); font-size: 12px; font-weight: 400; line-height: 1.4; }
+.search-period-form input { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font: 400 14px var(--font-sans); }
 #create-search-period,
-#edit-search-period { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font: 400 13px var(--font-sans); }
+#edit-search-period { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font: 400 14px var(--font-sans); }
 .search-period-form-actions,
 .search-period-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .search-period-form-actions [hidden] { display: none; }
+.search-period-form-actions > button,
+.search-period-actions > button { min-height: 40px; justify-content: center; }
 .search-period-list { display: grid; gap: 8px; }
-.search-period-empty { display: grid; gap: 5px; margin: 0; padding: 12px 2px; }
-.search-period-empty strong { color: var(--text-secondary); font-size: 12px; }
-.search-period-empty span { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
-.search-period-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+.search-period-empty { display: grid; gap: 6px; margin: 0; padding: 14px 2px; }
+.search-period-empty strong { color: var(--text-secondary); font-size: 14px; }
+.search-period-empty span { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.search-period-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
 .search-period-row > div:first-child { display: grid; gap: 4px; min-width: 0; }
-.search-period-row strong { color: var(--text-primary); font-size: 13px; }
+.search-period-row strong { color: var(--text-primary); font-size: 14px; }
 .search-period-row span,
 .search-period-row small,
-.search-period-empty { color: var(--text-muted); font-size: 11px; }
+.search-period-empty { color: var(--text-muted); font-size: 12px; }
 .search-period-actions { flex: 0 0 auto; }
 
 @media (max-width: 780px) {
@@ -230,8 +232,17 @@
   .process-filter-arrangements { grid-template-columns: 1fr 1fr; }
   .process-filter-arrangements label { min-height: 28px; }
   .settings-data-footer { align-items: flex-start; }
-  .search-period-manager { padding: 12px; }
-  .search-period-row { align-items: flex-start; flex-direction: column; }
+  .search-period-manager { gap: 16px; padding: 14px 12px 18px; }
+  .search-period-form { gap: 14px; padding: 14px; }
+  .search-period-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
+  .search-period-actions { flex-wrap: nowrap; }
+  .search-period-actions > button { min-width: 60px; padding-inline: 10px; }
+}
+
+@media (max-width: 360px) {
+  .search-period-row { grid-template-columns: minmax(0, 1fr); }
+  .search-period-actions { width: 100%; }
+  .search-period-actions > button { flex: 1 1 0; }
 }
 
 @media (min-width: 381px) and (max-width: 420px) {
