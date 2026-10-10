@@ -263,6 +263,38 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	assertExpectedSalaryInputStyle(t, page)
 }
 
+func TestSearchPeriodMenuClosesWhenKeyboardFocusLeaves(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	trigger := page.Locator("#search-period-trigger")
+	if err := trigger.Focus(); err != nil {
+		t.Fatalf("focus search period selector: %v", err)
+	}
+	if err := page.Keyboard().Press("ArrowDown"); err != nil {
+		t.Fatalf("open search period options: %v", err)
+	}
+	assertVisible(t, page.Locator("#search-period-menu"))
+	for range 3 {
+		if err := page.Keyboard().Press("Tab"); err != nil {
+			t.Fatalf("move keyboard focus through search period options: %v", err)
+		}
+	}
+	menuVisible, err := page.Locator("#search-period-menu").IsVisible()
+	if err != nil {
+		t.Fatalf("check search period menu visibility: %v", err)
+	}
+	if menuVisible {
+		t.Fatal("search period menu should close after keyboard focus leaves the selector")
+	}
+	activeID, err := page.Evaluate("() => document.activeElement.id", nil)
+	if err != nil {
+		t.Fatalf("read focused control after leaving search period selector: %v", err)
+	}
+	if activeID != "process-sort-trigger" {
+		t.Fatalf("keyboard focus should continue to Sort after leaving the selector, got %q", activeID)
+	}
+}
+
 func assertToolbarWithActiveFilter(t *testing.T, page playwright.Page) {
 	t.Helper()
 	setPageViewport(t, page, 390, 844)

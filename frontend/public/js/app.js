@@ -99,6 +99,7 @@ const searchPeriodFilter = document.querySelector("#search-period-filter");
 const searchPeriodTrigger = document.querySelector("#search-period-trigger");
 const searchPeriodCurrent = document.querySelector("#search-period-current");
 const searchPeriodMenu = document.querySelector("#search-period-menu");
+const searchPeriodSelectWrap = document.querySelector(".search-period-select-wrap");
 const processFilterPanel = document.querySelector("#process-filter-panel");
 const processFilterArrangements = document.querySelectorAll('input[name="process-filter-arrangement"]');
 const processFilterPostedSalaryMin = document.querySelector("#process-filter-posted-salary-min");
@@ -1155,6 +1156,11 @@ searchPeriodMenu?.addEventListener("keydown", (event) => {
   if (!direction || !options.length) return;
   event.preventDefault();
   options[(index + direction + options.length) % options.length]?.focus();
+});
+searchPeriodSelectWrap?.addEventListener("focusout", (event) => {
+  if (event.relatedTarget instanceof Node && searchPeriodSelectWrap.contains(event.relatedTarget)) return;
+  if (searchPeriodMenu) searchPeriodMenu.hidden = true;
+  searchPeriodTrigger?.setAttribute("aria-expanded", "false");
 });
 
 processFilterChips?.addEventListener("click", (event) => {
