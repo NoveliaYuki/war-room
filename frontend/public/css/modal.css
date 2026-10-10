@@ -600,6 +600,17 @@ body.is-resizing-split * {
   gap: 10px;
 }
 
+.keyword-note-box {
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  font: 400 13px/1.5 var(--font-sans);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .technology-detail-section {
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--text-info) 28%, var(--border-subtle));
