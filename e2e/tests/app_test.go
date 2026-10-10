@@ -327,6 +327,15 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Period, layout.Sort)
+	if layout.Search.Width > 340 {
+		t.Errorf("%dpx toolbar should keep the search at its 340px preferred width (got %.0fpx)", width, layout.Search.Width)
+	}
+	if layout.Period.Width > 180 {
+		t.Errorf("%dpx toolbar should keep the period selector compact (got %.0fpx)", width, layout.Period.Width)
+	}
+	if layout.Sort.X-layout.Period.Right > 20 {
+		t.Errorf("%dpx toolbar should keep sort next to the period selector (gap %.0fpx)", width, layout.Sort.X-layout.Period.Right)
+	}
 	if width == 800 && layout.Search.Width >= 420 {
 		t.Errorf("search should shrink before wrapping at 800px (width %.0fpx)", layout.Search.Width)
 	}
