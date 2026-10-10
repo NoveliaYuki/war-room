@@ -12,7 +12,7 @@
 
 .process-toolbar {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto minmax(125px, 180px) auto;
+  grid-template-columns: minmax(140px, min(340px, 1fr)) auto minmax(125px, 180px) auto;
   align-items: center;
   gap: 8px 12px;
   min-height: 28px;
