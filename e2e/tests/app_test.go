@@ -233,21 +233,21 @@ type layoutBox struct {
 }
 
 type toolbarLayout struct {
-	ViewportWidth       float64    `json:"viewportWidth"`
-	DocumentWidth       float64    `json:"documentWidth"`
-	Search              layoutBox  `json:"search"`
-	SearchFilter        layoutBox  `json:"searchFilter"`
-	SearchFiltersPeriod layoutBox  `json:"searchFiltersPeriod"`
-	FirstCard           *layoutBox `json:"firstCard"`
-	Filter              layoutBox  `json:"filter"`
-	Period              layoutBox  `json:"period"`
-	Sort                layoutBox  `json:"sort"`
-	Toolbar             layoutBox  `json:"toolbar"`
-	Header              layoutBox  `json:"header"`
-	Theme               layoutBox  `json:"theme"`
-	FilterHeight        float64    `json:"filterHeight"`
-	PeriodHeight        float64    `json:"periodHeight"`
-	SortHeight          float64    `json:"sortHeight"`
+	ViewportWidth     float64    `json:"viewportWidth"`
+	DocumentWidth     float64    `json:"documentWidth"`
+	Search            layoutBox  `json:"search"`
+	SearchFilter      layoutBox  `json:"searchFilter"`
+	SearchFilterWidth layoutBox  `json:"searchFilterWidth"`
+	FirstCard         *layoutBox `json:"firstCard"`
+	Filter            layoutBox  `json:"filter"`
+	Period            layoutBox  `json:"period"`
+	Sort              layoutBox  `json:"sort"`
+	Toolbar           layoutBox  `json:"toolbar"`
+	Header            layoutBox  `json:"header"`
+	Theme             layoutBox  `json:"theme"`
+	FilterHeight      float64    `json:"filterHeight"`
+	PeriodHeight      float64    `json:"periodHeight"`
+	SortHeight        float64    `json:"sortHeight"`
 }
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
@@ -273,7 +273,7 @@ func assertToolbarWithActiveFilter(t *testing.T, page playwright.Page) {
 		t.Fatalf("select hybrid filter: %v", err)
 	}
 	layout := readToolbarLayout(t, page, 390)
-	assertToolbarRow(t, 390, layout.Filter, layout.Period, layout.Sort)
+	assertCompactControlRows(t, 390, layout)
 }
 
 func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLayout {
@@ -288,10 +288,9 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    documentWidth: document.documentElement.scrollWidth,
 	    search: box(".process-search"),
 	    searchFilter: box(".toolbar-search-filter"),
-		searchFiltersPeriod: (() => {
+		searchFilterWidth: (() => {
 		  const group = document.querySelector(".toolbar-search-filter").getBoundingClientRect();
-		  const period = document.querySelector(".search-period-control").getBoundingClientRect();
-		  return { x: group.x, y: group.y, width: period.right - group.x, height: group.height, right: period.right };
+		  return { x: group.x, y: group.y, width: group.width, height: group.height, right: group.right };
 		})(),
 	    firstCard: (() => {
 	      const card = document.querySelector("#cards-grid .process-card");
@@ -334,11 +333,7 @@ func assertToolbarHasNoOverflow(t *testing.T, width int, layout toolbarLayout) {
 func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	if width > 650 {
-		if layout.FirstCard != nil && layout.FirstCard.Width <= 380 {
-			assertNarrowCardToolbar(t, width, layout)
-		} else {
-			assertWideToolbar(t, width, layout)
-		}
+		assertWideToolbar(t, width, layout)
 	}
 	if width <= 650 && width > 380 {
 		assertCompactToolbar(t, width, layout)
@@ -349,30 +344,13 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	assertHeaderActionAlignment(t, width, layout)
 }
 
-func assertNarrowCardToolbar(t *testing.T, width int, layout toolbarLayout) {
-	t.Helper()
-	if layout.Search.Y >= layout.Filter.Y {
-		t.Errorf("%dpx viewport should place search above filters when the first card is narrow", width)
-	}
-	assertToolbarRow(t, width, layout.Filter, layout.Period)
-	if layout.FirstCard == nil || abs(layout.Search.Width-layout.FirstCard.Width) > 2 {
-		t.Errorf("%dpx narrow-card search should match first card width (search %.1fpx, card %v)", width, layout.Search.Width, layout.FirstCard)
-	}
-	if layout.Period.Width > 180 {
-		t.Errorf("%dpx narrow-card period selector should remain compact (got %.0fpx)", width, layout.Period.Width)
-	}
-	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
-		t.Errorf("%dpx toolbar should align sort to the right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
-	}
-}
-
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Period, layout.Sort)
 	if layout.FirstCard == nil {
 		t.Errorf("%dpx toolbar should render a first job card for alignment", width)
-	} else if abs(layout.SearchFiltersPeriod.Width-layout.FirstCard.Width) > 2 {
-		t.Errorf("%dpx search, filters, and period should match first card width (toolbar %.1fpx, card %.1fpx)", width, layout.SearchFiltersPeriod.Width, layout.FirstCard.Width)
+	} else if abs(layout.SearchFilterWidth.Width-layout.FirstCard.Width) > 2 {
+		t.Errorf("%dpx search and filters should match first card width (toolbar %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Width, layout.FirstCard.Width)
 	}
 	if layout.Search.Width > 420 {
 		t.Errorf("%dpx toolbar should keep the search at its 420px preferred width (got %.0fpx)", width, layout.Search.Width)
@@ -380,8 +358,8 @@ func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	if layout.Period.Width > 180 {
 		t.Errorf("%dpx toolbar should keep the period selector compact (got %.0fpx)", width, layout.Period.Width)
 	}
-	if layout.Period.X-layout.Filter.Right > 20 {
-		t.Errorf("%dpx toolbar should keep the period selector beside filters (gap %.0fpx)", width, layout.Period.X-layout.Filter.Right)
+	if gap := layout.Period.X - layout.SearchFilterWidth.Right; gap < 0 || gap > 20 {
+		t.Errorf("%dpx toolbar should place the period selector beside search and filters (gap %.0fpx)", width, gap)
 	}
 	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
 		t.Errorf("%dpx toolbar should align sort to the right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
@@ -393,7 +371,7 @@ func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	assertToolbarRow(t, width, layout.Filter, layout.Period, layout.Sort)
+	assertCompactControlRows(t, width, layout)
 	if layout.FilterHeight < 40 || layout.PeriodHeight < 40 || layout.SortHeight < 40 {
 		t.Errorf("%dpx viewport has undersized touch controls (filter %.0fpx, period %.0fpx, sort %.0fpx)", width, layout.FilterHeight, layout.PeriodHeight, layout.SortHeight)
 	}
@@ -403,6 +381,18 @@ func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 	if width > 420 && layout.Period.Width > 180 {
 		t.Errorf("%dpx viewport has an unnecessarily wide period selector (%.0fpx)", width, layout.Period.Width)
 	}
+}
+
+func assertCompactControlRows(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	assertToolbarRow(t, width, layout.Filter, layout.Period)
+	if width <= 420 {
+		if layout.Sort.Y <= layout.Period.Y {
+			t.Errorf("%dpx viewport should place sort below the filter and period controls", width)
+		}
+		return
+	}
+	assertToolbarRow(t, width, layout.Period, layout.Sort)
 }
 
 func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
