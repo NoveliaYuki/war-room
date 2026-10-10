@@ -318,7 +318,7 @@ function renderInterviewerRow(interviewer, index) {
     <span class="interviewer-name editable-stage-interviewer-name" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.name)}">${escapeHtml(interviewer.name)}</span>
     <span class="interviewer-role editable-stage-interviewer-role" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.role || "")}">• ${interviewer.role ? escapeHtml(interviewer.role) : "Add role"}</span>
     <span class="interviewer-note editable-stage-interviewer-note" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.notes || "")}">${interviewer.notes ? `(${escapeHtml(interviewer.notes)})` : '<span style="color: var(--text-muted); font-style: italic;">(Add note)</span>'}</span>
-  </div><button class="stage-action-btn btn-del-stage-interviewer" data-idx="${index}" style="color: var(--text-muted);" title="Remove interviewer">${icon("close", 11)}</button></div>`;
+  </div><button class="stage-action-btn btn-del-stage-interviewer" data-idx="${index}" style="color: var(--text-muted);" title="Remove interviewer" aria-label="Remove ${escapeAttr(interviewer.name)} from this stage">${icon("close", 11)}</button></div>`;
 }
 
 /** Renders the interviewer roster or its empty state. */
@@ -699,19 +699,20 @@ function getMeetingTypeClass(type) {
 function renderStageActionButtons(view) {
   const { activeStage, activeStageIndex, stages } = view;
   const current = activeStage.status === "current";
-  const moveUp = activeStageIndex > 0 ? `<button class="stage-action-btn" id="btn-move-stage-up" title="Move Up">${icon("chevronUp", 12)}</button>` : "";
-  const moveDown = activeStageIndex < stages.length - 1 ? `<button class="stage-action-btn" id="btn-move-stage-down" title="Move Down">${icon("chevronDown", 12)}</button>` : "";
+  const stageName = activeStage.custom_title || activeStage.stage_type;
+  const moveUp = activeStageIndex > 0 ? `<button class="stage-action-btn" id="btn-move-stage-up" title="Move Up" aria-label="Move ${escapeAttr(stageName)} stage up">${icon("chevronUp", 12)}</button>` : "";
+  const moveDown = activeStageIndex < stages.length - 1 ? `<button class="stage-action-btn" id="btn-move-stage-down" title="Move Down" aria-label="Move ${escapeAttr(stageName)} stage down">${icon("chevronDown", 12)}</button>` : "";
   const currentLabel = current
     ? `${icon("pin", 12)} <span class="stage-current-label-full">Current Step</span><span class="stage-current-label-compact">Current</span> ${icon("check", 12)}`
     : `${icon("target", 12)} <span class="stage-current-label-full">Set as Current Step</span><span class="stage-current-label-compact">Set Current</span>`;
-  return `<button class="btn-stage-current ${current ? "is-current" : ""}" id="btn-toggle-current-stage" title="Click to mark this as your current step in the process"><span class="inline-icon-text">${currentLabel}</span></button>${moveUp}${moveDown}<button class="stage-action-btn" id="btn-delete-stage" title="Delete Stage" style="color: var(--status-rejected);">${icon("close", 12)}</button>`;
+  return `<button class="btn-stage-current ${current ? "is-current" : ""}" id="btn-toggle-current-stage" title="Click to mark this as your current step in the process"><span class="inline-icon-text">${currentLabel}</span></button>${moveUp}${moveDown}<button class="stage-action-btn" id="btn-delete-stage" title="Delete Stage" aria-label="Delete ${escapeAttr(stageName)} stage" style="color: var(--status-rejected);">${icon("close", 12)}</button>`;
 }
 
 /** Renders a single question row in the stage workspace. */
 function renderStageQuestion(question) {
   return `<div class="question-item" data-qid="${escapeAttr(question.id)}"><div class="question-row-top">
     <div class="question-text editable-question-text" data-qid="${escapeAttr(question.id)}" data-raw-value="${escapeAttr(question.question)}" style="font-weight: 500; font-size: 14px;">${escapeHtml(question.question)}</div>
-    <div style="display: flex; align-items: center; gap: 4px;"><button class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Drag to reorder questions" aria-label="Reorder interview question">${icon("gripLines", 14)}</button></div>
+    <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question" aria-label="Delete interview question">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Drag to reorder questions" aria-label="Reorder interview question">${icon("gripLines", 14)}</button></div>
   </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" placeholder="Log interviewer's answers or your notes here...">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
 }
 

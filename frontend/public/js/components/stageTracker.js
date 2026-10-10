@@ -64,10 +64,12 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
 
     const headerRight = document.createElement("div");
     headerRight.className = "stage-header-right";
+    const stageName = stage.custom_title || stage.stage_type;
 
     // Status Selector
     const statusSelect = document.createElement("select");
     statusSelect.className = "stage-status-select";
+    statusSelect.setAttribute("aria-label", `Status for ${stageName} stage`);
     ["pending", "current", "completed", "skipped"].forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s;
@@ -90,6 +92,7 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
       upBtn.className = "stage-action-btn";
       upBtn.innerHTML = icon("chevronUp", 12);
       upBtn.title = "Move Stage Up";
+      upBtn.setAttribute("aria-label", `Move ${stageName} stage up`);
       upBtn.addEventListener("click", async () => {
         try {
           const ids = stages.map((s) => s.id);
@@ -110,6 +113,7 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
       downBtn.className = "stage-action-btn";
       downBtn.innerHTML = icon("chevronDown", 12);
       downBtn.title = "Move Stage Down";
+      downBtn.setAttribute("aria-label", `Move ${stageName} stage down`);
       downBtn.addEventListener("click", async () => {
         try {
           const ids = stages.map((s) => s.id);
@@ -130,6 +134,7 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
     delBtn.className = "stage-action-btn";
     delBtn.innerHTML = icon("close", 12);
     delBtn.title = "Remove Stage";
+    delBtn.setAttribute("aria-label", `Remove ${stageName} stage`);
     delBtn.addEventListener("click", async () => {
       try {
         if (confirm(`Remove stage "${escapeHtml(stage.custom_title || stage.stage_type)}"?`)) {
