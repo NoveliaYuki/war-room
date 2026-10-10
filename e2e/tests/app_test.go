@@ -261,6 +261,11 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	}
 	assertToolbarWithActiveFilter(t, page)
 	assertExpectedSalaryInputStyle(t, page)
+	if count, err := page.Locator(".process-sort-control > span").Count(); err != nil {
+		t.Fatalf("count redundant sort labels: %v", err)
+	} else if count != 0 {
+		t.Error("sort control should communicate its purpose through the selected sort value")
+	}
 }
 
 func TestSearchPeriodMenuClosesWhenKeyboardFocusLeaves(t *testing.T) {
@@ -310,6 +315,9 @@ func assertToolbarWithActiveFilter(t *testing.T, page playwright.Page) {
 
 func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLayout {
 	t.Helper()
+	if _, err := page.Evaluate("() => document.getAnimations().forEach((animation) => animation.finish())", nil); err != nil {
+		t.Fatalf("finish toolbar entrance animations at %dpx: %v", width, err)
+	}
 	state, err := page.Evaluate(`() => {
 	  const box = selector => {
 	    const rect = document.querySelector(selector).getBoundingClientRect();
@@ -390,8 +398,8 @@ func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	if layout.Period.Width > 180 {
 		t.Errorf("%dpx toolbar should keep the period selector compact (got %.0fpx)", width, layout.Period.Width)
 	}
-	if gap := layout.Period.X - layout.SearchFilterWidth.Right; gap < 0 || gap > 20 {
-		t.Errorf("%dpx toolbar should place the period selector beside search and filters (gap %.0fpx)", width, gap)
+	if gap := layout.Period.X - layout.SearchFilterWidth.Right; abs(gap-12) > 1 {
+		t.Errorf("%dpx toolbar should keep the period selector 12px after search and filters (gap %.1fpx)", width, gap)
 	}
 	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
 		t.Errorf("%dpx toolbar should align sort to the right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
@@ -430,6 +438,9 @@ func assertCompactControlRows(t *testing.T, width int, layout toolbarLayout) {
 func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Filter, layout.Period)
+	if layout.Period.Width < 137 {
+		t.Errorf("%dpx viewport should preserve enough width to read the selected period (got %.0fpx)", width, layout.Period.Width)
+	}
 	if layout.Sort.Y <= layout.Period.Y {
 		t.Errorf("%dpx viewport should wrap sort below the filter and period controls", width)
 	}
