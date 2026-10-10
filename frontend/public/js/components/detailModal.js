@@ -35,6 +35,7 @@ const SPLIT_GUTTER_PX = 14;
 const JOB_STATUS_CYCLE = ["waiting", "ongoing", "rejected", "accepted"];
 const JOB_STATUS_LABELS = { waiting: "Waiting", ongoing: "Ongoing", rejected: "Rejected", accepted: "Approved" };
 const splitResizeObservers = new WeakMap();
+const stageTabResizeObservers = new WeakMap();
 let detailLoadRequestId = 0;
 
 /** Keeps both desktop panes wide enough for their contents. */
@@ -619,6 +620,8 @@ function renderActiveStageFocus(view) {
 function renderStageTabs(view) {
   const { stages, activeStageIndex } = view;
   return `
+        <div class="stage-tabs-scroll">
+          <button class="stage-tabs-scroll-button is-prev" type="button" aria-label="Scroll interview stages left" title="Scroll interview stages left" hidden>${icon("chevronLeft", 14)}</button>
         <div class="stages-tab-bar">
           ${stages
             .map(
@@ -635,9 +638,35 @@ function renderStageTabs(view) {
             .join('')}
           <button class="btn-tab-add-stage inline-icon-text" id="btn-add-stage-tab">${icon("plus", 11)} Add Stage</button>
         </div>
+          <button class="stage-tabs-scroll-button is-next" type="button" aria-label="Scroll interview stages right" title="Scroll interview stages right" hidden>${icon("chevronRight", 14)}</button>
+        </div>
 
 
   `;
+}
+
+/** Keeps interview stage overflow controls in sync with the horizontal tab list. */
+function bindStageTabScrollControls(modalEl) {
+  stageTabResizeObservers.get(modalEl)?.disconnect();
+  const tabs = modalEl.querySelector(".stages-tab-bar");
+  const previous = modalEl.querySelector(".stage-tabs-scroll-button.is-prev");
+  const next = modalEl.querySelector(".stage-tabs-scroll-button.is-next");
+  if (!tabs || !previous || !next) return;
+
+  const updateControls = () => {
+    const maxScroll = tabs.scrollWidth - tabs.clientWidth;
+    previous.hidden = tabs.scrollLeft <= 1;
+    next.hidden = maxScroll <= 1 || tabs.scrollLeft >= maxScroll - 1;
+  };
+  previous.addEventListener("click", () => tabs.scrollBy({ left: -Math.max(180, tabs.clientWidth * 0.75), behavior: "smooth" }));
+  next.addEventListener("click", () => tabs.scrollBy({ left: Math.max(180, tabs.clientWidth * 0.75), behavior: "smooth" }));
+  tabs.addEventListener("scroll", updateControls, { passive: true });
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(updateControls);
+    observer.observe(tabs);
+    stageTabResizeObservers.set(modalEl, observer);
+  }
+  window.requestAnimationFrame(updateControls);
 }
 /** Renders one cohesive section of the job detail modal. */
 function renderStageSchedule(stage) {
@@ -751,6 +780,7 @@ function attachModalHandlers(context) {
   const closeAction = () => {
     detailLoadRequestId += 1;
     splitResizeObservers.get(modalEl)?.disconnect();
+    stageTabResizeObservers.get(modalEl)?.disconnect();
     closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
       restoreModalFocus();
@@ -1631,6 +1661,7 @@ ${renderActiveStageWorkspace(view)}
       tabs.scrollLeft += activeRect.left - tabsRect.left - (tabs.clientWidth - activeRect.width) / 2;
     }
   }
+  bindStageTabScrollControls(modalEl);
 
   attachModalHandlers({ modalEl, backdropEl, job, onGlobalRefresh, ...view });
 }

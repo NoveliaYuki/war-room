@@ -734,6 +734,35 @@ func TestDemoTechnologyStacksFitNarrowCards(t *testing.T) {
 	}
 }
 
+func TestDemoStageTabsExposeHorizontalOverflow(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 1440, 900)
+	if err := page.Locator("#cards-grid .process-card").First().Click(); err != nil {
+		t.Fatalf("open demo process details: %v", err)
+	}
+	if err := page.Locator("#detail-modal .stages-tab-bar").WaitFor(); err != nil {
+		t.Fatalf("wait for interview stage tabs: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => {
+		const tabs = document.querySelector("#detail-modal .stages-tab-bar");
+		const next = document.querySelector("#detail-modal .stage-tabs-scroll-button.is-next");
+		return tabs && tabs.scrollWidth > tabs.clientWidth && next && !next.hidden;
+	}`, nil); err != nil {
+		t.Fatalf("overflowing interview stages should expose a scroll control: %v", err)
+	}
+	if err := page.Locator("#detail-modal .stage-tabs-scroll-button.is-next").Click(); err != nil {
+		t.Fatalf("scroll to additional interview stages: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => {
+		const tabs = document.querySelector("#detail-modal .stages-tab-bar");
+		const previous = document.querySelector("#detail-modal .stage-tabs-scroll-button.is-prev");
+		return tabs && tabs.scrollLeft > 0 && previous && !previous.hidden;
+	}`, nil); err != nil {
+		t.Fatalf("scrolling stages should expose the control to return left: %v", err)
+	}
+}
+
 func TestIntermediateViewportUsesOpenSearchMenu(t *testing.T) {
 	page := newPage(t)
 	if err := page.SetViewportSize(780, 850); err != nil {

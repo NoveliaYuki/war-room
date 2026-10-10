@@ -360,6 +360,40 @@ describe('detail modal', () => {
     expect(api.createQuestion).toHaveBeenCalledWith({ stage_id: 's1', question: 'Ask about on-call', answer_notes: '' });
   });
 
+  it('shows directional controls and scrolls overflowing interview stages', async () => {
+    const stages = ["HR", "Technical", "Cultural", "Offer"].map((stage_type, index) => ({
+      id: `s${index + 1}`, stage_type, status: index === 0 ? 'current' : 'pending', questions: [],
+    }));
+    api.getJob.mockResolvedValue(job(stages));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    const tabs = modal.querySelector('.stages-tab-bar');
+    const previous = modal.querySelector('.stage-tabs-scroll-button.is-prev');
+    const next = modal.querySelector('.stage-tabs-scroll-button.is-next');
+    Object.defineProperties(tabs, {
+      scrollWidth: { configurable: true, value: 700 },
+      clientWidth: { configurable: true, value: 400 },
+      scrollLeft: { configurable: true, writable: true, value: 0 },
+      scrollBy: { configurable: true, value: vi.fn(({ left }) => {
+        tabs.scrollLeft = Math.max(0, Math.min(300, tabs.scrollLeft + left));
+        tabs.dispatchEvent(new Event('scroll'));
+      }) },
+    });
+
+    tabs.dispatchEvent(new Event('scroll'));
+    expect(previous.hidden).toBe(true);
+    expect(next.hidden).toBe(false);
+    next.click();
+    expect(tabs.scrollBy).toHaveBeenCalledWith({ left: 300, behavior: 'smooth' });
+    expect(previous.hidden).toBe(false);
+    tabs.scrollLeft = 300;
+    tabs.dispatchEvent(new Event('scroll'));
+    expect(next.hidden).toBe(true);
+    previous.click();
+    expect(tabs.scrollBy).toHaveBeenLastCalledWith({ left: -300, behavior: 'smooth' });
+    expect(previous.hidden).toBe(true);
+  });
+
   it('opens and cancels the edit details form', async () => {
     api.getJob.mockResolvedValue(job());
     const modal = document.querySelector('#detail-modal');
