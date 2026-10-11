@@ -11,7 +11,7 @@
 
 .process-toolbar {
   display: grid;
-  grid-template-columns: minmax(min(100%, 550px), 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   column-gap: 20px;
@@ -27,7 +27,12 @@
   align-items: center;
   gap: 8px;
   width: min(100%, 760px);
+  max-width: 760px;
   min-width: 0;
+}
+
+@media (min-width: 781px) {
+  .process-toolbar { grid-template-columns: minmax(0, min(760px, calc(100% - 151px))) auto; }
 }
 .process-search { width: 100%; min-width: 0; max-width: none; }
 .process-search .search-input { height: 38px; }

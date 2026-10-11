@@ -221,7 +221,16 @@ func sqliteDataSource(databasePath string) string {
 func configureJournalMode(db *sql.DB) error {
 	return configureJournalModeWithSetter(func(mode string) (string, error) {
 		var actual string
-		err := db.QueryRow("PRAGMA journal_mode=" + mode).Scan(&actual)
+		var query string
+		switch mode {
+		case "WAL":
+			query = "PRAGMA journal_mode=WAL"
+		case "DELETE":
+			query = "PRAGMA journal_mode=DELETE"
+		default:
+			return "", fmt.Errorf("unsupported SQLite journal mode %q", mode)
+		}
+		err := db.QueryRow(query).Scan(&actual)
 		return actual, err
 	})
 }
