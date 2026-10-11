@@ -652,8 +652,9 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
-	if abs(layout.SearchFilterWidth.Width-layout.FirstCard.Width) > 2 {
-		t.Errorf("%dpx search and filters should align with the first card (group %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Width, layout.FirstCard.Width)
+	const preferredSearchFilterWidth = 421.0
+	if abs(layout.SearchFilterWidth.Width-preferredSearchFilterWidth) > 2 {
+		t.Errorf("%dpx search and filters should retain their preferred width (group %.1fpx, expected %.1fpx)", width, layout.SearchFilterWidth.Width, preferredSearchFilterWidth)
 	}
 	expectedSearchWidth := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
 	if abs(layout.Search.Width-expectedSearchWidth) > 2 {

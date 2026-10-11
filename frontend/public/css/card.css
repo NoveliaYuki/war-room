@@ -43,7 +43,7 @@
 
 .process-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, min(600px, calc((100% - 20px) / 2))) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 421px) minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   column-gap: 20px;
@@ -214,16 +214,6 @@
 .process-filter-technologies legend { margin-bottom: 1px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .process-sort-control { position: relative; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font: 500 13px var(--font-sans); }
 .process-sort-control[hidden] { display: none; }
-
-@container (min-width: 1060px) {
-  .process-toolbar { grid-template-columns: minmax(0, calc((100% - 40px) / 3)) minmax(0, 1fr) auto; }
-}
-
-@media (max-width: 760px) {
-  @container (min-width: 694px) {
-    .process-toolbar { grid-template-columns: minmax(0, calc((100% - 14px) / 2)) minmax(0, 1fr) auto; }
-  }
-}
 
 @media (min-width: 722px) {
   .toolbar-view-controls { display: contents; }
