@@ -751,7 +751,13 @@ function validateDemoTechnology(name, aliases, excludeID = "") {
 }
 
 function jobWithCurrentTechnologies(job) {
-  return { ...job, technologies: (job.technologies || []).map((item) => technologies.find((technology) => technology.id === item.id) || item).map((item) => ({ id: item.id, name: item.name })) };
+  return {
+    ...job,
+    technologies: (job.technologies || []).map((item) => {
+      const technology = technologies.find((entry) => entry.id === item.id) || item;
+      return { id: technology.id, name: technology.name, aliases: technology.aliases || [] };
+    }),
+  };
 }
 
 function listDemoTechnologies() {
