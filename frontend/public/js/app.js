@@ -1232,7 +1232,8 @@ function openNewProcessModal() {
   `;
 
   const form = modalEl.querySelector("#new-process-form");
-  activateModal(modalEl, "#create-position-title");
+  const initialFocus = window.matchMedia?.("(max-width: 600px)").matches ? ".modal-close-btn" : "#create-position-title";
+  activateModal(modalEl, initialFocus);
   const keywordInput = form.querySelector('input[name="keyword_note"]');
   const countEl = modalEl.querySelector("#keyword-char-count");
   const closeBtn = modalEl.querySelector(".modal-close-btn");

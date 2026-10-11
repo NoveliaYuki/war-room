@@ -105,6 +105,7 @@ describe('application entry point', () => {
     document.querySelector('#search-input').blur();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true }));
     expect(document.querySelector('#new-process-form')).not.toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('#create-position-title'));
     expect(document.querySelector('#detail-modal .modal-close-btn').getAttribute('aria-label')).toBe('Close dialog');
     const unassociatedLabels = [...document.querySelectorAll('#new-process-form label.meta-label')].filter((label) => !label.htmlFor || !document.getElementById(label.htmlFor));
     expect(unassociatedLabels).toHaveLength(0);
@@ -127,6 +128,11 @@ describe('application entry point', () => {
     expect(overview.style.height).not.toBe('');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(document.querySelector('#new-process-form')).toBeNull();
+    window.matchMedia = vi.fn(() => ({ matches: true, addEventListener: vi.fn() }));
+    document.querySelector('#btn-new-process').click();
+    expect(document.activeElement).toBe(document.querySelector('#detail-modal .modal-close-btn'));
+    window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     document.querySelector('#search-input').focus();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true }));
     expect(document.querySelector('#new-process-form')).toBeNull();
