@@ -427,7 +427,8 @@ function renderProcessFilterChip({ category, label, value = "" }) {
 }
 
 function getActiveProcessFilterCount() {
-  return Number(processFilters.arrangements.length > 0)
+  return Number(processFilters.searchPeriod !== "all")
+    + Number(processFilters.arrangements.length > 0)
     + Number(Boolean(processFilters.expectedSalaryQuery))
     + Number(processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null)
     + Number(Boolean(processFilters.currency))
@@ -1400,8 +1401,11 @@ searchPeriodMenu?.addEventListener("keydown", (event) => {
 });
 searchPeriodSelectWrap?.addEventListener("focusout", (event) => {
   if (event.relatedTarget instanceof Node && searchPeriodSelectWrap.contains(event.relatedTarget)) return;
-  if (searchPeriodMenu) searchPeriodMenu.hidden = true;
-  searchPeriodTrigger?.setAttribute("aria-expanded", "false");
+  setTimeout(() => {
+    if (searchPeriodSelectWrap.contains(document.activeElement)) return;
+    if (searchPeriodMenu) searchPeriodMenu.hidden = true;
+    searchPeriodTrigger?.setAttribute("aria-expanded", "false");
+  }, 0);
 });
 
 processFilterChips?.addEventListener("click", (event) => {
@@ -1460,6 +1464,9 @@ function clearPostingSalaryFilter() {
 }
 
 processFilterClear?.addEventListener("click", (event) => {
+  if (searchPeriodFilter) searchPeriodFilter.value = "all";
+  processFilters.searchPeriod = "all";
+  renderSearchPeriodOptions();
   processFilterArrangements.forEach((control) => { control.checked = false; });
   if (processFilterExpectedSalary) processFilterExpectedSalary.value = "";
   if (processFilterPostedSalaryMin) processFilterPostedSalaryMin.value = "";

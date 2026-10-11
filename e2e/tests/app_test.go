@@ -406,7 +406,7 @@ func assertMobileInterviewerForm(t *testing.T, metrics mobileInterviewerFormMetr
 	}
 }
 
-func TestPeriodSelectionIsSeparateFromProcessFilters(t *testing.T) {
+func TestPeriodSelectionIsCountedAndClearedWithFilters(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
 	if err := page.Locator("#process-filter-trigger").Click(); err != nil {
@@ -427,7 +427,47 @@ func TestPeriodSelectionIsSeparateFromProcessFilters(t *testing.T) {
 	if value, err := trigger.GetAttribute("aria-label"); err != nil || !strings.Contains(value, "Unassigned") {
 		t.Errorf("period selector should identify the selected scope, got %q (err=%v)", value, err)
 	}
-	assertPeriodSelectionDoesNotActivateFilters(t, page)
+	assertPeriodFilterCounted(t, page)
+	clearAllProcessFilters(t, page)
+	assertPeriodFilterCleared(t, page)
+}
+
+func assertPeriodFilterCounted(t *testing.T, page playwright.Page) {
+	t.Helper()
+	assertVisible(t, page.Locator("#process-filter-count"))
+	assertVisible(t, page.Locator("#process-filter-clear"))
+	count, err := page.Locator("#process-filter-count").TextContent()
+	if err != nil || strings.TrimSpace(count) != "1" {
+		t.Errorf("selecting one period should show one active filter, got %q (err=%v)", count, err)
+	}
+	chips, err := page.Locator("#process-filter-chips [data-remove-filter]").Count()
+	if err != nil || chips != 0 {
+		t.Errorf("period scope should not be rendered as a criteria chip, got %d (err=%v)", chips, err)
+	}
+}
+
+func clearAllProcessFilters(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if err := page.Locator("#process-filter-clear").Click(); err != nil {
+		t.Fatalf("clear selected period: %v", err)
+	}
+}
+
+func assertPeriodFilterCleared(t *testing.T, page playwright.Page) {
+	t.Helper()
+	cleared, err := page.Evaluate(`() => document.querySelector("#search-period-filter").value === "all"`, nil)
+	if err != nil || cleared != true {
+		t.Errorf("clearing filters should restore all periods (cleared=%v, err=%v)", cleared, err)
+	}
+	for _, selector := range []string{"#process-filter-count", "#process-filter-clear"} {
+		visible, err := page.Locator(selector).IsVisible()
+		if err != nil {
+			t.Fatalf("check %s after clearing filters: %v", selector, err)
+		}
+		if visible {
+			t.Errorf("%s should be hidden after clearing the selected period", selector)
+		}
+	}
 }
 
 func TestFilterPopoverStaysWithinNarrowViewports(t *testing.T) {
@@ -490,17 +530,6 @@ func readFilterPopoverBounds(t *testing.T, trigger, panel playwright.Locator, wi
 		t.Fatalf("decode Filters bounds at %dpx: %v", width, err)
 	}
 	return bounds
-}
-
-func assertPeriodSelectionDoesNotActivateFilters(t *testing.T, page playwright.Page) {
-	t.Helper()
-	for _, selector := range []string{"#process-filter-count", "#process-filter-clear", `[data-remove-filter="searchPeriod"]`} {
-		if visible, err := page.Locator(selector).IsVisible(); err != nil {
-			t.Fatalf("check %s after selecting a period: %v", selector, err)
-		} else if visible {
-			t.Errorf("selecting a period alone should not activate a process filter or show %s", selector)
-		}
-	}
 }
 
 func TestSearchAndFiltersRemainAvailableInAllView(t *testing.T) {
@@ -619,6 +648,9 @@ func TestSearchPeriodMenuClosesWhenKeyboardFocusLeaves(t *testing.T) {
 	assertVisible(t, page.Locator("#search-period-menu"))
 	if err := page.Locator("#process-filter-expected-salary").Focus(); err != nil {
 		t.Fatalf("move focus to another filter: %v", err)
+	}
+	if _, err := page.WaitForFunction("() => document.querySelector('#search-period-menu').hidden", nil); err != nil {
+		t.Fatalf("wait for search period menu to close: %v", err)
 	}
 	menuVisible, err := page.Locator("#search-period-menu").IsVisible()
 	if err != nil {
