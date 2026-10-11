@@ -286,6 +286,49 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	}
 }
 
+func TestQuestionEditorInputsAreMobileFriendly(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 390, 844)
+	card := page.Locator(".process-card").First()
+	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open demo process details: %v", err)
+	}
+	if err := page.Locator("#active-add-question-form .add-question-input").WaitFor(); err != nil {
+		t.Fatalf("wait for the mobile question input: %v", err)
+	}
+	if _, err := page.Evaluate("() => document.getAnimations().forEach(animation => animation.finish())", nil); err != nil {
+		t.Fatalf("finish mobile detail entrance animation: %v", err)
+	}
+	state, err := page.Evaluate(`() => {
+	  const input = document.querySelector("#active-add-question-form .add-question-input");
+	  const notes = document.querySelector("#stage-panel .question-answer-box");
+	  return {
+	    inputHeight: input.getBoundingClientRect().height,
+	    inputFontSize: Number.parseFloat(getComputedStyle(input).fontSize),
+	    notesFontSize: Number.parseFloat(getComputedStyle(notes).fontSize),
+	  };
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read mobile question editor styles: %v", err)
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("encode mobile question editor styles: %v", err)
+	}
+	var metrics struct {
+		InputHeight   float64 `json:"inputHeight"`
+		InputFontSize float64 `json:"inputFontSize"`
+		NotesFontSize float64 `json:"notesFontSize"`
+	}
+	if err := json.Unmarshal(encoded, &metrics); err != nil {
+		t.Fatalf("decode mobile question editor styles: %v", err)
+	}
+	if metrics.InputHeight < 44 || metrics.InputFontSize < 16 || metrics.NotesFontSize < 16 {
+		t.Errorf("mobile question editor should provide 44px touch input and 16px text, got input %.0fpx/%.0fpx and notes %.0fpx", metrics.InputHeight, metrics.InputFontSize, metrics.NotesFontSize)
+	}
+}
+
 func TestPeriodSelectionIsSeparateFromProcessFilters(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
@@ -547,8 +590,15 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
-	if layout.FirstCard.Width > 0 && abs(layout.SearchFilterWidth.Right-layout.FirstCard.Right) > 3 {
-		t.Errorf("%dpx search and filters should end at the first card's edge (group %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Right, layout.FirstCard.Right)
+	columnGap := 20.0
+	gapCount := 2.0
+	if width <= 780 {
+		columnGap = 14
+		gapCount = 1
+	}
+	expectedGroupWidth := min(600, layout.Toolbar.Width-layout.Sort.Width-columnGap*gapCount)
+	if abs(layout.SearchFilterWidth.Width-expectedGroupWidth) > 2 {
+		t.Errorf("%dpx search and filters should keep their preferred width until space is constrained (got %.1fpx, expected %.1fpx)", width, layout.SearchFilterWidth.Width, expectedGroupWidth)
 	}
 	expectedSearchWidth := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
 	if abs(layout.Search.Width-expectedSearchWidth) > 2 {

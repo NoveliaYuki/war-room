@@ -751,7 +751,7 @@ function renderStageQuestion(question) {
   return `<div class="question-item" data-qid="${escapeAttr(question.id)}"><div class="question-row-top">
     <div class="question-text editable-question-text" data-qid="${escapeAttr(question.id)}" data-raw-value="${questionLabel}" style="font-weight: 500; font-size: 14px;">${escapeHtml(question.question)}</div>
     <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question" aria-label="Delete interview question: ${questionLabel}">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Drag to reorder questions" aria-label="Reorder interview question: ${questionLabel}">${icon("gripLines", 14)}</button></div>
-  </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" aria-label="Notes for interview question: ${questionLabel}" placeholder="Log interviewer's answers or your notes here...">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
+  </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" aria-label="Notes for interview question: ${questionLabel}" placeholder="Log the interviewer's answer or your notes...">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
 }
 
 /** Renders questions or the stage question empty state. */
@@ -764,7 +764,7 @@ function renderStageQuestions(questions) {
 function renderStageQuestionWorkspace(stage) {
   return `<div class="questions-workspace"><div class="questions-workspace-header"><div class="questions-workspace-title inline-icon-text">
     <span>${icon("chat", 14)} Questions to Ask this Interviewer</span><span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">(${stage.questions.length})</span>
-  </div></div><form id="active-add-question-form" class="add-question-form" style="margin-top: 0;"><input type="text" class="add-question-input" aria-label="New interview question" placeholder="Type a question you want to ask in this interview..." required /><button type="submit" class="btn-primary btn-add-question inline-icon-text" style="padding: 7px 16px; font-size: 12px;">${icon("plus", 12)} Add Question</button></form>
+  </div></div><form id="active-add-question-form" class="add-question-form" style="margin-top: 0;"><input type="text" class="add-question-input" aria-label="New interview question" placeholder="Type a question to ask..." required /><button type="submit" class="btn-primary btn-add-question inline-icon-text" style="padding: 7px 16px; font-size: 12px;">${icon("plus", 12)} Add Question</button></form>
   <div class="questions-list" style="overflow-y: auto; max-height: calc(100vh - 350px); padding-right: 4px;">${renderStageQuestions(stage.questions)}</div></div>`;
 }
 

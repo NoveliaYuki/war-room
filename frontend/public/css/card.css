@@ -11,7 +11,7 @@
 
 .process-toolbar {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  grid-template-columns: minmax(0, 600px) minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   column-gap: 20px;
@@ -27,7 +27,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  max-width: none;
+  max-width: 600px;
   min-width: 0;
 }
 
@@ -185,7 +185,7 @@
 
 @media (min-width: 781px) {
   .toolbar-view-controls { display: contents; }
-  .process-sort-control { grid-column: -2 / -1; grid-row: 1; justify-self: end; }
+  .process-sort-control { grid-column: 3; grid-row: 1; justify-self: end; }
 }
 .process-manage-technologies { min-height: 30px; padding: 5px 8px; font-size: 10px; }
 .settings-data-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 14px 0 4px; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); }
@@ -279,8 +279,8 @@
   .search-period-actions > button { min-width: 60px; padding-inline: 10px; }
 }
 
-@media (min-width: 722px) and (max-width: 760px) {
-  .process-toolbar { column-gap: 14px; }
+@media (min-width: 722px) and (max-width: 780px) {
+  .process-toolbar { grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
 }
 
 @media (max-width: 360px) {

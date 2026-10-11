@@ -246,6 +246,9 @@
 }
 
 @media (max-width: 760px) {
+  .questions-workspace .add-question-input { min-height: 44px; font-size: 16px; }
+  .questions-workspace .question-answer-box { font-size: 16px; }
+
   .btn-add-stage-interviewer { min-height: 44px; }
   .stage-action-btn,
   .btn-del-stage-interviewer,

@@ -1575,8 +1575,9 @@ body.is-resizing-split * {
   .interviewer-note { flex: 1 1 100%; white-space: normal; overflow: visible; text-overflow: clip; }
   .questions-workspace { gap: 12px; padding: 12px; }
   .add-question-form { align-items: stretch; flex-direction: column; }
-  .add-question-form .add-question-input { width: 100%; }
+  .add-question-form .add-question-input { width: 100%; min-height: 44px; font-size: 16px; }
   .add-question-form .btn-add-question { align-self: flex-start; max-width: 100%; white-space: normal; }
+  .questions-workspace .question-answer-box { font-size: 16px; }
   .stage-schedule-metadata > .interview-mode-tag,
   .stage-schedule-actions > .btn-join-meeting-inline,
   .stage-schedule-actions > .btn-edit-meeting-schedule { min-height: 44px; }
