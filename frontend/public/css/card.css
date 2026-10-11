@@ -32,7 +32,7 @@
 }
 
 .process-search { width: 100%; min-width: 0; max-width: none; }
-.process-search .search-input { height: 38px; font-family: var(--font-sans); font-size: 13px; font-weight: 400; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.process-search .search-input { height: 38px; font-family: var(--font-sans); font-size: 13px; font-weight: 400; -webkit-text-size-adjust: none; text-size-adjust: none; }
 
 .process-filter-control { position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; }
 .toolbar-view-controls { position: relative; grid-column: 2; grid-row: 1; justify-self: end; display: flex; align-items: center; gap: 12px; min-width: 0; }
