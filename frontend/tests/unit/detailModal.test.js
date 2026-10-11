@@ -311,6 +311,7 @@ describe('detail modal', () => {
     expect(modal.querySelector('.work-arrangement-tag').textContent).toBe('Not specified');
     expect(modal.querySelector('.employment-type-tag').textContent).toBe('Not specified');
     expect(modal.querySelector('.stage-empty-state')).not.toBeNull();
+    expect(modal.querySelector('.stage-empty-state-guidance').textContent).toContain('listed in the job posting or confirmed by the employer');
     const addFirstStageButton = modal.querySelector('#btn-init-first-stage');
     expect(addFirstStageButton).not.toBeNull();
     expect(addFirstStageButton.innerHTML).toContain('<svg');

@@ -1069,6 +1069,9 @@ body.is-resizing-split * {
   line-height: 1.5;
 }
 
+.stage-empty-state-copy { display: grid; gap: 6px; }
+.stage-empty-state .stage-empty-state-guidance { max-width: 340px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+
 .stage-empty-state-action {
   padding: 9px 16px;
   font-size: 14px;

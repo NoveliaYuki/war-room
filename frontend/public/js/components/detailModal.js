@@ -780,7 +780,7 @@ function renderActiveStageHero(view) {
 
 /** Renders the active stage editor or the no-stages prompt. */
 function renderActiveStageWorkspace(view) {
-  if (!view.activeStage) return `<div class="stage-empty-state"><p>No interview stages configured yet.</p><button class="btn-primary inline-icon-text stage-empty-state-action" id="btn-init-first-stage">${icon("plus", 12)} Add First Stage</button></div>`;
+  if (!view.activeStage) return `<div class="stage-empty-state"><div class="stage-empty-state-copy"><p>No interview stages configured yet.</p><p class="stage-empty-state-guidance">Add only steps listed in the job posting or confirmed by the employer. You can add them later.</p></div><button class="btn-primary inline-icon-text stage-empty-state-action" id="btn-init-first-stage">${icon("plus", 12)} Add First Stage</button></div>`;
   return `<div id="stage-panel" class="stage-panel" role="tabpanel" aria-labelledby="stage-tab-${view.activeStageIndex}" tabindex="0">${renderActiveStageHero(view)}${renderActiveStageFocus(view)}${renderStageQuestionWorkspace(view.activeStage)}</div>`;
 }
 
