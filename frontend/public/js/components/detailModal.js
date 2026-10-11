@@ -302,7 +302,7 @@ function renderStageRecruiterDetails(view) {
       : escapeHtml(stageRecruiterContact);
   return `<div class="meta-grid">
     <div class="meta-item"><span class="meta-label">Relationship / Role</span>
-      <select class="stage-recruiter-source-select" aria-label="Relationship / Role" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); padding: 3px 8px; font-size: 12px; color: var(--text-primary); cursor: pointer; margin-top: 2px;">
+      <select class="stage-recruiter-source-select" aria-label="Relationship / Role">
         <option value="none" ${stageRecruiterType === "none" ? "selected" : ""}>Direct / Company Member</option>
         <option value="internal" ${stageRecruiterType === "internal" ? "selected" : ""}>Internal Recruiter</option>
         <option value="external" ${stageRecruiterType === "external" ? "selected" : ""}>External Agency / Headhunter</option>

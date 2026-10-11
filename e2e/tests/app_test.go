@@ -1142,17 +1142,23 @@ func TestDemoStageTabsExposeHorizontalOverflow(t *testing.T) {
 		t.Fatalf("scrolling stages should expose the control to return left: %v", err)
 	}
 	setPageViewport(t, page, 390, 844)
+	if err := page.Locator(`[data-mobile-pane="stages"]`).Click(); err != nil {
+		t.Fatalf("open phone interview stages: %v", err)
+	}
 	valid, err := page.Evaluate(`() => {
 		const row = document.querySelector("#detail-modal .stage-hero-actions")?.getBoundingClientRect();
 		const current = document.querySelector("#detail-modal #btn-toggle-current-stage")?.getBoundingClientRect();
 		const moveUp = document.querySelector("#detail-modal #btn-move-stage-up")?.getBoundingClientRect();
 		const remove = document.querySelector("#detail-modal #btn-delete-stage")?.getBoundingClientRect();
+		const relationship = document.querySelector("#detail-modal .stage-recruiter-source-select");
 		return Boolean(row && current && moveUp && remove)
 			&& current.right < moveUp.left
-			&& remove.right <= row.right + 1;
+			&& remove.right <= row.right + 1
+			&& relationship?.getBoundingClientRect().height >= 44
+			&& Number.parseFloat(getComputedStyle(relationship).fontSize) >= 16;
 	}`, nil)
 	if err != nil || valid != true {
-		t.Errorf("on phone widths, keep the current-stage action on the left and stage controls grouped on the right (valid=%v, err=%v)", valid, err)
+		t.Errorf("on phone widths, keep stage controls grouped and the interviewer role select easy to tap (valid=%v, err=%v)", valid, err)
 	}
 }
 

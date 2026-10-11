@@ -864,6 +864,20 @@ body.is-resizing-split * {
   word-break: break-word;
 }
 
+.stage-recruiter-source-select {
+  box-sizing: border-box;
+  min-height: 36px;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  font: 12px var(--font-sans);
+  cursor: pointer;
+}
+
 .work-arrangement-setting {
   display: flex;
   align-items: center;
@@ -1640,6 +1654,7 @@ body.is-resizing-split * {
   #detail-modal .split-pane-left .btn-close-modal { min-height: 44px; }
   #detail-modal .btn-stage-current,
   #detail-modal .btn-add-question { min-height: 44px; box-sizing: border-box; }
+  #detail-modal .stage-recruiter-source-select { min-height: 44px; box-sizing: border-box; font-size: 16px; }
   #detail-modal .stage-schedule-metadata > .interview-mode-tag,
   #detail-modal .stage-schedule-actions > .btn-join-meeting-inline,
   #detail-modal .stage-schedule-actions > .btn-edit-meeting-schedule { min-height: 44px; }
