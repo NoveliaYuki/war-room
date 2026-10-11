@@ -256,7 +256,7 @@ type toolbarLayout struct {
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	page := newPage(t)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {390, 844}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {760, 900}, {722, 900}, {721, 900}, {390, 844}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -268,7 +268,7 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 		}
 	}
 	openDemoPage(t, page)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {760, 900}, {722, 900}, {721, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -531,11 +531,11 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	if !layout.PeriodInFilters || layout.PeriodInViewControls {
 		t.Errorf("%dpx period selector should live inside Filters", width)
 	}
-	if width > 780 {
+	if width > 721 {
 		assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
 		assertWideToolbar(t, width, layout)
 	}
-	if width <= 780 && width > 420 {
+	if width <= 721 && width > 420 {
 		assertCompactToolbar(t, width, layout)
 	}
 	if width <= 420 {
@@ -571,7 +571,7 @@ func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	expected := min(layout.Toolbar.Width, 681)
+	expected := layout.Toolbar.Width
 	if abs(layout.Search.Width-expected) > 2 {
 		t.Errorf("%dpx viewport should keep search at its preferred width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
 	}

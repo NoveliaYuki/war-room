@@ -238,10 +238,10 @@
 .search-period-empty { color: var(--text-muted); font-size: 12px; }
 .search-period-actions { flex: 0 0 auto; }
 
-@media (max-width: 780px) {
+@media (max-width: 721px) {
   .process-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 8px; }
   .toolbar-search-filter { display: contents; }
-  .process-search { grid-column: 1 / -1; grid-row: 1; width: min(100%, 681px); min-width: 0; max-width: 100%; }
+  .process-search { grid-column: 1 / -1; grid-row: 1; width: 100%; min-width: 0; max-width: 100%; }
   .process-filter-control { grid-column: 1; grid-row: 2; justify-self: start; width: max-content; }
   .toolbar-view-controls { grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
   .process-sort-control { min-height: 42px; margin: 0; }
@@ -277,6 +277,10 @@
   .search-period-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
   .search-period-actions { flex-wrap: nowrap; }
   .search-period-actions > button { min-width: 60px; padding-inline: 10px; }
+}
+
+@media (min-width: 722px) and (max-width: 760px) {
+  .process-toolbar { column-gap: 14px; }
 }
 
 @media (max-width: 360px) {
