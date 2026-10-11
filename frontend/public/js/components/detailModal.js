@@ -1855,7 +1855,7 @@ ${renderActiveStageWorkspace(view)}
 /** Renders the editable general job form. */
 function renderEditDetailsMarkup(job, periods = []) {
   const searchPeriodOptions = [
-    '<option value="">Unassigned</option>',
+    '<option value="">No period</option>',
     ...periods.map((period) => `<option value="${escapeAttr(period.id)}" ${period.id === job.search_period_id ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</option>`),
   ].join("");
   return `

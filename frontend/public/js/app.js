@@ -305,8 +305,8 @@ function loadProcessFilters() {
 function renderSearchPeriodOptions() {
   if (!searchPeriodFilter || !searchPeriodMenu || !searchPeriodCurrent || !searchPeriodTrigger) return;
   const options = [
-    { value: "all", label: "All periods", menuLabel: "All search periods" },
-    { value: "unassigned", label: "Unassigned", menuLabel: "Unassigned" },
+    { value: "all", label: "All periods", menuLabel: "All periods" },
+    { value: "unassigned", label: "No period", menuLabel: "No period" },
     ...searchPeriods.map((period) => ({ value: period.id, label: period.name, menuLabel: `${period.name} · ${period.start_date} – ${period.end_date || "Present"}` })),
   ];
   const selected = searchPeriods.some((period) => period.id === processFilters.searchPeriod)
@@ -333,7 +333,7 @@ function periodForToday() {
 
 function searchPeriodOptions(selectedID) {
   return [
-    `<option value="">Unassigned</option>`,
+    `<option value="">No period</option>`,
     ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</option>`),
   ].join("");
 }
@@ -737,7 +737,7 @@ async function openSearchPeriodsModal() {
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
     <div class="modal-header data-transfer-header">
-      <div><div class="modal-title">Search Periods</div><div class="modal-company">Unassigned cards added within a period’s date range are grouped automatically. Leave the end date blank while the search is active.</div></div>
+      <div><div class="modal-title">Search Periods</div><div class="modal-company">Jobs without a period that fall within a period’s date range are grouped automatically. Leave the end date blank while the search is active.</div></div>
       <button class="btn-secondary" id="btn-close-search-periods" type="button" aria-label="Close">${icon("close", 18)}</button>
     </div>
     <div class="search-period-manager">
@@ -783,7 +783,7 @@ async function openSearchPeriodsModal() {
           <button class="btn-secondary" type="button" data-edit-period="${escapeHtml(period.id)}">Edit</button>
           <button class="btn-secondary" type="button" data-delete-period="${escapeHtml(period.id)}">Delete</button>
         </div>
-      </article>`).join("") : '<div class="search-period-empty"><strong>No search periods yet</strong><span>Create one above. Unassigned cards added within its date range will be grouped automatically.</span></div>';
+      </article>`).join("") : '<div class="search-period-empty"><strong>No search periods yet</strong><span>Create one above. Jobs without a period that fall within its date range will be grouped automatically.</span></div>';
   };
   const focusPeriodAfterDelete = (id, fallbackIndex) => {
     const deleteButtons = [...list.querySelectorAll("[data-delete-period]")];

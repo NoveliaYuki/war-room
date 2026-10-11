@@ -424,7 +424,7 @@ func TestPeriodSelectionIsCountedAndClearedWithFilters(t *testing.T) {
 	assertVisible(t, page.Locator("#process-filter-panel"))
 	trigger := page.Locator("#search-period-trigger")
 	assertVisible(t, trigger)
-	if value, err := trigger.GetAttribute("aria-label"); err != nil || !strings.Contains(value, "Unassigned") {
+	if value, err := trigger.GetAttribute("aria-label"); err != nil || !strings.Contains(value, "No period") {
 		t.Errorf("period selector should identify the selected scope, got %q (err=%v)", value, err)
 	}
 	assertPeriodFilterCounted(t, page)

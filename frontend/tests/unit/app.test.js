@@ -293,7 +293,7 @@ describe('application entry point', () => {
     expect(document.querySelectorAll('.process-filter-chip')).toHaveLength(0);
     expect(document.querySelector('#process-filter-count').textContent).toBe('1');
     expect(document.querySelector('#process-filter-panel-footer').hidden).toBe(false);
-    expect(document.querySelector('#search-period-current').textContent).toBe('Unassigned');
+    expect(document.querySelector('#search-period-current').textContent).toBe('No period');
     document.querySelector('[data-search-period="all"]').click();
     await flush();
     document.querySelector('#btn-close-search-periods').click();
