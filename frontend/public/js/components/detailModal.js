@@ -1130,7 +1130,7 @@ function bindJobTextEditors(context) {
   const elExpectedSalary = modalEl.querySelector(".editable-expected-salary");
   if (elExpectedSalary) {
     makeInlineEditable(elExpectedSalary, {
-      placeholder: "e.g. €85k base plus equity; flexible depending on the offer",
+      placeholder: "e.g. €85k base + equity",
       onSave: async (newVal) => {
         await api.updateJob(job.id, { expected_salary: newVal });
         refreshModal();
@@ -1963,7 +1963,7 @@ function renderEditDetailsMarkup(job, periods = []) {
 
       <div>
         <label class="meta-label inline-icon-text" for="edit-expected-salary">${icon("euro", 13)} Expected Salary for This Offer</label>
-        <input id="edit-expected-salary" type="text" name="expected_salary" value="${formValue(job, "expected_salary")}" placeholder="e.g. €85k base plus equity; flexible depending on the offer" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        <input id="edit-expected-salary" type="text" name="expected_salary" value="${formValue(job, "expected_salary")}" placeholder="e.g. €85k base + equity" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
       </div>
 
       <div>
