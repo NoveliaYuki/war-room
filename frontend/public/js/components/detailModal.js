@@ -797,7 +797,7 @@ function renderStageCreateForm() {
         <option value="Cultural">Cultural / Leadership</option>
         <option value="Offer &amp; Decision">Offer &amp; Decision</option>
       </select></label>
-      <label class="stage-create-field stage-create-description"><span>Description <small>Optional</small></span><input name="description" type="text" maxlength="500" placeholder="What the employer said this stage covers" /></label>
+      <label class="stage-create-field stage-create-description"><span>Description <small>Optional</small></span><input name="description" type="text" maxlength="500" placeholder="e.g. System design and coding" /></label>
     </div>
     <div class="stage-create-actions"><p class="stage-create-error" role="alert" hidden></p><button class="btn-secondary stage-create-cancel" type="button">Cancel</button><button class="btn-primary stage-create-save" type="submit">Add stage</button></div>
   </form>`;
