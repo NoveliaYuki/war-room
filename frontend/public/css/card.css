@@ -43,7 +43,7 @@
 
 .process-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, calc((100% - 20px) / 2)) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 421px) minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   column-gap: 20px;
@@ -59,11 +59,11 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  max-width: 600px;
+  max-width: 421px;
   min-width: 0;
 }
 
-.process-search { width: 100%; min-width: 0; max-width: none; }
+.process-search { width: min(342px, 100%); min-width: 0; max-width: 342px; }
 .process-search .search-input { height: 38px; font-family: var(--font-sans); font-size: 13px; font-weight: 400; -webkit-text-size-adjust: none; text-size-adjust: none; }
 
 .process-filter-control { position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; }
@@ -215,10 +215,6 @@
 .process-sort-control { position: relative; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font: 500 13px var(--font-sans); }
 .process-sort-control[hidden] { display: none; }
 
-@container (min-width: 1060px) {
-  .process-toolbar { grid-template-columns: minmax(0, calc((100% - 40px) / 3)) minmax(0, 1fr) auto; }
-}
-
 @media (min-width: 722px) {
   .toolbar-view-controls { display: contents; }
   .process-sort-control { grid-column: 3; grid-row: 1; justify-self: end; }
@@ -277,7 +273,7 @@
 @container (max-width: 693px) {
   .process-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 8px; }
   .toolbar-search-filter { display: contents; }
-  .process-search { grid-column: 1 / -1; grid-row: 1; width: 100%; min-width: 0; max-width: 100%; }
+  .process-search { grid-column: 1 / -1; grid-row: 1; width: min(342px, 100%); min-width: 0; max-width: 342px; }
   .process-filter-control { grid-column: 1; grid-row: 2; justify-self: start; width: max-content; }
   .toolbar-view-controls { display: flex; grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
   .process-sort-control { min-height: 42px; margin: 0; }

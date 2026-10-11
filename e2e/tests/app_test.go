@@ -728,10 +728,10 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
-	if abs(layout.SearchFilterWidth.Width-layout.FirstCard.Width) > 4 {
-		t.Errorf("%dpx search and filters should align with the first card (group %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Width, layout.FirstCard.Width)
+	if abs(layout.SearchFilterWidth.Width-421) > 2 {
+		t.Errorf("%dpx search and filters should keep their preferred 421px width (got %.1fpx)", width, layout.SearchFilterWidth.Width)
 	}
-	expectedSearchWidth := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
+	expectedSearchWidth := 342.0
 	if abs(layout.Search.Width-expectedSearchWidth) > 2 {
 		t.Errorf("%dpx toolbar search should use the available width before Filters (got %.0fpx, expected %.0fpx)", width, layout.Search.Width, expectedSearchWidth)
 	}
@@ -752,9 +752,9 @@ func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	expected := layout.Toolbar.Width
+	expected := min(342.0, layout.Toolbar.Width)
 	if abs(layout.Search.Width-expected) > 2 {
-		t.Errorf("%dpx viewport should keep search at its preferred width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
+		t.Errorf("%dpx viewport should keep search at its preferred 342px width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
 	}
 }
 
