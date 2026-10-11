@@ -255,7 +255,7 @@ type toolbarLayout struct {
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	page := newPage(t)
-	for _, viewport := range []struct{ width, height int }{{1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {390, 844}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {390, 844}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -267,7 +267,7 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 		}
 	}
 	openDemoPage(t, page)
-	for _, viewport := range []struct{ width, height int }{{1440, 900}, {1360, 900}, {1200, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -540,6 +540,9 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
+	if width >= 1360 && layout.Search.Width < 680 {
+		t.Errorf("%dpx viewport should preserve the search field's preferred width when space is available (got %.1fpx)", width, layout.Search.Width)
+	}
 	if layout.SearchFilterWidth.Width > 762 {
 		t.Errorf("%dpx search and filters should stay within the 760px preferred width (got %.1fpx)", width, layout.SearchFilterWidth.Width)
 	}
