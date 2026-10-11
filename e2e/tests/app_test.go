@@ -364,6 +364,9 @@ func TestFilterPopoverStaysWithinNarrowViewports(t *testing.T) {
 		if bounds.Left < 0 || bounds.Right > bounds.ViewportWidth {
 			t.Errorf("Filters popover should remain within the %dpx viewport, got left %.1fpx and right %.1fpx", width, bounds.Left, bounds.Right)
 		}
+		if width <= 420 && bounds.ScrollWidth > bounds.ClientWidth+1 {
+			t.Errorf("Filters popover should not scroll horizontally at %dpx (scroll width %.1fpx, client width %.1fpx)", width, bounds.ScrollWidth, bounds.ClientWidth)
+		}
 	}
 }
 
@@ -371,6 +374,8 @@ type popoverBounds struct {
 	Left          float64 `json:"left"`
 	Right         float64 `json:"right"`
 	ViewportWidth float64 `json:"viewportWidth"`
+	ScrollWidth   float64 `json:"scrollWidth"`
+	ClientWidth   float64 `json:"clientWidth"`
 }
 
 func readFilterPopoverBounds(t *testing.T, trigger, panel playwright.Locator, width int) popoverBounds {
@@ -389,7 +394,13 @@ func readFilterPopoverBounds(t *testing.T, trigger, panel playwright.Locator, wi
 	}
 	state, err := panel.Evaluate(`element => {
 	  const rect = element.getBoundingClientRect();
-	  return { left: rect.left, right: rect.right, viewportWidth: window.innerWidth };
+	  return {
+	    left: rect.left,
+	    right: rect.right,
+	    viewportWidth: window.innerWidth,
+	    scrollWidth: element.scrollWidth,
+	    clientWidth: element.clientWidth,
+	  };
 	}`, nil)
 	if err != nil {
 		t.Fatalf("read Filters bounds at %dpx: %v", width, err)
