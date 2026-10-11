@@ -3,10 +3,12 @@ package e2e_test
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -233,31 +235,46 @@ type layoutBox struct {
 }
 
 type toolbarLayout struct {
-	ViewportWidth     float64    `json:"viewportWidth"`
-	DocumentWidth     float64    `json:"documentWidth"`
-	Search            layoutBox  `json:"search"`
-	SearchFilter      layoutBox  `json:"searchFilter"`
-	SearchFilterWidth layoutBox  `json:"searchFilterWidth"`
-	FirstCard         *layoutBox `json:"firstCard"`
-	Filter            layoutBox  `json:"filter"`
-	Period            layoutBox  `json:"period"`
-	Sort              layoutBox  `json:"sort"`
-	Toolbar           layoutBox  `json:"toolbar"`
-	Header            layoutBox  `json:"header"`
-	Theme             layoutBox  `json:"theme"`
-	FilterHeight      float64    `json:"filterHeight"`
-	PeriodHeight      float64    `json:"periodHeight"`
-	SortHeight        float64    `json:"sortHeight"`
+	ViewportWidth        float64   `json:"viewportWidth"`
+	DocumentWidth        float64   `json:"documentWidth"`
+	Search               layoutBox `json:"search"`
+	SearchFontSize       float64   `json:"searchFontSize"`
+	SearchFilterWidth    layoutBox `json:"searchFilterWidth"`
+	Filter               layoutBox `json:"filter"`
+	ViewControls         layoutBox `json:"viewControls"`
+	Sort                 layoutBox `json:"sort"`
+	Toolbar              layoutBox `json:"toolbar"`
+	Header               layoutBox `json:"header"`
+	Theme                layoutBox `json:"theme"`
+	FilterHeight         float64   `json:"filterHeight"`
+	SortHeight           float64   `json:"sortHeight"`
+	PeriodInToolbar      bool      `json:"periodInToolbar"`
+	PeriodInFilters      bool      `json:"periodInFilters"`
+	PeriodInViewControls bool      `json:"periodInViewControls"`
 }
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	page := newPage(t)
+	for _, viewport := range []struct{ width, height int }{{1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {390, 844}} {
+		setPageViewport(t, page, viewport.width, viewport.height)
+		layout := readToolbarLayout(t, page, viewport.width)
+		assertToolbarHasNoOverflow(t, viewport.width, layout)
+		if layout.SearchFontSize != 13 {
+			t.Errorf("normal view at %dpx should preserve search text size at 13px, got %.1fpx", viewport.width, layout.SearchFontSize)
+		}
+		if !layout.PeriodInFilters || layout.PeriodInViewControls {
+			t.Errorf("%dpx standard view should place the period control inside Filters", viewport.width)
+		}
+	}
 	openDemoPage(t, page)
-	for _, viewport := range []struct{ width, height int }{{1440, 900}, {800, 900}, {500, 900}, {390, 844}, {360, 800}, {320, 720}} {
+	for _, viewport := range []struct{ width, height int }{{1440, 900}, {1360, 900}, {1200, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
 		assertToolbarAtViewport(t, viewport.width, layout)
+		if layout.SearchFontSize != 13 {
+			t.Errorf("%dpx viewport should preserve the search text size at 13px, got %.1fpx", viewport.width, layout.SearchFontSize)
+		}
 	}
 	assertToolbarWithActiveFilter(t, page)
 	assertExpectedSalaryInputStyle(t, page)
@@ -268,10 +285,148 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	}
 }
 
+func TestPeriodSelectionIsSeparateFromProcessFilters(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+		t.Fatalf("open Filters: %v", err)
+	}
+	if err := page.Locator("#search-period-trigger").Click(); err != nil {
+		t.Fatalf("open search period selector: %v", err)
+	}
+	if err := page.Locator(`[data-search-period="unassigned"]`).Click(); err != nil {
+		t.Fatalf("select unassigned period: %v", err)
+	}
+	if _, err := page.Evaluate("() => new Promise(resolve => setTimeout(resolve, 25))", nil); err != nil {
+		t.Fatalf("wait for filter focus handling after period selection: %v", err)
+	}
+	assertVisible(t, page.Locator("#process-filter-panel"))
+	trigger := page.Locator("#search-period-trigger")
+	assertVisible(t, trigger)
+	if value, err := trigger.GetAttribute("aria-label"); err != nil || !strings.Contains(value, "Unassigned") {
+		t.Errorf("period selector should identify the selected scope, got %q (err=%v)", value, err)
+	}
+	assertPeriodSelectionDoesNotActivateFilters(t, page)
+}
+
+func assertPeriodSelectionDoesNotActivateFilters(t *testing.T, page playwright.Page) {
+	t.Helper()
+	for _, selector := range []string{"#process-filter-count", "#process-filter-clear", `[data-remove-filter="searchPeriod"]`} {
+		if visible, err := page.Locator(selector).IsVisible(); err != nil {
+			t.Fatalf("check %s after selecting a period: %v", selector, err)
+		} else if visible {
+			t.Errorf("selecting a period alone should not activate a process filter or show %s", selector)
+		}
+	}
+}
+
+func TestSearchAndFiltersRemainAvailableInAllView(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	selectFilter(t, page, "all")
+
+	for _, selector := range []string{"#process-toolbar", "#search-input", "#process-filter-trigger"} {
+		assertVisible(t, page.Locator(selector))
+	}
+	if visible, err := page.Locator(".process-sort-control").IsVisible(); err != nil {
+		t.Fatalf("check sort control in all view: %v", err)
+	} else if visible {
+		t.Error("status-specific sort control should be hidden in all view")
+	}
+
+	selectFilter(t, page, "schedule")
+	if visible, err := page.Locator("#process-toolbar").IsVisible(); err != nil {
+		t.Fatalf("check toolbar in daily schedule: %v", err)
+	} else if visible {
+		t.Error("search toolbar should be hidden in daily schedule")
+	}
+}
+
+func TestMutedTextMeetsAAContrastInBothThemes(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	for _, theme := range []string{"dark", "light"} {
+		if _, err := page.Evaluate(`theme => { document.documentElement.dataset.theme = theme; }`, theme); err != nil {
+			t.Fatalf("set %s theme: %v", theme, err)
+		}
+		state, err := page.Evaluate(`() => {
+		  const styles = getComputedStyle(document.documentElement);
+		  const names = ["--bg-app", "--bg-surface", "--bg-surface-elevated", "--bg-card", "--bg-input"];
+		  return {
+		    muted: styles.getPropertyValue("--text-muted").trim(),
+		    backgrounds: Object.fromEntries(names.map(name => [name, styles.getPropertyValue(name).trim()])),
+		  };
+		}`, nil)
+		if err != nil {
+			t.Fatalf("read %s theme colors: %v", theme, err)
+		}
+		encoded, err := json.Marshal(state)
+		if err != nil {
+			t.Fatalf("encode %s theme colors: %v", theme, err)
+		}
+		var colors struct {
+			Muted       string            `json:"muted"`
+			Backgrounds map[string]string `json:"backgrounds"`
+		}
+		if err := json.Unmarshal(encoded, &colors); err != nil {
+			t.Fatalf("decode %s theme colors: %v", theme, err)
+		}
+		for backgroundName, background := range colors.Backgrounds {
+			ratio, err := contrastRatio(colors.Muted, background)
+			if err != nil {
+				t.Fatalf("calculate %s theme contrast for %s: %v", theme, backgroundName, err)
+			}
+			if ratio < 4.5 {
+				t.Errorf("%s muted text contrast against %s is %.2f:1; want at least 4.5:1", theme, backgroundName, ratio)
+			}
+		}
+	}
+}
+
+func contrastRatio(firstColor, secondColor string) (float64, error) {
+	firstLuminance, err := relativeLuminance(firstColor)
+	if err != nil {
+		return 0, err
+	}
+	secondLuminance, err := relativeLuminance(secondColor)
+	if err != nil {
+		return 0, err
+	}
+	if firstLuminance < secondLuminance {
+		firstLuminance, secondLuminance = secondLuminance, firstLuminance
+	}
+	return (firstLuminance + 0.05) / (secondLuminance + 0.05), nil
+}
+
+func relativeLuminance(color string) (float64, error) {
+	value := strings.TrimPrefix(color, "#")
+	if len(value) != 6 {
+		return 0, fmt.Errorf("expected six-digit hex color, got %q", color)
+	}
+	parsed, err := strconv.ParseUint(value, 16, 24)
+	if err != nil {
+		return 0, fmt.Errorf("parse hex color %q: %w", color, err)
+	}
+	red := linearizeChannel(float64((parsed>>16)&0xff) / 255)
+	green := linearizeChannel(float64((parsed>>8)&0xff) / 255)
+	blue := linearizeChannel(float64(parsed&0xff) / 255)
+	return 0.2126*red + 0.7152*green + 0.0722*blue, nil
+}
+
+func linearizeChannel(channel float64) float64 {
+	if channel <= 0.04045 {
+		return channel / 12.92
+	}
+	return math.Pow((channel+0.055)/1.055, 2.4)
+}
+
 func TestSearchPeriodMenuClosesWhenKeyboardFocusLeaves(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
 	trigger := page.Locator("#search-period-trigger")
+	if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+		t.Fatalf("open Filters: %v", err)
+	}
 	if err := trigger.Focus(); err != nil {
 		t.Fatalf("focus search period selector: %v", err)
 	}
@@ -279,10 +434,8 @@ func TestSearchPeriodMenuClosesWhenKeyboardFocusLeaves(t *testing.T) {
 		t.Fatalf("open search period options: %v", err)
 	}
 	assertVisible(t, page.Locator("#search-period-menu"))
-	for range 3 {
-		if err := page.Keyboard().Press("Tab"); err != nil {
-			t.Fatalf("move keyboard focus through search period options: %v", err)
-		}
+	if err := page.Locator("#process-filter-expected-salary").Focus(); err != nil {
+		t.Fatalf("move focus to another filter: %v", err)
 	}
 	menuVisible, err := page.Locator("#search-period-menu").IsVisible()
 	if err != nil {
@@ -295,8 +448,8 @@ func TestSearchPeriodMenuClosesWhenKeyboardFocusLeaves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read focused control after leaving search period selector: %v", err)
 	}
-	if activeID != "process-sort-trigger" {
-		t.Fatalf("keyboard focus should continue to Sort after leaving the selector, got %q", activeID)
+	if activeID != "process-filter-expected-salary" {
+		t.Fatalf("keyboard focus should continue to another filter after leaving the selector, got %q", activeID)
 	}
 }
 
@@ -327,26 +480,22 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    viewportWidth: window.innerWidth,
 	    documentWidth: document.documentElement.scrollWidth,
 	    search: box(".process-search"),
-	    searchFilter: box(".toolbar-search-filter"),
+	    searchFontSize: Number.parseFloat(getComputedStyle(document.querySelector("#search-input")).fontSize),
 		searchFilterWidth: (() => {
 		  const group = document.querySelector(".toolbar-search-filter").getBoundingClientRect();
 		  return { x: group.x, y: group.y, width: group.width, height: group.height, right: group.right };
 		})(),
-	    firstCard: (() => {
-	      const card = document.querySelector("#cards-grid .process-card");
-	      if (!card) return null;
-	      const rect = card.getBoundingClientRect();
-	      return { x: rect.x, y: rect.y, width: card.offsetWidth, height: rect.height, right: rect.x + card.offsetWidth };
-	    })(),
 	    filter: box(".process-filter-control"),
-	    period: box(".search-period-control"),
+	    viewControls: box(".toolbar-view-controls"),
 	    sort: box(".process-sort-control"),
 	    toolbar: box(".process-toolbar"),
 	    header: box(".header-inner"),
 	    theme: box("#btn-theme-toggle"),
 	    filterHeight: box("#process-filter-trigger").height,
-	    periodHeight: box("#search-period-trigger").height,
 		sortHeight: box("#process-sort-trigger").height,
+	    periodInToolbar: document.querySelector("#search-period-trigger").closest("#process-toolbar") !== null,
+	    periodInFilters: document.querySelector("#search-period-trigger").closest("#process-filter-panel") !== null,
+		periodInViewControls: document.querySelector("#search-period-trigger").closest(".toolbar-view-controls") !== null,
 	  };
 	}`, nil)
 	if err != nil {
@@ -372,13 +521,17 @@ func assertToolbarHasNoOverflow(t *testing.T, width int, layout toolbarLayout) {
 
 func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	if width > 650 {
+	if !layout.PeriodInFilters || layout.PeriodInViewControls {
+		t.Errorf("%dpx period selector should live inside Filters", width)
+	}
+	if width > 780 {
+		assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
 		assertWideToolbar(t, width, layout)
 	}
-	if width <= 650 && width > 380 {
+	if width <= 780 && width > 420 {
 		assertCompactToolbar(t, width, layout)
 	}
-	if width <= 380 {
+	if width <= 420 {
 		assertNarrowToolbar(t, width, layout)
 	}
 	assertHeaderActionAlignment(t, width, layout)
@@ -386,63 +539,55 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Period, layout.Sort)
-	if layout.FirstCard == nil {
-		t.Errorf("%dpx toolbar should render a first job card for alignment", width)
-	} else if abs(layout.SearchFilterWidth.Width-layout.FirstCard.Width) > 2 {
-		t.Errorf("%dpx search and filters should match first card width (toolbar %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Width, layout.FirstCard.Width)
+	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
+	if layout.SearchFilterWidth.Width > 762 {
+		t.Errorf("%dpx search and filters should stay within the 760px preferred width (got %.1fpx)", width, layout.SearchFilterWidth.Width)
 	}
-	if layout.Search.Width > 420 {
-		t.Errorf("%dpx toolbar should keep the search at its 420px preferred width (got %.0fpx)", width, layout.Search.Width)
+	if width >= 1000 && layout.SearchFilterWidth.Width < 758 {
+		t.Errorf("%dpx search and filters should keep the 760px preferred width while the toolbar has room (got %.1fpx)", width, layout.SearchFilterWidth.Width)
 	}
-	if layout.Period.Width > 180 {
-		t.Errorf("%dpx toolbar should keep the period selector compact (got %.0fpx)", width, layout.Period.Width)
+	if width < 1000 && layout.SearchFilterWidth.Width < 550 {
+		t.Errorf("%dpx search and filters should use available toolbar space before shrinking (got %.1fpx)", width, layout.SearchFilterWidth.Width)
 	}
-	if gap := layout.Period.X - layout.SearchFilterWidth.Right; abs(gap-12) > 1 {
-		t.Errorf("%dpx toolbar should keep the period selector 12px after search and filters (gap %.1fpx)", width, gap)
+	expectedSearchWidth := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
+	if abs(layout.Search.Width-expectedSearchWidth) > 2 {
+		t.Errorf("%dpx toolbar search should use the available width before Filters (got %.0fpx, expected %.0fpx)", width, layout.Search.Width, expectedSearchWidth)
 	}
 	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
 		t.Errorf("%dpx toolbar should align sort to the right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
-	}
-	if width == 800 && layout.Search.Width >= 420 {
-		t.Errorf("search should shrink before wrapping at 800px (width %.0fpx)", layout.Search.Width)
 	}
 }
 
 func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertCompactControlRows(t, width, layout)
-	if layout.FilterHeight < 40 || layout.PeriodHeight < 40 || layout.SortHeight < 40 {
-		t.Errorf("%dpx viewport has undersized touch controls (filter %.0fpx, period %.0fpx, sort %.0fpx)", width, layout.FilterHeight, layout.PeriodHeight, layout.SortHeight)
+	assertToolbarRow(t, width, layout.Filter, layout.Sort)
+	if abs(layout.Search.Width-layout.Toolbar.Width) > 2 {
+		t.Errorf("%dpx viewport should let search use the full toolbar width (search %.1fpx, toolbar %.1fpx)", width, layout.Search.Width, layout.Toolbar.Width)
 	}
-	if width <= 420 && layout.Period.Width > 140 {
-		t.Errorf("%dpx viewport has an unnecessarily wide period selector (%.0fpx)", width, layout.Period.Width)
-	}
-	if width > 420 && layout.Period.Width > 180 {
-		t.Errorf("%dpx viewport has an unnecessarily wide period selector (%.0fpx)", width, layout.Period.Width)
+	if layout.FilterHeight < 40 || layout.SortHeight < 40 {
+		t.Errorf("%dpx viewport has undersized touch controls (filter %.0fpx, sort %.0fpx)", width, layout.FilterHeight, layout.SortHeight)
 	}
 }
 
 func assertCompactControlRows(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	assertToolbarRow(t, width, layout.Filter, layout.Period)
 	if width <= 420 {
-		if layout.Sort.Y <= layout.Period.Y {
-			t.Errorf("%dpx viewport should place sort below the filter and period controls", width)
-		}
 		return
 	}
-	assertToolbarRow(t, width, layout.Period, layout.Sort)
+	assertToolbarRow(t, width, layout.Filter, layout.ViewControls)
 }
 
 func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	assertToolbarRow(t, width, layout.Filter, layout.Period)
-	if layout.Period.Width < 137 {
-		t.Errorf("%dpx viewport should preserve enough width to read the selected period (got %.0fpx)", width, layout.Period.Width)
+	if abs((layout.Sort.Y+layout.Sort.Height/2)-(layout.Filter.Y+layout.Filter.Height/2)) > 1 {
+		t.Errorf("%dpx toolbar should keep sort aligned with Filters", width)
 	}
-	if layout.Sort.Y <= layout.Period.Y {
-		t.Errorf("%dpx viewport should wrap sort below the filter and period controls", width)
+	if abs(layout.Search.Width-layout.Toolbar.Width) > 2 {
+		t.Errorf("%dpx viewport should let search use the full toolbar width (search %.1fpx, toolbar %.1fpx)", width, layout.Search.Width, layout.Toolbar.Width)
+	}
+	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
+		t.Errorf("%dpx sort control should remain aligned to the toolbar's right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
 	}
 }
 
@@ -465,6 +610,7 @@ func assertToolbarRow(t *testing.T, width int, boxes ...layoutBox) {
 
 func assertExpectedSalaryInputStyle(t *testing.T, page playwright.Page) {
 	t.Helper()
+	setPageViewport(t, page, 1440, 900)
 	input := page.Locator("#process-filter-expected-salary")
 	visible, err := input.IsVisible()
 	if err != nil {
@@ -576,7 +722,7 @@ func openAndAssertDialogNameAndFocus(t *testing.T, page playwright.Page) {
 	}
 	state, err := page.Evaluate(`() => {
 		const dialog = document.querySelector("#detail-modal");
-		const name = document.querySelector('input[name="company_name"]');
+		const name = document.querySelector('input[name="position_title"]');
 		const labelId = dialog.getAttribute("aria-labelledby");
 		return document.activeElement === name && dialog.getAttribute("aria-modal") === "true" &&
 			document.querySelector(".app-container").inert && labelId &&
@@ -695,12 +841,27 @@ func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
 		valid, err := page.Evaluate(`() => {
 			const card = document.querySelector(".process-card");
 			const menu = document.querySelector("#btn-menu-toggle");
+			const cardRect = card?.getBoundingClientRect();
+			const overflowingControl = card && [...card.querySelectorAll("button, a, input, select")].some(control => {
+				const rect = control.getBoundingClientRect();
+				return rect.width > 0 && (rect.left < cardRect.left - 1 || rect.right > cardRect.right + 1 || rect.right > window.innerWidth + 1);
+			});
 			return document.documentElement.scrollWidth <= window.innerWidth &&
 				card && card.getBoundingClientRect().right <= window.innerWidth &&
+				!overflowingControl && card.scrollWidth <= card.clientWidth + 1 &&
 				getComputedStyle(menu).display !== "none";
 		}`, nil)
 		if err != nil || valid != true {
-			t.Fatalf("phone layout clips a card or hides navigation at %dpx (valid=%v, err=%v)", width, valid, err)
+			metrics, _ := page.Evaluate(`() => {
+				const card = document.querySelector(".process-card");
+				const rect = card?.getBoundingClientRect();
+				const overflowing = card && [...card.querySelectorAll("button, a, input, select")].filter(control => {
+					const box = control.getBoundingClientRect();
+					return box.width > 0 && (box.left < rect.left - 1 || box.right > rect.right + 1 || box.right > window.innerWidth + 1);
+				}).map(control => ({label: control.getAttribute("aria-label") || control.textContent.trim(), box: control.getBoundingClientRect().toJSON()}));
+				return JSON.stringify({viewport: window.innerWidth, document: document.documentElement.scrollWidth, card: rect?.toJSON(), cardWidth: card?.clientWidth, cardScrollWidth: card?.scrollWidth, overflowing, menu: getComputedStyle(document.querySelector("#btn-menu-toggle")).display});
+			}`, nil)
+			t.Fatalf("phone layout clips a card or hides navigation at %dpx (valid=%v, metrics=%v, err=%v)", width, valid, metrics, err)
 		}
 	}
 	if err := page.SetViewportSize(402, 850); err != nil {
@@ -715,12 +876,52 @@ func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
 	validSearch, err := page.Evaluate(`() => {
 		const input = document.querySelector("#search-input");
 		return document.activeElement === input &&
-			getComputedStyle(input).fontSize === "16px" &&
+			getComputedStyle(input).fontSize === "13px" &&
 			document.querySelector("#btn-menu-toggle").getAttribute("aria-expanded") === "true" &&
 			document.documentElement.scrollWidth <= window.innerWidth;
 	}`, nil)
 	if err != nil || validSearch != true {
-		t.Fatalf("phone search should stay focused without zooming or clipping (valid=%v, err=%v)", validSearch, err)
+		metrics, _ := page.Evaluate(`() => JSON.stringify({active: document.activeElement?.id, font: getComputedStyle(document.querySelector("#search-input")).fontSize, expanded: document.querySelector("#btn-menu-toggle").getAttribute("aria-expanded"), viewport: window.innerWidth, document: document.documentElement.scrollWidth})`, nil)
+		t.Fatalf("phone search should stay focused with consistent text and without clipping (valid=%v, metrics=%v, err=%v)", validSearch, metrics, err)
+	}
+}
+
+func TestMobileCardSurfaceAllowsPageScrolling(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 390, 844)
+	if err := page.Locator("#process-sort-trigger").Click(); err != nil {
+		t.Fatalf("open sort options: %v", err)
+	}
+	if err := page.Locator(`[data-sort-mode="manual"]`).Click(); err != nil {
+		t.Fatalf("enable manual card order: %v", err)
+	}
+	state, err := page.Evaluate(`() => {
+		const card = document.querySelector(".process-card");
+		const dragHandle = card?.querySelector(".btn-card-drag");
+		return {
+			cardTouchAction: card && getComputedStyle(card).touchAction,
+			dragHandleTouchAction: dragHandle && getComputedStyle(dragHandle).touchAction,
+			pageCanScroll: document.documentElement.scrollHeight > window.innerHeight,
+		};
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read phone card touch behavior: %v", err)
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("encode phone card touch behavior: %v", err)
+	}
+	var touchState struct {
+		CardTouchAction       string `json:"cardTouchAction"`
+		DragHandleTouchAction string `json:"dragHandleTouchAction"`
+		PageCanScroll         bool   `json:"pageCanScroll"`
+	}
+	if err := json.Unmarshal(encoded, &touchState); err != nil {
+		t.Fatalf("decode phone card touch behavior: %v", err)
+	}
+	if touchState.CardTouchAction != "pan-y" || touchState.DragHandleTouchAction != "none" || !touchState.PageCanScroll {
+		t.Errorf("phone card surface should allow page scrolling while the drag handle retains drag control: %+v", touchState)
 	}
 }
 
@@ -814,6 +1015,19 @@ func TestDemoStageTabsExposeHorizontalOverflow(t *testing.T) {
 		return tabs && tabs.scrollLeft > 0 && previous && !previous.hidden;
 	}`, nil); err != nil {
 		t.Fatalf("scrolling stages should expose the control to return left: %v", err)
+	}
+	setPageViewport(t, page, 390, 844)
+	valid, err := page.Evaluate(`() => {
+		const row = document.querySelector("#detail-modal .stage-hero-actions")?.getBoundingClientRect();
+		const current = document.querySelector("#detail-modal #btn-toggle-current-stage")?.getBoundingClientRect();
+		const moveUp = document.querySelector("#detail-modal #btn-move-stage-up")?.getBoundingClientRect();
+		const remove = document.querySelector("#detail-modal #btn-delete-stage")?.getBoundingClientRect();
+		return Boolean(row && current && moveUp && remove)
+			&& current.right < moveUp.left
+			&& remove.right <= row.right + 1;
+	}`, nil)
+	if err != nil || valid != true {
+		t.Errorf("on phone widths, keep the current-stage action on the left and stage controls grouped on the right (valid=%v, err=%v)", valid, err)
 	}
 }
 
@@ -932,6 +1146,9 @@ func TestCreateJobAndScheduleView(t *testing.T) {
 		t.Fatalf("open create form: %v", err)
 	}
 	assertVisible(t, page.Locator("#detail-modal"))
+	if err := page.Locator("details.process-form-disclosure").First().Locator("summary").Click(); err != nil {
+		t.Fatalf("open optional job details: %v", err)
+	}
 	fill(t, page.Locator(`input[name="company_name"]`), "E2E Test Company")
 	fill(t, page.Locator(`input[name="position_title"]`), uniqueTitle)
 	fill(t, page.Locator(`input[name="salary_min"]`), "85000")
@@ -976,6 +1193,11 @@ func assertScheduleViewShowsSavedNotes(t *testing.T, page playwright.Page) {
 
 func scheduleMeetingWithNotes(t *testing.T, page playwright.Page, card playwright.Locator) {
 	t.Helper()
+	jobID, err := card.GetAttribute("data-id")
+	if err != nil || jobID == "" {
+		t.Fatalf("read created process ID before scheduling: id=%q err=%v", jobID, err)
+	}
+	createTestInterviewStage(t, page, jobID)
 	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
 		t.Fatalf("open created process details: %v", err)
 	}
@@ -1280,6 +1502,7 @@ func openQuestionProcess(t *testing.T, page playwright.Page, title string) (play
 	if err != nil || jobID == "" {
 		t.Fatalf("read created process ID: id=%q err=%v", jobID, err)
 	}
+	createTestInterviewStage(t, page, jobID)
 	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
 		t.Fatalf("open process details: %v", err)
 	}
@@ -1287,6 +1510,21 @@ func openQuestionProcess(t *testing.T, page playwright.Page, title string) (play
 		t.Fatalf("wait for active stage questions: %v", err)
 	}
 	return card, jobID
+}
+
+func createTestInterviewStage(t *testing.T, page playwright.Page, jobID string) {
+	t.Helper()
+	createdStage, err := page.Evaluate(`async (id) => {
+		const response = await fetch("/api/stages", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ job_id: id, stage_type: "Technical", custom_title: "Technical interview" }),
+		});
+		return response.ok;
+	}`, jobID)
+	if err != nil || createdStage != true {
+		t.Fatalf("create a test interview stage: success=%v err=%v", createdStage, err)
+	}
 }
 
 func reopenQuestionProcess(t *testing.T, page playwright.Page, card playwright.Locator) {
@@ -1298,6 +1536,10 @@ func reopenQuestionProcess(t *testing.T, page playwright.Page, card playwright.L
 		t.Fatalf("reload after question changes: %v", err)
 	}
 	waitForApplicationReady(t, page)
+	selectFilter(t, page, "ongoing")
+	if err := card.WaitFor(); err != nil {
+		t.Fatalf("wait for process after reload: %v", err)
+	}
 	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
 		t.Fatalf("reopen process details: %v", err)
 	}

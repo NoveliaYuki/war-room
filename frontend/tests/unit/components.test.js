@@ -8,10 +8,12 @@ const mocks = vi.hoisted(() => ({
     getMeetings: vi.fn(), getJob: vi.fn(), updateJob: vi.fn(), deleteJob: vi.fn(), reorderJobs: vi.fn(),
   },
   openDetailModal: vi.fn(),
+  confirmAction: vi.fn(),
 }));
 
 vi.mock('../../public/js/api.js', () => ({ api: mocks.api }));
 vi.mock('../../public/js/components/detailModal.js', () => ({ openDetailModal: mocks.openDetailModal }));
+vi.mock('../../public/js/utils/confirmDialog.js', () => ({ confirmAction: mocks.confirmAction }));
 
 import { renderQuestionList, enableQuestionReordering } from '../../public/js/components/questionList.js';
 import { renderStageTracker } from '../../public/js/components/stageTracker.js';
@@ -25,6 +27,7 @@ beforeEach(() => {
   document.body.innerHTML = '';
   vi.clearAllMocks();
   vi.stubGlobal('confirm', vi.fn(() => true));
+  mocks.confirmAction.mockImplementation(async ({ title, message }) => window.confirm(`${title} ${message}`));
   mocks.api.createQuestion.mockResolvedValue({});
   mocks.api.updateQuestion.mockResolvedValue({});
   mocks.api.deleteQuestion.mockResolvedValue({});
@@ -206,6 +209,16 @@ describe('stage tracker', () => {
 });
 
 describe('schedule view', () => {
+  it('renders a valid scheduled date with its weekday without timezone shifts', async () => {
+    const root = document.createElement('div');
+    mocks.api.getMeetings.mockResolvedValueOnce([{
+      job_id: 'j1', meeting_date: '2026-10-13', meeting_time: '12:30', meeting_type: 'video',
+      stage_type: 'Technical', position_title: 'Engineer', company_name: 'Acme',
+    }]);
+    await renderScheduleView(root, document.createElement('div'), document.createElement('div'), vi.fn());
+    expect(root.textContent).toMatch(/Tuesday, Oct 13, 2026/);
+  });
+
   it('renders empty, current, next, future, past, phone and unsafe URL cases', async () => {
     const date = (offset) => {
       const d = new Date(); d.setDate(d.getDate() + offset);

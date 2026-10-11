@@ -17,6 +17,8 @@ import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
 import { renderMarkdown } from "../utils/markdown.js";
 import { formatSalary } from "../utils/salary.js";
 import { formatCvUploadDate } from "./cvLibrary.js";
+import { confirmAction } from "../utils/confirmDialog.js";
+import { formatCalendarDate } from "../utils/date.js";
 
 const STAGE_TYPE_CLASSES = new Map([
   ["HR", "HR"],
@@ -226,7 +228,7 @@ function renderMarkdownField(value, placeholder) {
 
 /** Renders a job link only when it uses a safe web URL. */
 function renderJobPostLink(value) {
-  if (safeUrl(value)) return `<a href="${escapeAttr(safeUrl(value))}" target="_blank" rel="noopener noreferrer" class="inline-icon-text" style="word-break: break-all; color: var(--accent-blue);">${escapeHtml(value)} ${icon("arrowUpRight", 11)}</a>`;
+  if (safeUrl(value)) return `<a href="${escapeAttr(safeUrl(value))}" target="_blank" rel="noopener noreferrer" class="inline-icon-text detail-external-link" style="word-break: break-all; color: var(--accent-blue);">${escapeHtml(value)} ${icon("arrowUpRight", 11)}</a>`;
   return value ? escapeHtml(value) : '<span style="color: var(--text-muted); font-style: italic; font-size: 12px;">No job post link recorded</span>';
 }
 
@@ -296,11 +298,11 @@ function renderStageRecruiterDetails(view) {
   const contactValue = !stageRecruiterContact
     ? '<span style="color: var(--text-muted); font-style: italic;">None recorded</span>'
     : contactUrl
-      ? `<a href="${escapeAttr(contactUrl)}" target="_blank" rel="noopener noreferrer" class="inline-icon-text">${stageRecruiterContact.toLowerCase().includes("linkedin") ? "LinkedIn Profile" : "Contact Link"} ${icon("externalLink", 11)}</a>`
+      ? `<a href="${escapeAttr(contactUrl)}" target="_blank" rel="noopener noreferrer" class="inline-icon-text detail-external-link">${stageRecruiterContact.toLowerCase().includes("linkedin") ? "LinkedIn Profile" : "Contact Link"} ${icon("externalLink", 11)}</a>`
       : escapeHtml(stageRecruiterContact);
   return `<div class="meta-grid">
     <div class="meta-item"><span class="meta-label">Relationship / Role</span>
-      <select class="stage-recruiter-source-select" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); padding: 3px 8px; font-size: 12px; color: var(--text-primary); cursor: pointer; margin-top: 2px;">
+      <select class="stage-recruiter-source-select" aria-label="Relationship / Role" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); padding: 3px 8px; font-size: 12px; color: var(--text-primary); cursor: pointer; margin-top: 2px;">
         <option value="none" ${stageRecruiterType === "none" ? "selected" : ""}>Direct / Company Member</option>
         <option value="internal" ${stageRecruiterType === "internal" ? "selected" : ""}>Internal Recruiter</option>
         <option value="external" ${stageRecruiterType === "external" ? "selected" : ""}>External Agency / Headhunter</option>
@@ -323,7 +325,7 @@ function renderInterviewerRow(interviewer, index) {
 
 /** Renders the interviewer roster or its empty state. */
 function renderInterviewerRoster(interviewers) {
-  if (!interviewers.length) return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No interviewers listed for this round yet. Click "+ Add Interviewer" to add.</div>';
+  if (!interviewers.length) return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No interviewers added for this stage yet.</div>';
   return interviewers.map(renderInterviewerRow).join("");
 }
 
@@ -417,7 +419,7 @@ function renderModalHeader(view) {
           <div class="modal-company ${job.company_name.toLowerCase() === 'unknown' ? 'is-unknown' : ''}">
             <span class="editable-company-name" data-raw-value="${escapeAttr(job.company_name)}">${renderCompanyLabel(job.company_name)}</span>
             <button type="button" class="status-pill editable-job-status ${escapeAttr(job.status)}" aria-label="Job status: ${escapeAttr(JOB_STATUS_LABELS[job.status] || job.status)}. Click to change status." title="Click to cycle job status">${escapeHtml(JOB_STATUS_LABELS[job.status] || job.status)}</button>
-            <div class="modal-header-actions"><button class="modal-close-btn" title="Close (Esc)">${icon("close", 14)}</button></div>
+            <div class="modal-header-actions"><button class="modal-close-btn" type="button" aria-label="Close dialog" title="Close (Esc)">${icon("close", 14)}</button></div>
           </div>
           <h2 class="modal-title editable-position-title" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h2>
         </div>
@@ -593,9 +595,18 @@ function renderActiveStageFocus(view) {
           <div class="detail-section">
             <div class="section-title">
               <span class="inline-icon-text">${icon("users", 13)} Interviewers in this Round (${stageInterviewers.length})</span>
-              <button class="btn-secondary btn-add-stage-interviewer inline-icon-text" style="padding: 2px 8px; font-size: 11px;">${icon("plus", 11)} Add Interviewer</button>
+              <button type="button" class="btn-secondary btn-add-stage-interviewer inline-icon-text">${icon("plus", 11)} Add Interviewer</button>
             </div>
             <div class="interviewers-list">${renderInterviewerRoster(stageInterviewers)}</div>
+            <form class="stage-interviewer-form" hidden>
+              <label>Interviewer name<input name="name" type="text" maxlength="120" autocomplete="name" required /></label>
+              <label>Role or specialty<input name="role" type="text" maxlength="120" placeholder="e.g. Engineering Lead" /></label>
+              <label class="stage-interviewer-notes">Notes<textarea name="notes" rows="2" maxlength="1000" placeholder="Optional context to remember"></textarea></label>
+              <div class="stage-interviewer-form-actions">
+                <button class="btn-secondary" type="button" data-cancel-interviewer>Cancel</button>
+                <button class="btn-primary" type="submit">Save interviewer</button>
+              </div>
+            </form>
           </div>
 
           <div class="detail-section">
@@ -620,13 +631,14 @@ function renderActiveStageFocus(view) {
 function renderStageTabs(view) {
   const { stages, activeStageIndex } = view;
   return `
-        <div class="stage-tabs-scroll">
-          <button class="stage-tabs-scroll-button is-prev" type="button" aria-label="Scroll interview stages left" title="Scroll interview stages left" hidden>${icon("chevronLeft", 14)}</button>
-        <div class="stages-tab-bar">
-          ${stages
-            .map(
-              (s, idx) => `
-            <button class="stage-tab-item ${idx === activeStageIndex ? 'active' : ''}" data-idx="${idx}">
+        <div class="stage-navigation">
+          <div class="stage-tabs-scroll">
+            <button class="stage-tabs-scroll-button is-prev" type="button" aria-label="Scroll interview stages left" title="Scroll interview stages left" hidden>${icon("chevronLeft", 14)}</button>
+            <div class="stages-tab-bar" role="tablist" aria-label="Interview stages">
+              ${stages
+                .map(
+                  (s, idx) => `
+            <button type="button" id="stage-tab-${idx}" class="stage-tab-item ${idx === activeStageIndex ? 'active' : ''}" role="tab" aria-selected="${idx === activeStageIndex}" aria-controls="stage-panel" tabindex="${idx === activeStageIndex ? '0' : '-1'}" data-idx="${idx}">
               <span class="stage-tab-index">${idx + 1}</span>
               <span>${escapeHtml(s.custom_title || s.stage_type)}</span>
               ${s.status === 'current' ? '<span class="stage-current-chip">Current</span>' : ''}
@@ -634,11 +646,12 @@ function renderStageTabs(view) {
               <span class="stage-tab-qcount">${(s.questions || []).length} Qs</span>
             </button>
           `
-            )
-            .join('')}
-          <button class="btn-tab-add-stage inline-icon-text" id="btn-add-stage-tab">${icon("plus", 11)} Add Stage</button>
-        </div>
-          <button class="stage-tabs-scroll-button is-next" type="button" aria-label="Scroll interview stages right" title="Scroll interview stages right" hidden>${icon("chevronRight", 14)}</button>
+                )
+                .join('')}
+            </div>
+            <button class="stage-tabs-scroll-button is-next" type="button" aria-label="Scroll interview stages right" title="Scroll interview stages right" hidden>${icon("chevronRight", 14)}</button>
+          </div>
+          ${stages.length ? `<button class="btn-tab-add-stage inline-icon-text" id="btn-add-stage-tab" type="button" aria-label="Add interview stage" title="Add interview stage">${icon("plus", 11)} Add Stage</button>` : ""}
         </div>
 
 
@@ -662,19 +675,43 @@ function bindStageTabScrollControls(modalEl) {
   next.addEventListener("click", () => tabs.scrollBy({ left: Math.max(180, tabs.clientWidth * 0.75), behavior: "smooth" }));
   tabs.addEventListener("scroll", updateControls, { passive: true });
   if (typeof ResizeObserver !== "undefined") {
-    const observer = new ResizeObserver(updateControls);
+    const observer = new ResizeObserver(() => {
+      positionActiveStageTab(modalEl);
+      updateControls();
+    });
     observer.observe(tabs);
     stageTabResizeObservers.set(modalEl, observer);
   }
   window.requestAnimationFrame(updateControls);
 }
+
+/** Switches the stacked detail panes on smaller screens. */
+function bindMobileDetailPaneSwitch(modalEl) {
+  const switcher = modalEl.querySelector(".mobile-detail-view-switch");
+  const layout = modalEl.querySelector(".modal-split-layout");
+  if (!switcher || !layout) return;
+
+  switcher.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-mobile-pane]");
+    if (!button) return;
+    const pane = button.dataset.mobilePane;
+    if (!["overview", "stages"].includes(pane)) return;
+    modalEl.dataset.mobileDetailPane = pane;
+    switcher.querySelectorAll("[data-mobile-pane]").forEach((option) => {
+      option.setAttribute("aria-pressed", String(option === button));
+    });
+    layout.scrollTop = 0;
+    if (pane === "stages") positionActiveStageTab(modalEl);
+  });
+}
+
 /** Renders one cohesive section of the job detail modal. */
 function renderStageSchedule(stage) {
   const interviewMode = stage.meeting_type === "onsite" ? "In person" : "Remote";
   const nextMode = stage.meeting_type === "onsite" ? "remote" : "in person";
   const modeTag = `<button type="button" class="interview-mode-tag ${stage.meeting_type === "onsite" ? "is-in-person" : "is-remote"}" aria-label="Interview mode: ${interviewMode}. Switch to ${nextMode}." title="Switch to ${nextMode}">${interviewMode}</button>`;
   if (!stage.meeting_date && !stage.meeting_time) {
-    return `<div class="stage-schedule-badge-row">${modeTag}<button class="stage-action-btn btn-edit-meeting-schedule inline-icon-text" style="font-size: 11px; color: var(--accent-blue); padding: 2px 8px;">${icon("plus", 11)} ${icon("calendar", 12)} Schedule Interview Date & Time</button></div>`;
+    return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${modeTag}</div><div class="stage-schedule-actions"><button type="button" class="stage-action-btn btn-edit-meeting-schedule inline-icon-text">${icon("plus", 11)} ${icon("calendar", 12)} Schedule Interview Date & Time</button></div></div>`;
   }
   const formats = new Map([
     ["phone", `${icon("phone", 12)} Phone Call`],
@@ -685,9 +722,9 @@ function renderStageSchedule(stage) {
   const join = meetingUrl ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-meeting-inline inline-icon-text">${icon("video", 12)} Join Call ${icon("arrowUpRight", 11)}</a>` : "";
   const format = formats.get(stage.meeting_type) || formats.get("video");
   const meetingType = getMeetingTypeClass(stage.meeting_type);
-  return `<div class="stage-schedule-badge-row">${modeTag}<span class="inline-icon-text">${icon("calendar", 12)} ${escapeHtml(stage.meeting_date || "")} • ${escapeHtml(stage.meeting_time || "")}</span>
-    <span class="meeting-format-pill pill-${meetingType} inline-icon-text">${format}</span>${join}
-    <button class="stage-action-btn btn-edit-meeting-schedule inline-icon-text" style="font-size: 11px; padding: 2px 4px; color: var(--accent-blue);">${icon("edit", 11)} Edit Schedule</button></div>`;
+  return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${modeTag}<span class="stage-meeting-date inline-icon-text">${icon("calendar", 12)} <time datetime="${escapeAttr(stage.meeting_date || "")}">${escapeHtml(formatCalendarDate(stage.meeting_date))}</time> • ${escapeHtml(stage.meeting_time || "")}</span>
+    <span class="meeting-format-pill pill-${meetingType} inline-icon-text">${format}</span></div><div class="stage-schedule-actions">${join}
+    <button type="button" class="stage-action-btn btn-edit-meeting-schedule inline-icon-text">${icon("edit", 11)} Edit Schedule</button></div></div>`;
 }
 
 /** Maps a meeting format to an allowed style class suffix. */
@@ -710,10 +747,11 @@ function renderStageActionButtons(view) {
 
 /** Renders a single question row in the stage workspace. */
 function renderStageQuestion(question) {
+  const questionLabel = escapeAttr(question.question);
   return `<div class="question-item" data-qid="${escapeAttr(question.id)}"><div class="question-row-top">
-    <div class="question-text editable-question-text" data-qid="${escapeAttr(question.id)}" data-raw-value="${escapeAttr(question.question)}" style="font-weight: 500; font-size: 14px;">${escapeHtml(question.question)}</div>
-    <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question" aria-label="Delete interview question">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Drag to reorder questions" aria-label="Reorder interview question">${icon("gripLines", 14)}</button></div>
-  </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" placeholder="Log interviewer's answers or your notes here...">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
+    <div class="question-text editable-question-text" data-qid="${escapeAttr(question.id)}" data-raw-value="${questionLabel}" style="font-weight: 500; font-size: 14px;">${escapeHtml(question.question)}</div>
+    <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question" aria-label="Delete interview question: ${questionLabel}">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Drag to reorder questions" aria-label="Reorder interview question: ${questionLabel}">${icon("gripLines", 14)}</button></div>
+  </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" aria-label="Notes for interview question: ${questionLabel}" placeholder="Log interviewer's answers or your notes here...">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
 }
 
 /** Renders questions or the stage question empty state. */
@@ -726,7 +764,7 @@ function renderStageQuestions(questions) {
 function renderStageQuestionWorkspace(stage) {
   return `<div class="questions-workspace"><div class="questions-workspace-header"><div class="questions-workspace-title inline-icon-text">
     <span>${icon("chat", 14)} Questions to Ask this Interviewer</span><span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">(${stage.questions.length})</span>
-  </div></div><form id="active-add-question-form" class="add-question-form" style="margin-top: 0;"><input type="text" class="add-question-input" placeholder="Type a question you want to ask in this interview..." required /><button type="submit" class="btn-primary btn-add-question inline-icon-text" style="padding: 7px 16px; font-size: 12px;">${icon("plus", 12)} Add Question</button></form>
+  </div></div><form id="active-add-question-form" class="add-question-form" style="margin-top: 0;"><input type="text" class="add-question-input" aria-label="New interview question" placeholder="Type a question you want to ask in this interview..." required /><button type="submit" class="btn-primary btn-add-question inline-icon-text" style="padding: 7px 16px; font-size: 12px;">${icon("plus", 12)} Add Question</button></form>
   <div class="questions-list" style="overflow-y: auto; max-height: calc(100vh - 350px); padding-right: 4px;">${renderStageQuestions(stage.questions)}</div></div>`;
 }
 
@@ -743,7 +781,26 @@ function renderActiveStageHero(view) {
 /** Renders the active stage editor or the no-stages prompt. */
 function renderActiveStageWorkspace(view) {
   if (!view.activeStage) return `<div class="stage-empty-state"><p>No interview stages configured yet.</p><button class="btn-primary inline-icon-text stage-empty-state-action" id="btn-init-first-stage">${icon("plus", 12)} Add First Stage</button></div>`;
-  return `${renderActiveStageHero(view)}${renderActiveStageFocus(view)}${renderStageQuestionWorkspace(view.activeStage)}`;
+  return `<div id="stage-panel" class="stage-panel" role="tabpanel" aria-labelledby="stage-tab-${view.activeStageIndex}" tabindex="0">${renderActiveStageHero(view)}${renderActiveStageFocus(view)}${renderStageQuestionWorkspace(view.activeStage)}</div>`;
+}
+
+/** Renders an in-context form for recording a confirmed interview stage. */
+function renderStageCreateForm() {
+  return `<form class="stage-create-form">
+    <p class="stage-create-help">Add stages confirmed by the employer. Leave details blank when they are unknown.</p>
+    <div class="stage-create-fields">
+      <label class="stage-create-field"><span>Stage title</span><input name="custom_title" type="text" maxlength="120" placeholder="e.g. System design interview" required /></label>
+      <label class="stage-create-field"><span>Stage type</span><select name="stage_type" required>
+        <option value="" selected disabled>Choose a type</option>
+        <option value="HR">HR / Screening</option>
+        <option value="Technical">Technical</option>
+        <option value="Cultural">Cultural / Leadership</option>
+        <option value="Offer &amp; Decision">Offer &amp; Decision</option>
+      </select></label>
+      <label class="stage-create-field stage-create-description"><span>Description <small>Optional</small></span><input name="description" type="text" maxlength="500" placeholder="What the employer said this stage covers" /></label>
+    </div>
+    <div class="stage-create-actions"><p class="stage-create-error" role="alert" hidden></p><button class="btn-secondary stage-create-cancel" type="button">Cancel</button><button class="btn-primary stage-create-save" type="submit">Add stage</button></div>
+  </form>`;
 }
 
 /** Reads a scroll position while preserving a zero value for missing panes. */
@@ -784,6 +841,7 @@ function attachModalHandlers(context) {
     stageTabResizeObservers.get(modalEl)?.disconnect();
     closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
+      modalEl.removeAttribute("data-mobile-detail-pane");
       restoreModalFocus();
     });
   };
@@ -838,7 +896,7 @@ function bindTechnologyAssignmentEditor(context) {
       renderOptions();
     }
   };
-  void Promise.resolve().then(() => api.getTechnologies()).then((items) => { catalog = items || []; renderOptions(); options.hidden = true; }).catch((error) => showToast(error.message || "Could not load technology catalog", "error"));
+  void Promise.resolve().then(() => api.getTechnologies()).then((items) => { catalog = Array.isArray(items) ? items : []; renderOptions(); options.hidden = true; }).catch((error) => showToast(error.message || "Could not load technology catalog", "error"));
   input.addEventListener("focus", renderOptions);
   input.addEventListener("input", renderOptions);
   options.addEventListener("click", (event) => {
@@ -864,11 +922,14 @@ function bindJobCvSelection({ modalEl, job, refreshModal }) {
     try {
       const response = await api.getCvVersions();
       const versions = Array.isArray(response) ? response : response?.versions || [];
+      const latestVersion = versions.reduce((latest, version) => (
+        !latest || Number(version.version_number) > Number(latest.version_number) ? version : latest
+      ), null);
       const currentId = job.selected_cv_version?.id || "";
       row.innerHTML = `<label class="job-cv-picker-label" for="job-cv-version-select">CV sent</label>
         <select id="job-cv-version-select" aria-label="CV version sent to this job">
           <option value="">No CV selected</option>
-          ${versions.map((version) => `<option value="${escapeAttr(version.id)}" ${version.id === currentId ? "selected" : ""}>CV v${escapeHtml(version.version_number)} · ${escapeHtml(version.original_name || "CV")} · ${escapeHtml(formatCvUploadDate(version.uploaded_at))}</option>`).join("")}
+          ${versions.map((version) => `<option value="${escapeAttr(version.id)}" ${version.id === currentId ? "selected" : ""}>CV v${escapeHtml(version.version_number)}${version.id === latestVersion?.id ? " · Latest" : ""} · ${escapeHtml(version.original_name || "CV")} · ${escapeHtml(formatCvUploadDate(version.uploaded_at))}</option>`).join("")}
         </select>
         <button type="button" class="btn-primary job-cv-save">Save</button>
         <button type="button" class="btn-secondary job-cv-cancel">Cancel</button>
@@ -922,11 +983,16 @@ function bindBasicModalActions(context) {
 
   modalEl.querySelector(".btn-delete-job")?.addEventListener("click", async () => {
     try {
-      if (confirm(`Permanently delete selection process for "${job.company_name} - ${job.position_title}"?`)) {
-        await api.deleteJob(job.id);
-        closeAction();
-        if (onGlobalRefresh) onGlobalRefresh();
-      }
+      const confirmed = await confirmAction({
+        title: "Delete selection process?",
+        message: `${job.company_name} — ${job.position_title} will be permanently removed.`,
+        confirmLabel: "Delete process",
+        danger: true,
+      });
+      if (!confirmed) return;
+      await api.deleteJob(job.id);
+      closeAction();
+      if (onGlobalRefresh) onGlobalRefresh();
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -1131,15 +1197,18 @@ function openMarkdownFieldEditor({ element, job, field, label, empty, refreshMod
   element.innerHTML = `
     <div class="markdown-field-editor">
       <div class="markdown-editor-tabs" role="tablist" aria-label="${escapeAttr(label)} editor mode">
-        <button type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="markdown-field-input">Markdown</button>
-        <button type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="markdown-field-preview">Preview</button>
+        <button id="markdown-tab-source" type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="markdown-source-panel" tabindex="0">Markdown</button>
+        <button id="markdown-tab-preview" type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="markdown-field-preview" tabindex="-1">Preview</button>
       </div>
-      <textarea id="markdown-field-input" class="markdown-field-input" aria-label="${escapeAttr(label)} Markdown" placeholder="${escapeAttr(empty)}"></textarea>
-      <div id="markdown-field-preview" class="markdown-field-preview markdown-preview" role="tabpanel" hidden></div>
+      <div id="markdown-source-panel" class="markdown-source-panel" role="tabpanel" aria-labelledby="markdown-tab-source">
+        <textarea id="markdown-field-input" class="markdown-field-input" aria-label="${escapeAttr(label)} Markdown" placeholder="${escapeAttr(empty)}"></textarea>
+      </div>
+      <div id="markdown-field-preview" class="markdown-field-preview markdown-preview" role="tabpanel" aria-labelledby="markdown-tab-preview" tabindex="0" hidden></div>
       <div class="markdown-editor-footer"><span>Markdown supported. Enter saves; Shift+Enter adds a line.</span><div><button type="button" class="btn-secondary markdown-editor-cancel">Cancel</button><button type="button" class="btn-primary markdown-editor-save">Save</button></div></div>
     </div>`;
   const editor = element.querySelector(".markdown-field-editor");
   const input = element.querySelector(".markdown-field-input");
+  const sourcePanel = element.querySelector("#markdown-source-panel");
   const preview = element.querySelector(".markdown-field-preview");
   const tabs = [...element.querySelectorAll(".markdown-editor-tab")];
   input.value = originalValue;
@@ -1174,26 +1243,42 @@ function openMarkdownFieldEditor({ element, job, field, label, empty, refreshMod
   function onOutsidePointer(event) {
     if (!editor.contains(event.target)) discard();
   }
+  editor.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    discard();
+  });
 
-  tabs.forEach((tab, index) => tab.addEventListener("click", () => {
+  const activateTab = (index) => {
     const isPreview = index === 1;
-    input.hidden = isPreview;
+    sourcePanel.hidden = isPreview;
     preview.hidden = !isPreview;
     if (isPreview) preview.innerHTML = renderMarkdownField(input.value, "Nothing to preview yet.");
     tabs.forEach((item, itemIndex) => {
       item.classList.toggle("is-active", itemIndex === index);
       item.setAttribute("aria-selected", String(itemIndex === index));
+      item.tabIndex = itemIndex === index ? 0 : -1;
     });
-  }));
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => activateTab(index));
+    tab.addEventListener("keydown", (event) => {
+      const targetIndex = event.key === "ArrowRight" ? (index + 1) % tabs.length
+        : event.key === "ArrowLeft" ? (index - 1 + tabs.length) % tabs.length
+          : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+      if (targetIndex < 0) return;
+      event.preventDefault();
+      activateTab(targetIndex);
+      tabs[targetIndex].focus();
+    });
+  });
   element.querySelector(".markdown-editor-save").addEventListener("click", save);
   element.querySelector(".markdown-editor-cancel").addEventListener("click", discard);
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       save();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      discard();
     }
   });
   document.addEventListener("pointerdown", onOutsidePointer, true);
@@ -1305,6 +1390,7 @@ function bindStageRecruiterFields(context) {
 function bindInterviewerActions(context) {
   const {modalEl, backdropEl, job, onGlobalRefresh, activeStage, stages, stageInterviewers, refreshModal, closeAction} = context;
   if (activeStage) {
+    bindAddStageInterviewerForm({ modalEl, activeStage, stageInterviewers, refreshModal });
     modalEl.querySelectorAll(".editable-stage-interviewer-name").forEach((el) => {
       const idx = parseInt(el.getAttribute("data-idx"), 10);
       makeInlineEditable(el, {
@@ -1347,21 +1433,6 @@ function bindInterviewerActions(context) {
       });
     });
 
-    modalEl.querySelector(".btn-add-stage-interviewer")?.addEventListener("click", async () => {
-      try {
-        const name = prompt("Interviewer Name:");
-        if (!name) return;
-        const role = prompt("Role / Specialty (e.g. Engineering Lead, VP of Product):") || "";
-        const notes = prompt("Quick notes (optional):") || "";
-
-        const roster = [...stageInterviewers, { name, role, notes }];
-        await api.updateStage(activeStage.id, { interviewers: roster });
-        refreshModal();
-      } catch (err) {
-        showToast(err.message, "error");
-      }
-    });
-
     modalEl.querySelectorAll(".btn-del-stage-interviewer").forEach((btn) => {
       btn.addEventListener("click", async () => {
         try {
@@ -1394,8 +1465,44 @@ function bindInterviewerActions(context) {
       });
     }
   }
+}
 
+/** Adds an interviewer through the in-app form rather than browser prompts. */
+function bindAddStageInterviewerForm({ modalEl, activeStage, stageInterviewers, refreshModal }) {
+  const trigger = modalEl.querySelector(".btn-add-stage-interviewer");
+  const form = modalEl.querySelector(".stage-interviewer-form");
+  if (!trigger || !form) return;
+  const nameInput = form.elements.namedItem("name");
+  const submitButton = form.querySelector('[type="submit"]');
 
+  trigger.addEventListener("click", () => {
+    form.hidden = false;
+    trigger.hidden = true;
+    nameInput.focus();
+  });
+  form.querySelector("[data-cancel-interviewer]")?.addEventListener("click", () => {
+    form.reset();
+    form.hidden = true;
+    trigger.hidden = false;
+    trigger.focus();
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const interviewer = {
+      name: nameInput.value.trim(),
+      role: form.elements.namedItem("role").value.trim(),
+      notes: form.elements.namedItem("notes").value.trim(),
+    };
+    if (!interviewer.name) return;
+    submitButton.disabled = true;
+    try {
+      await api.updateStage(activeStage.id, { interviewers: [...stageInterviewers, interviewer] });
+      refreshModal();
+    } catch (error) {
+      submitButton.disabled = false;
+      showToast(error.message, "error");
+    }
+  });
 }
 
 /** Wires the attachmentandstage controls. */
@@ -1405,10 +1512,15 @@ function bindAttachmentAndStageNavigation(context) {
     btn.addEventListener("click", async () => {
       try {
         const attId = btn.getAttribute("data-id");
-        if (confirm("Delete this attachment?")) {
-          await api.deleteAttachment(attId);
-          refreshModal();
-        }
+        const confirmed = await confirmAction({
+          title: "Delete attachment?",
+          message: "This file will be permanently removed from the selection process.",
+          confirmLabel: "Delete attachment",
+          danger: true,
+        });
+        if (!confirmed) return;
+        await api.deleteAttachment(attId);
+        refreshModal();
       } catch (err) {
         showToast(err.message, "error");
       }
@@ -1416,37 +1528,78 @@ function bindAttachmentAndStageNavigation(context) {
   });
 
   modalEl.querySelectorAll(".stage-tab-item").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      activeStageIndex = parseInt(tab.getAttribute("data-idx"), 10);
+    tab.addEventListener("click", (event) => {
+      activeStageIndex = Number(tab.dataset.idx);
       renderModalContent(modalEl, backdropEl, job, onGlobalRefresh);
+      if (event.detail === 0) {
+        modalEl.querySelector(`#stage-tab-${activeStageIndex}`)?.focus({ preventScroll: true });
+      }
+    });
+    tab.addEventListener("keydown", (event) => {
+      const currentIndex = Number(tab.dataset.idx);
+      const targetIndex = event.key === "ArrowRight" ? (currentIndex + 1) % stages.length
+        : event.key === "ArrowLeft" ? (currentIndex - 1 + stages.length) % stages.length
+          : event.key === "Home" ? 0 : event.key === "End" ? stages.length - 1 : -1;
+      if (targetIndex < 0 || targetIndex === currentIndex) return;
+      event.preventDefault();
+      modalEl.querySelector(`#stage-tab-${targetIndex}`)?.click();
     });
   });
 
-  const addStageBtn = modalEl.querySelector("#btn-add-stage-tab") || modalEl.querySelector("#btn-init-first-stage");
-  if (addStageBtn) {
-    addStageBtn.addEventListener("click", async () => {
-      try {
-        const title = prompt("Stage Title (e.g. Technical Deep Dive, Architecture Review):");
-        if (!title) return;
-        const type = prompt("Stage Type (HR, Technical, Cultural, Offer & Decision):", "Technical") || "Technical";
-        const desc = prompt("Stage description (optional):") || "";
+  bindStageCreation({ modalEl, job, stages, refreshModal });
+}
 
+/** Adds a confirmed interview stage through the detail view. */
+function bindStageCreation({ modalEl, job, stages, refreshModal }) {
+  const trigger = modalEl.querySelector("#btn-add-stage-tab, #btn-init-first-stage");
+  if (!trigger) return;
+  trigger.addEventListener("click", () => {
+    if (modalEl.querySelector(".stage-create-form")) return;
+    const form = document.createElement("div");
+    form.innerHTML = renderStageCreateForm();
+    const stageForm = form.firstElementChild;
+    const insertionPoint = trigger.id === "btn-add-stage-tab" ? trigger.closest(".stage-navigation") : trigger;
+    insertionPoint.after(stageForm);
+    trigger.hidden = true;
+    const titleInput = stageForm.querySelector('[name="custom_title"]');
+    const cancel = () => {
+      stageForm.remove();
+      trigger.hidden = false;
+      trigger.focus();
+    };
+    stageForm.querySelector(".stage-create-cancel").addEventListener("click", cancel);
+    stageForm.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancel();
+    });
+    stageForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submit = stageForm.querySelector(".stage-create-save");
+      const error = stageForm.querySelector(".stage-create-error");
+      const data = new FormData(stageForm);
+      submit.disabled = true;
+      error.hidden = true;
+      try {
         await api.createStage({
           job_id: job.id,
-          stage_type: type,
-          custom_title: title,
-          description: desc,
+          stage_type: data.get("stage_type"),
+          custom_title: data.get("custom_title").trim(),
+          description: data.get("description").trim(),
           status: "pending",
         });
-        activeStageIndex = stages.length; // Jump to new stage
-        refreshModal();
+        activeStageIndex = stages.length;
+        await refreshModal();
+        window.requestAnimationFrame(() => modalEl.querySelector(`#stage-tab-${activeStageIndex}`)?.focus());
       } catch (err) {
-        showToast(err.message, "error");
+        error.textContent = err.message || "Could not add this interview stage.";
+        error.hidden = false;
+        submit.disabled = false;
       }
     });
-  }
-
-
+    titleInput.focus();
+  });
 }
 
 /** Wires the activestage controls. */
@@ -1506,11 +1659,17 @@ function bindActiveStageActions(context) {
 
     modalEl.querySelector("#btn-delete-stage")?.addEventListener("click", async () => {
       try {
-        if (confirm(`Delete stage "${activeStage.custom_title || activeStage.stage_type}"?`)) {
-          await api.deleteStage(activeStage.id);
-          activeStageIndex = Math.max(0, activeStageIndex - 1);
-          refreshModal();
-        }
+        const stageName = activeStage.custom_title || activeStage.stage_type;
+        const confirmed = await confirmAction({
+          title: "Delete interview stage?",
+          message: `${stageName} and its interview details will be permanently removed.`,
+          confirmLabel: "Delete stage",
+          danger: true,
+        });
+        if (!confirmed) return;
+        await api.deleteStage(activeStage.id);
+        activeStageIndex = Math.max(0, activeStageIndex - 1);
+        refreshModal();
       } catch (err) {
         showToast(err.message, "error");
       }
@@ -1631,10 +1790,40 @@ function bindActiveStageInlineEditors(context) {
 /**
  * Internal renderer for split-view modal content.
  */
+function positionActiveStageTab(modalEl) {
+  const tabs = modalEl.querySelector(".stages-tab-bar");
+  const activeTab = tabs?.querySelector(".stage-tab-item.active");
+  if (!tabs || !activeTab) return;
+
+  const tabsRect = tabs.getBoundingClientRect();
+  const activeRect = activeTab.getBoundingClientRect();
+  const maxScroll = Math.max(0, tabs.scrollWidth - tabs.clientWidth);
+  const currentScroll = tabs.scrollLeft;
+  const isMobile = window.matchMedia("(max-width: 780px)").matches;
+  const scrollButtonInset = isMobile ? 0 : 25;
+  if (isMobile && maxScroll > 1) {
+    const targetScroll = currentScroll + activeRect.left - tabsRect.left - scrollButtonInset;
+    tabs.scrollLeft = Math.max(0, Math.min(maxScroll, targetScroll));
+    return;
+  }
+  const visibleLeft = tabsRect.left + (currentScroll > 1 ? scrollButtonInset : 0);
+  const visibleRight = tabsRect.right - (currentScroll < maxScroll - 1 ? scrollButtonInset : 0);
+  let targetScroll = currentScroll;
+  if (activeRect.left < visibleLeft) targetScroll += activeRect.left - visibleLeft;
+  if (activeRect.right > visibleRight) targetScroll += activeRect.right - visibleRight;
+  tabs.scrollLeft = Math.max(0, Math.min(maxScroll, targetScroll));
+}
+
 function renderModalContent(modalEl, backdropEl, job, onGlobalRefresh) {
   const view = createModalView(job);
+  const mobilePane = modalEl.dataset.mobileDetailPane || (view.stages.length ? "stages" : "overview");
+  modalEl.dataset.mobileDetailPane = mobilePane;
   modalEl.innerHTML = `
 ${renderModalHeader(view)}
+    <div class="mobile-detail-view-switch" role="group" aria-label="Choose detail section">
+      <button class="mobile-detail-view-button" type="button" data-mobile-pane="overview" aria-pressed="${mobilePane === "overview"}">Job details</button>
+      <button class="mobile-detail-view-button" type="button" data-mobile-pane="stages" aria-pressed="${mobilePane === "stages"}">Interview stages</button>
+    </div>
     <div class="modal-split-layout">
       <div class="split-pane-left">
 ${renderGeneralProcessSection(view)}
@@ -1653,16 +1842,9 @@ ${renderActiveStageWorkspace(view)}
     </div>
   `;
 
-  const tabs = modalEl.querySelector(".stages-tab-bar");
-  const activeTab = tabs?.querySelector(".stage-tab-item.active");
-  if (tabs && activeTab) {
-    const tabsRect = tabs.getBoundingClientRect();
-    const activeRect = activeTab.getBoundingClientRect();
-    if (activeRect.left < tabsRect.left || activeRect.right > tabsRect.right) {
-      tabs.scrollLeft += activeRect.left - tabsRect.left - (tabs.clientWidth - activeRect.width) / 2;
-    }
-  }
+  positionActiveStageTab(modalEl);
   bindStageTabScrollControls(modalEl);
+  bindMobileDetailPaneSwitch(modalEl);
 
   attachModalHandlers({ modalEl, backdropEl, job, onGlobalRefresh, ...view });
 }
@@ -1679,26 +1861,26 @@ function renderEditDetailsMarkup(job, periods = []) {
   return `
     <div class="modal-header">
       <h2 class="modal-title">Edit Selection Process Details</h2>
-      <button class="modal-close-btn">&times;</button>
+      <button class="modal-close-btn" type="button" aria-label="Close dialog">&times;</button>
     </div>
     <form class="edit-process-form process-form">
       <h3 class="edit-section-heading">Job details</h3>
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label">Company Name</label>
-          <input type="text" name="company_name" value="${escapeAttr(job.company_name)}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-company-name">Company Name</label>
+          <input id="edit-company-name" type="text" name="company_name" value="${escapeAttr(job.company_name)}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
           <span style="font-size: 11px; color: var(--text-muted);">Leave empty or 'Unknown' if undisclosed by recruiter</span>
         </div>
         <div>
-          <label class="meta-label">Position Title</label>
-          <input type="text" name="position_title" value="${escapeAttr(job.position_title)}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-position-title">Position Title</label>
+          <input id="edit-position-title" type="text" name="position_title" value="${escapeAttr(job.position_title)}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid form-grid-three">
         <div>
-          <label class="meta-label">Salary Range Type</label>
-          <select name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
+          <label class="meta-label" for="edit-salary-type">Salary Range Type</label>
+          <select id="edit-salary-type" name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
             <option value="limited" ${selectedAttribute(job.salary_type, "limited")}>Limited Range (Min - Max)</option>
             <option value="no_min" ${selectedAttribute(job.salary_type, "no_min")}>Up to Max (No Minimum)</option>
             <option value="no_max" ${selectedAttribute(job.salary_type, "no_max")}>From Min (No Maximum)</option>
@@ -1706,49 +1888,49 @@ function renderEditDetailsMarkup(job, periods = []) {
           </select>
         </div>
         <div>
-          <label class="meta-label">Minimum Salary (€)</label>
-          <input type="number" name="salary_min" value="${formValue(job, "salary_min")}" placeholder="e.g. 70000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-salary-min">Minimum Salary (€)</label>
+          <input id="edit-salary-min" type="number" name="salary_min" value="${formValue(job, "salary_min")}" placeholder="e.g. 70000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label">Maximum Salary (€)</label>
-          <input type="number" name="salary_max" value="${formValue(job, "salary_max")}" placeholder="e.g. 95000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-salary-max">Maximum Salary (€)</label>
+          <input id="edit-salary-max" type="number" name="salary_max" value="${formValue(job, "salary_max")}" placeholder="e.g. 95000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid form-grid-three">
         <div>
-          <label class="meta-label">Recruiter Relationship</label>
-          <select name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
+          <label class="meta-label" for="edit-recruiter-type">Recruiter Relationship</label>
+          <select id="edit-recruiter-type" name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
             <option value="none" ${selectedAttribute(job.recruiter_type, "none")}>Direct / None</option>
             <option value="internal" ${selectedAttribute(job.recruiter_type, "internal")}>Internal Company Recruiter</option>
             <option value="external" ${selectedAttribute(job.recruiter_type, "external")}>External Headhunter / Agency</option>
           </select>
         </div>
         <div>
-          <label class="meta-label">Recruiter Name (Optional)</label>
-          <input type="text" name="recruiter_name" value="${formValue(job, "recruiter_name")}" placeholder="Recruiter / contact name" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-recruiter-name">Recruiter Name (Optional)</label>
+          <input id="edit-recruiter-name" type="text" name="recruiter_name" value="${formValue(job, "recruiter_name")}" placeholder="Recruiter / contact name" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label">Agency Name (If External)</label>
-          <input type="text" name="recruiter_agency" value="${formValue(job, "recruiter_agency")}" placeholder="Agency or department" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-recruiter-agency">Agency Name (If External)</label>
+          <input id="edit-recruiter-agency" type="text" name="recruiter_agency" value="${formValue(job, "recruiter_agency")}" placeholder="Agency or department" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label">Job Post URL (LinkedIn or Careers Page)</label>
-          <input type="url" name="job_post_url" value="${formValue(job, "job_post_url")}" placeholder="https://linkedin.com/jobs/view/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-job-post-url">Job Post URL (LinkedIn or Careers Page)</label>
+          <input id="edit-job-post-url" type="url" name="job_post_url" value="${formValue(job, "job_post_url")}" placeholder="https://linkedin.com/jobs/view/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label">Company Domain (For Logo)</label>
-          <input type="text" name="company_domain" value="${formValue(job, "company_domain")}" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-company-domain">Company Domain (For Logo)</label>
+          <input id="edit-company-domain" type="text" name="company_domain" value="${formValue(job, "company_domain")}" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
-      <div>
+      ${periods.length ? `<div>
         <label class="meta-label" for="edit-search-period">Search Period</label>
         <select id="edit-search-period" name="search_period_id">${searchPeriodOptions}</select>
-      </div>
+      </div>` : ""}
 
       <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
         <input type="checkbox" name="is_referral" id="edit-is-referral" ${checkedAttribute(job.is_referral)} style="accent-color: #c084fc; width: 16px; height: 16px; cursor: pointer;" />
@@ -1758,34 +1940,35 @@ function renderEditDetailsMarkup(job, periods = []) {
       </div>
 
       <div>
-        <label class="meta-label">Role Highlights (MAX 100 CHARACTERS)</label>
-        <input type="text" name="keyword_note" maxlength="100" value="${formValue(job, "keyword_note")}" placeholder="Location • Focus area • Key details" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
+        <label class="meta-label" for="edit-role-highlights">Role Highlights (MAX 100 CHARACTERS)</label>
+        <input id="edit-role-highlights" type="text" name="keyword_note" maxlength="100" value="${formValue(job, "keyword_note")}" placeholder="Location • Focus area • Key details" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text">${icon("building", 13)} Company & Role Overview</label>
-        <textarea name="company_overview" rows="4" placeholder="Summarize what the company does and what the role involves." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "company_overview")}</textarea>
+        <label class="meta-label inline-icon-text" for="edit-company-overview">${icon("building", 13)} Company & Role Overview</label>
+        <textarea id="edit-company-overview" class="role-description-textarea" name="company_overview" rows="4" aria-describedby="edit-company-overview-help" placeholder="Paste the full role description from the job posting." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "company_overview")}</textarea>
+        <span id="edit-company-overview-help" class="process-form-helper">Markdown formatting is supported.</span>
       </div>
 
       <h3 class="edit-section-heading">My notes</h3>
       <div>
-        <label class="meta-label inline-icon-text">${icon("compass", 13)} Why I Want to Change Company (Top FAQ & Talking Points)</label>
-        <textarea name="reasons_to_change" rows="4" placeholder="Why do you want to change company? Key motivations, strategic rationale, growth drivers..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "reasons_to_change")}</textarea>
+        <label class="meta-label inline-icon-text" for="edit-reasons-to-change">${icon("compass", 13)} Why I Want to Change Company (Top FAQ & Talking Points)</label>
+        <textarea id="edit-reasons-to-change" name="reasons_to_change" rows="4" placeholder="Why do you want to change company? Key motivations, strategic rationale, growth drivers..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "reasons_to_change")}</textarea>
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text">${icon("user", 13)} Relevant Experience</label>
-        <textarea name="experience_notes" rows="4" placeholder="Experience and examples that match this role..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "experience_notes")}</textarea>
+        <label class="meta-label inline-icon-text" for="edit-experience-notes">${icon("user", 13)} Relevant Experience</label>
+        <textarea id="edit-experience-notes" name="experience_notes" rows="4" placeholder="Experience and examples that match this role..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "experience_notes")}</textarea>
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text">${icon("euro", 13)} Expected Salary for This Offer</label>
-        <input type="text" name="expected_salary" value="${formValue(job, "expected_salary")}" placeholder="e.g. €85k base plus equity; flexible depending on the offer" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        <label class="meta-label inline-icon-text" for="edit-expected-salary">${icon("euro", 13)} Expected Salary for This Offer</label>
+        <input id="edit-expected-salary" type="text" name="expected_salary" value="${formValue(job, "expected_salary")}" placeholder="e.g. €85k base plus equity; flexible depending on the offer" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text">${icon("fileText", 13)} My Notes / Anything Else</label>
-        <textarea name="interview_notes" rows="4" placeholder="Write anything else you want to remember about this selection process..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "interview_notes")}</textarea>
+        <label class="meta-label inline-icon-text" for="edit-interview-notes">${icon("fileText", 13)} My Notes / Anything Else</label>
+        <textarea id="edit-interview-notes" name="interview_notes" rows="4" placeholder="Write anything else you want to remember about this selection process..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "interview_notes")}</textarea>
       </div>
 
       <div class="form-actions">
@@ -1902,98 +2085,135 @@ function getSalaryUpdateValues(data) {
  * Opens inline modal to schedule or edit an interview meeting with support for
  * video link (Teams, Google Meet, Zoom), phone call, or on-site meeting.
  */
-function openScheduleStageForm(modalEl, backdropEl, job, stage, onSaved) {
-  const defaultDate = stage.meeting_date || new Date().toISOString().slice(0, 10);
-  const defaultType = stage.meeting_type || "video";
+function formatLocalDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-  modalEl.innerHTML = `
+function openScheduleStageForm(modalEl, backdropEl, job, stage, onSaved) {
+  const defaultDate = stage.meeting_date || formatLocalDateInput(new Date());
+  const defaultType = stage.meeting_type || "video";
+  const hasExistingSchedule = Boolean(stage.meeting_date || stage.meeting_time || stage.meeting_url);
+  const title = hasExistingSchedule ? "Edit Interview Schedule" : "Schedule Interview";
+
+  modalEl.innerHTML = getScheduleStageFormMarkup(stage, defaultDate, defaultType, title, hasExistingSchedule);
+
+  bindScheduleStageForm(modalEl, stage, onSaved);
+}
+
+function getScheduleStageFormMarkup(stage, defaultDate, defaultType, title, hasExistingSchedule) {
+  const formatOption = (value, selectedType, label) => `<option value="${value}" ${selectedType === value ? "selected" : ""}>${label}</option>`;
+  return `
     <div class="modal-header">
-      <h2 class="modal-title inline-icon-text">${icon("calendar", 16)} Schedule Interview: ${escapeHtml(stage.custom_title || stage.stage_type)}</h2>
-      <button class="modal-close-btn">${icon("close", 14)}</button>
+      <h2 class="modal-title inline-icon-text">${icon("calendar", 16)} ${title}: ${escapeHtml(stage.custom_title || stage.stage_type)}</h2>
+      <button class="modal-close-btn" type="button" aria-label="Close dialog">${icon("close", 14)}</button>
     </div>
     <form id="schedule-stage-form" class="process-form">
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label">Interview Date</label>
-          <input type="date" name="meeting_date" value="${escapeAttr(defaultDate)}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="schedule-meeting-date">Interview Date</label>
+          <input id="schedule-meeting-date" type="date" name="meeting_date" value="${escapeAttr(defaultDate)}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label">Interview Time / Window</label>
-          <input type="text" name="meeting_time" value="${escapeAttr(stage.meeting_time || '')}" placeholder="e.g. 15:30 - 16:00 or 11:00 AM CEST" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="schedule-meeting-time">Interview Time / Window</label>
+          <input id="schedule-meeting-time" type="text" name="meeting_time" value="${escapeAttr(stage.meeting_time || '')}" placeholder="e.g. 15:30 - 16:00 or 11:00 AM CEST" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid">
         <div>
-          <label class="meta-label">Interview format</label>
+          <label class="meta-label" for="sel-meeting-type">Interview format</label>
           <select name="meeting_type" id="sel-meeting-type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-            <option value="video" ${defaultType === 'video' ? 'selected' : ''}>Remote · Video call</option>
-            <option value="phone" ${defaultType === 'phone' ? 'selected' : ''}>Remote · Phone call</option>
-            <option value="onsite" ${defaultType === 'onsite' ? 'selected' : ''}>In person · On-site</option>
+            ${formatOption("video", defaultType, "Remote · Video call")}
+            ${formatOption("phone", defaultType, "Remote · Phone call")}
+            ${formatOption("onsite", defaultType, "In person · On-site")}
           </select>
         </div>
       </div>
 
       <div id="video-link-row">
-        <label class="meta-label">Meeting Video URL (Teams, Meet, Zoom)</label>
-        <input type="url" name="meeting_url" value="${escapeAttr(stage.meeting_url || '')}" placeholder="https://meet.example.com/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        <label class="meta-label" for="schedule-meeting-url">Meeting Video URL (Teams, Meet, Zoom)</label>
+        <input id="schedule-meeting-url" type="url" name="meeting_url" value="${escapeAttr(stage.meeting_url || '')}" placeholder="https://meet.example.com/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Displays a direct 1-click 'Join Meeting' button in your schedule and active stage banner.</span>
       </div>
 
       <div>
-        <label class="meta-label">Conversation Notes</label>
-        <textarea name="notes" rows="3" placeholder="Record notes from the conversation..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical;">${escapeHtml(stage.notes || '')}</textarea>
+        <label class="meta-label" for="schedule-meeting-notes">Conversation Notes</label>
+        <textarea id="schedule-meeting-notes" name="notes" rows="3" placeholder="Record notes from the conversation..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical;">${escapeHtml(stage.notes || '')}</textarea>
       </div>
 
-      <div class="schedule-form-actions">
-        <button type="button" class="btn-secondary btn-clear-schedule" style="color: var(--status-rejected);">Clear Schedule</button>
+      <div class="schedule-form-actions${hasExistingSchedule ? "" : " schedule-form-actions-new"}">
+        ${hasExistingSchedule ? '<button type="button" class="btn-secondary btn-clear-schedule" style="color: var(--status-rejected);">Clear Schedule</button>' : ""}
         <div class="form-actions">
           <button type="button" class="btn-secondary btn-cancel-schedule">Cancel</button>
-          <button type="submit" class="btn-primary">Save Schedule</button>
+          <button type="submit" class="btn-primary">${hasExistingSchedule ? "Save Changes" : "Save Schedule"}</button>
         </div>
       </div>
     </form>
   `;
+}
 
+function bindScheduleStageForm(modalEl, stage, onSaved) {
   const form = modalEl.querySelector("#schedule-stage-form");
   const cancelBtn = modalEl.querySelector(".btn-cancel-schedule");
   const closeBtn = modalEl.querySelector(".modal-close-btn");
   const clearBtn = modalEl.querySelector(".btn-clear-schedule");
+  const meetingTypeSelect = form.querySelector("#sel-meeting-type");
+  const videoLinkRow = form.querySelector("#video-link-row");
+  const meetingURLInput = form.querySelector("#schedule-meeting-url");
+
+  const updateVideoLinkVisibility = () => {
+    const isVideo = meetingTypeSelect.value === "video";
+    videoLinkRow.hidden = !isVideo;
+    meetingURLInput.disabled = !isVideo;
+  };
+  meetingTypeSelect.addEventListener("change", updateVideoLinkVisibility);
+  updateVideoLinkVisibility();
 
   const cancel = () => onSaved();
   cancelBtn.addEventListener("click", cancel);
   closeBtn.addEventListener("click", cancel);
 
-  clearBtn.addEventListener("click", async () => {
-    try {
-      if (confirm("Clear scheduled meeting date and time for this stage?")) {
-        await api.scheduleMeeting(stage.id, {
-          meeting_date: null,
-          meeting_time: null,
-          meeting_url: null,
-          meeting_type: stage.meeting_type || "video",
-        });
-        onSaved();
-      }
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
+  clearBtn?.addEventListener("click", () => clearStageSchedule(stage, onSaved));
+  form.addEventListener("submit", (event) => saveStageSchedule(event, form, stage, onSaved));
+}
 
-  form.addEventListener("submit", async (e) => {
-    try {
-      e.preventDefault();
-      const data = new FormData(form);
-      await api.scheduleMeeting(stage.id, {
-        meeting_date: data.get("meeting_date"),
-        meeting_time: data.get("meeting_time"),
-        meeting_type: data.get("meeting_type"),
-        meeting_url: data.get("meeting_url"),
-        notes: data.get("notes"),
-      });
-      onSaved();
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
+async function clearStageSchedule(stage, onSaved) {
+  try {
+    const confirmed = await confirmAction({
+      title: "Clear interview schedule?",
+      message: "The date, time, and meeting link for this stage will be removed.",
+      confirmLabel: "Clear schedule",
+    });
+    if (!confirmed) return;
+    await api.scheduleMeeting(stage.id, {
+      meeting_date: null,
+      meeting_time: null,
+      meeting_url: null,
+      meeting_type: stage.meeting_type || "video",
+    });
+    onSaved();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+async function saveStageSchedule(event, form, stage, onSaved) {
+  try {
+    event.preventDefault();
+    const data = new FormData(form);
+    const meetingType = data.get("meeting_type");
+    await api.scheduleMeeting(stage.id, {
+      meeting_date: data.get("meeting_date"),
+      meeting_time: data.get("meeting_time"),
+      meeting_type: meetingType,
+      meeting_url: meetingType === "video" ? data.get("meeting_url") || null : null,
+      notes: data.get("notes"),
+    });
+    onSaved();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
 }

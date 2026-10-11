@@ -416,14 +416,16 @@ func createLifecycleJob(t *testing.T, client *http.Client, serverURL string) mod
 	recName := "Casey Example"
 	employmentType := models.EmploymentTypePermanentB2B
 	companyDomain := "example.test"
+	createDefaultStages := true
 	createPayload := models.CreateJobInput{
-		CompanyName:    "Example Company",
-		PositionTitle:  "Software Engineer",
-		SalaryMin:      &minSal,
-		SalaryMax:      &maxSal,
-		RecruiterName:  &recName,
-		EmploymentType: &employmentType,
-		CompanyDomain:  &companyDomain,
+		CompanyName:         "Example Company",
+		PositionTitle:       "Software Engineer",
+		SalaryMin:           &minSal,
+		SalaryMax:           &maxSal,
+		RecruiterName:       &recName,
+		EmploymentType:      &employmentType,
+		CompanyDomain:       &companyDomain,
+		CreateDefaultStages: &createDefaultStages,
 	}
 	response := mustRequest(t, client, http.MethodPost, serverURL+"/api/jobs", encodeJSON(t, createPayload))
 	t.Cleanup(func() { closeIntegrationResource(t, response.Body) })

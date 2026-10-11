@@ -8,6 +8,7 @@ import { escapeHtml, escapeAttr } from "../utils/sanitize.js";
 import { api } from "../api.js";
 import { renderQuestionList } from "./questionList.js";
 import { icon } from "../icons.js";
+import { confirmAction } from "../utils/confirmDialog.js";
 
 /**
  * Maps stage types to clean CSS class identifiers.
@@ -137,10 +138,15 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
     delBtn.setAttribute("aria-label", `Remove ${stageName} stage`);
     delBtn.addEventListener("click", async () => {
       try {
-        if (confirm(`Remove stage "${escapeHtml(stage.custom_title || stage.stage_type)}"?`)) {
-          await api.deleteStage(stage.id);
-          if (onRefresh) onRefresh();
-        }
+        const confirmed = await confirmAction({
+          title: "Remove interview stage?",
+          message: `${stageName} and its interview details will be permanently removed.`,
+          confirmLabel: "Remove stage",
+          danger: true,
+        });
+        if (!confirmed) return;
+        await api.deleteStage(stage.id);
+        if (onRefresh) onRefresh();
       } catch (err) {
         showToast(err.message, "error");
       }

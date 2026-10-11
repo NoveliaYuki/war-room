@@ -102,6 +102,10 @@ describe('api', () => {
     await expect(api.updateSearchPeriod('id', {})).rejects.toThrow('Failed to update search period');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.reject(new Error('bad json')) });
     await expect(api.deleteSearchPeriod('id')).rejects.toThrow('Failed to delete search period');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({}) });
+    await expect(api.createSearchPeriod({})).rejects.toThrow('Failed to create search period');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+    await expect(api.deleteSearchPeriod('id')).rejects.toThrow('Failed to delete search period');
   });
 
   it('reports the create endpoint fallback for unreadable and empty errors', async () => {
@@ -173,6 +177,38 @@ describe('api', () => {
     await api.setJobCvVersion('job/1', null);
     expect(global.fetch.mock.lastCall[0]).toBe('/api/jobs/job%2F1/cv-version');
     expect(JSON.parse(global.fetch.mock.lastCall[1].body)).toEqual({ version_id: null });
+  });
+
+  it('reports CV endpoint failures and fallback messages', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 502 });
+    await expect(api.getCvVersions()).rejects.toThrow('HTTP error: 502');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 413, json: async () => ({ error: 'CV is too large' }) });
+    await expect(api.uploadCvVersion(new File(['pdf'], 'cv.pdf'))).rejects.toThrow('CV is too large');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.reject(new Error('invalid JSON')) });
+    await expect(api.uploadCvVersion(new File(['pdf'], 'cv.pdf'))).rejects.toThrow('Failed to upload CV');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(api.downloadCvVersion('missing')).rejects.toThrow('HTTP error: 404');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({}) });
+    await expect(api.deleteCvVersion('assigned')).rejects.toThrow('HTTP error: 409');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.reject(new Error('invalid JSON')) });
+    await expect(api.deleteCvVersion('broken')).rejects.toThrow('HTTP error: 500');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 422 });
+    await expect(api.setJobCvVersion('job-1', 'missing')).rejects.toThrow('HTTP error: 422');
+  });
+
+  it('uses fallback errors for empty technology and search-period API errors', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 503 });
+    await expect(api.getSearchPeriods()).rejects.toThrow('HTTP error: 503');
+
+    for (const [invoke, message] of [
+      [() => api.createTechnology({ name: 'Example' }), 'Failed to create technology'],
+      [() => api.updateTechnology('tech-1', { name: 'Example' }), 'Failed to update technology'],
+      [() => api.deleteTechnology('tech-1'), 'Failed to delete technology'],
+      [() => api.uploadCvVersion(new File(['pdf'], 'cv.pdf')), 'Failed to upload CV'],
+    ]) {
+      global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+      await expect(invoke()).rejects.toThrow(message);
+    }
   });
 
   it('uses a shared logo URL contract for the avatar component', () => {

@@ -46,7 +46,7 @@ describe("technology library", () => {
     api.getTechnologies.mockResolvedValue(goCatalog);
     const modal = document.querySelector("#detail-modal");
     await openTechnologyLibrary(modal, vi.fn());
-    expect(modal.textContent).toContain("No aliases");
+    expect(modal.textContent).not.toContain("No aliases");
     expect(modal.textContent).toContain("0 processes");
     modal.querySelector(".technology-remove").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -80,7 +80,7 @@ describe("technology library", () => {
     api.getTechnologies.mockResolvedValue([{ id: "legacy", name: "Java", jobs: undefined }]);
     const modal = document.querySelector("#detail-modal");
     await openTechnologyLibrary(modal, vi.fn());
-    expect(modal.textContent).toContain("Aliases: No aliases");
+    expect(modal.textContent).not.toContain("Aliases: No aliases");
     expect(modal.textContent).toContain("0 processes");
     modal.querySelector(".technology-edit").click();
     await new Promise((resolve) => setTimeout(resolve, 0));

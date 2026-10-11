@@ -6,13 +6,14 @@ const mocks = vi.hoisted(() => ({
     backdrop?.classList.remove('active');
     done?.();
   }),
-  showToast: vi.fn(),
+  showToast: vi.fn(), confirmAction: vi.fn(),
 }));
 vi.mock('../../public/js/api.js', () => ({ api: mocks.api }));
 vi.mock('../../public/js/components/cardGrid.js', () => ({ renderCardGrid: mocks.renderCardGrid }));
 vi.mock('../../public/js/components/scheduleView.js', () => ({ renderScheduleView: mocks.renderScheduleView }));
 vi.mock('../../public/js/flip.js', () => ({ closeWithFlip: mocks.closeWithFlip, cancelPendingFlipClose: vi.fn() }));
 vi.mock('../../public/js/utils/toast.js', () => ({ showToast: mocks.showToast }));
+vi.mock('../../public/js/utils/confirmDialog.js', () => ({ confirmAction: mocks.confirmAction }));
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -23,11 +24,17 @@ describe('application entry point', () => {
     });
     delete document.documentElement.dataset.theme;
     document.body.innerHTML = `
+      <div id="app-load-error" hidden><button id="app-load-retry" type="button">Try again</button></div>
       <div id="cards-grid"></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
       <button id="btn-theme-toggle"></button>
-      <div id="process-toolbar" class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"></button><div id="process-filter-panel" hidden><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div><div class="search-period-control"><input id="search-period-filter" type="hidden" value="all"><div class="search-period-select-wrap"><button id="search-period-trigger" aria-expanded="false"><span id="search-period-current"></span></button><div id="search-period-menu" role="group" hidden></div></div></div><div id="process-filter-chips"></div><button id="process-filter-clear" hidden></button><span id="process-filter-count" hidden></span><span id="process-filter-summary"></span><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
+      <div id="process-toolbar">
+        <div class="toolbar-search-filter"><div class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"><span>Filters</span><span id="process-filter-count" hidden></span></button>
+          <div id="process-filter-panel" hidden><fieldset class="process-filter-period"><legend>Search period</legend><div id="search-period-control" class="search-period-control search-period-select-wrap"><input id="search-period-filter" type="hidden" value="all"><button id="search-period-trigger" aria-expanded="false"><span id="search-period-current"></span></button><div id="search-period-menu" role="menu" hidden></div></div></fieldset><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div></div>
+        </div>
+        <div id="process-filter-chips"></div><div id="process-filter-panel-footer" hidden><button id="process-filter-clear"></button></div><span id="process-filter-summary"></span><div class="toolbar-view-controls"><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
+      </div>
       <div id="header-controls"><div class="search-wrapper"><button class="search-focus"></button><input id="search-input"></div>
       <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management" role="menuitem"></button></div></div>
       <nav class="view-controls"><div class="filter-tabs">
@@ -71,12 +78,7 @@ describe('application entry point', () => {
     };
     mocks.api.getJobs.mockResolvedValue([matchingJob, otherJob]);
     localStorageGet.mockRestore();
-    const cardsGrid = document.querySelector('#cards-grid');
     const originalGetComputedStyle = window.getComputedStyle.bind(window);
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
-      if (element === cardsGrid) return { gridTemplateColumns: '400px 400px' };
-      return originalGetComputedStyle(element);
-    });
     await flush();
     const searchInput = document.querySelector('#search-input');
     searchInput.value = 'platform';
@@ -85,7 +87,7 @@ describe('application entry point', () => {
     expect(mocks.api.getJobs).toHaveBeenLastCalledWith('ongoing', 'platform');
     expect(document.body.dataset.appReady).toBe('true');
     expect(mocks.renderCardGrid).toHaveBeenCalled();
-    expect(document.querySelector('#process-toolbar').style.getPropertyValue('--toolbar-search-filter-width')).toBe('400px');
+    expect(document.querySelector('#process-toolbar').style.getPropertyValue('--toolbar-search-filter-width')).toBe('');
     const avatar = document.createElement('img');
     avatar.dataset.avatarFallback = 'true';
     const fallback = document.createElement('span');
@@ -99,6 +101,26 @@ describe('application entry point', () => {
     document.querySelector('#search-input').blur();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true }));
     expect(document.querySelector('#new-process-form')).not.toBeNull();
+    expect(document.querySelector('#detail-modal .modal-close-btn').getAttribute('aria-label')).toBe('Close dialog');
+    const unassociatedLabels = [...document.querySelectorAll('#new-process-form label.meta-label')].filter((label) => !label.htmlFor || !document.getElementById(label.htmlFor));
+    expect(unassociatedLabels).toHaveLength(0);
+    expect(document.querySelector('.process-stage-creation-note').textContent).toContain('stages start empty');
+    const overview = document.querySelector('#create-company-overview');
+    const sourceTab = document.querySelector('#create-overview-tab-source');
+    const previewTab = document.querySelector('#create-overview-tab-preview');
+    overview.value = '## Role overview\n\n**Security-first** engineering.';
+    sourceTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(previewTab);
+    expect(document.querySelector('#create-overview-preview').innerHTML).toContain('<strong>Security-first</strong>');
+    expect(document.querySelector('#create-overview-source-panel').hidden).toBe(true);
+    previewTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(sourceTab);
+    expect(document.querySelector('#create-overview-preview').hidden).toBe(true);
+    document.querySelector('#create-keyword-note').value = 'AI infrastructure';
+    document.querySelector('#create-keyword-note').dispatchEvent(new Event('input'));
+    expect(document.querySelector('#keyword-char-count').textContent).toBe('17');
+    overview.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(overview.style.height).not.toBe('');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(document.querySelector('#new-process-form')).toBeNull();
     document.querySelector('#search-input').focus();
@@ -137,7 +159,7 @@ describe('application entry point', () => {
     });
     mocks.api.updateSearchPeriod.mockResolvedValue({ success: true });
     mocks.api.deleteSearchPeriod.mockImplementation(async () => { currentSearchPeriods = []; return { success: true }; });
-    document.querySelector('#btn-manage-search-periods').click();
+    document.querySelector('[data-manage-search-periods]').click();
     await flush();
     let periodForm = document.querySelector('#search-period-form');
     const now = new Date();
@@ -172,6 +194,7 @@ describe('application entry point', () => {
     const periodFilter = document.querySelector('#search-period-filter');
     const periodTrigger = document.querySelector('#search-period-trigger');
     const periodMenu = document.querySelector('#search-period-menu');
+    expect(document.querySelector('#process-filter-panel').contains(periodTrigger)).toBe(true);
     periodTrigger.click();
     expect(periodMenu.hidden).toBe(false);
     expect(document.querySelector('[data-search-period="period-1"]').textContent).toContain('Present');
@@ -180,9 +203,31 @@ describe('application entry point', () => {
     await flush();
     expect(periodFilter.value).toBe('period-1');
     expect(document.querySelector('#search-period-menu').hidden).toBe(true);
-    expect([...document.querySelectorAll('.process-filter-chip')]).toHaveLength(0);
+    expect(document.querySelectorAll('.process-filter-chip')).toHaveLength(0);
     expect(document.querySelector('#process-filter-count').hidden).toBe(true);
+    expect(document.querySelector('#process-filter-panel-footer').hidden).toBe(true);
     expect(document.querySelector('#search-period-current').textContent).toBe(periodName);
+    expect(document.querySelector('#process-filter-trigger').getAttribute('aria-label')).toContain('no active filters');
+    expect(document.querySelector('#search-period-trigger').getAttribute('aria-label')).toContain(periodName);
+    const remoteFilter = document.querySelector('[name="process-filter-arrangement"][value="remote"]');
+    remoteFilter.checked = true;
+    remoteFilter.dispatchEvent(new Event('change'));
+    await flush();
+    expect(document.querySelector('#process-filter-count').textContent).toBe('1');
+    const remoteChip = document.querySelector('[data-remove-filter="arrangement"]');
+    remoteChip.click();
+    await flush();
+    expect(remoteFilter.checked).toBe(false);
+    expect(document.activeElement).toBe(document.querySelector('#process-filter-trigger'));
+    remoteFilter.checked = true;
+    remoteFilter.dispatchEvent(new Event('change'));
+    await flush();
+    document.querySelector('#process-filter-clear').click();
+    await flush();
+    expect(periodFilter.value).toBe('period-1');
+    expect(document.querySelector('#process-filter-count').hidden).toBe(true);
+    periodTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    expect(periodMenu.hidden).toBe(true);
     periodTrigger.click();
     periodTrigger.click();
     expect(periodMenu.hidden).toBe(true);
@@ -194,18 +239,36 @@ describe('application entry point', () => {
     periodMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
     periodMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(periodMenu.hidden).toBe(true);
+    periodTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    const periodOptions = [...periodMenu.querySelectorAll('button[role="menuitemradio"], button[role="menuitem"]')];
+    expect(document.activeElement).toBe(periodOptions.find((option) => option.getAttribute('aria-checked') === 'true'));
+    periodOptions[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(periodOptions.at(-1));
+    periodOptions.at(-1).dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(periodOptions[0]);
+    periodOptions[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(periodOptions.at(-1));
+    periodOptions.at(-1).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(periodOptions[0]);
+    periodMenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    periodTrigger.click();
+    document.querySelector('#search-period-control').dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: periodMenu }));
+    expect(periodMenu.hidden).toBe(false);
+    document.querySelector('#search-period-control').dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
+    expect(periodMenu.hidden).toBe(true);
     document.querySelector('[data-search-period="all"]').click();
     await flush();
     expect(periodFilter.value).toBe('all');
     periodFilter.value = 'unassigned';
     periodFilter.dispatchEvent(new Event('change'));
     await flush();
-    expect([...document.querySelectorAll('.process-filter-chip')]).toHaveLength(0);
+    expect(document.querySelectorAll('.process-filter-chip')).toHaveLength(0);
     expect(document.querySelector('#process-filter-count').hidden).toBe(true);
+    expect(document.querySelector('#search-period-current').textContent).toBe('Unassigned');
     document.querySelector('[data-search-period="all"]').click();
     await flush();
     document.querySelector('#btn-close-search-periods').click();
-    document.querySelector('#btn-manage-search-periods').click();
+    document.querySelector('[data-manage-search-periods]').click();
     await flush();
     const emptyPeriodListForm = document.querySelector('#search-period-form');
     emptyPeriodListForm.elements.name.value = 'Manual period';
@@ -229,7 +292,7 @@ describe('application entry point', () => {
     expect(document.querySelector('#create-search-period').value).toBe('period-1');
     expect(document.querySelector('#create-search-period').selectedOptions[0].textContent).toContain('Present');
     document.querySelector('.btn-cancel').click();
-    document.querySelector('#btn-manage-search-periods').click();
+    document.querySelector('[data-manage-search-periods]').click();
     await flush();
     periodForm = document.querySelector('#search-period-form');
     document.querySelector('[data-edit-period="period-1"]').click();
@@ -244,40 +307,42 @@ describe('application entry point', () => {
     await flush();
     currentSearchPeriods[0].job_count = 2;
     document.querySelector('#btn-close-search-periods').click();
-    document.querySelector('#btn-manage-search-periods').click();
+    document.querySelector('[data-manage-search-periods]').click();
     await flush();
     expect(document.querySelector('#search-period-list').textContent).toContain('2 jobs');
-    const originalConfirm = window.confirm;
-    window.confirm = vi.fn().mockReturnValue(true);
-    window.confirm.mockReturnValueOnce(false);
+    mocks.confirmAction.mockReset().mockResolvedValue(true);
+    mocks.confirmAction.mockResolvedValueOnce(false);
     document.querySelector('[data-delete-period="period-1"]').click();
     expect(mocks.api.deleteSearchPeriod).not.toHaveBeenCalled();
     periodFilter.value = 'period-1';
     periodFilter.dispatchEvent(new Event('change'));
     await flush();
     document.querySelector('#btn-close-search-periods').click();
-    document.querySelector('#btn-manage-search-periods').click();
+    document.querySelector('[data-manage-search-periods]').click();
     await flush();
     expect(periodFilter.value).toBe('period-1');
     mocks.api.deleteSearchPeriod.mockRejectedValueOnce(new Error('Delete failed'));
     document.querySelector('[data-delete-period="period-1"]').click();
+    await vi.waitFor(() => expect(mocks.api.deleteSearchPeriod).toHaveBeenCalledWith('period-1'));
+    await vi.waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith('Delete failed', 'error'));
+    document.querySelector('#process-filter-chips').innerHTML = '<button data-remove-filter="searchPeriod"></button>';
+    document.querySelector('[data-remove-filter="searchPeriod"]').click();
     await flush();
-    expect(mocks.showToast).toHaveBeenCalledWith('Delete failed', 'error');
+    expect(periodFilter.value).toBe('all');
     document.querySelector('[data-delete-period="period-1"]').click();
     await vi.waitFor(() => expect(mocks.api.deleteSearchPeriod).toHaveBeenCalledWith('period-1'));
     await flush();
-    window.confirm = originalConfirm;
     expect(periodFilter.value).toBe('all');
     document.querySelector('#btn-close-search-periods').click();
     periodTrigger.click();
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(periodMenu.hidden).toBe(true);
     document.querySelector('#btn-new-process').click();
-    expect(document.querySelector('#create-search-period').value).toBe('');
+    expect(document.querySelector('#create-search-period')).toBeNull();
     document.querySelector('.btn-cancel').click();
     const getPeriods = mocks.api.getSearchPeriods;
     getPeriods.mockRejectedValueOnce(new Error('Periods unavailable'));
-    document.querySelector('#btn-manage-search-periods').click();
+    document.querySelector('[data-manage-search-periods]').click();
     await flush();
     expect(mocks.showToast).toHaveBeenCalledWith('Periods unavailable', 'error');
     document.querySelector('#btn-close-search-periods').click();
@@ -339,10 +404,11 @@ describe('application entry point', () => {
     document.querySelector('#process-filter-chips').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     document.querySelector('#process-filter-chips').innerHTML = '<button data-remove-filter="unknown"></button>';
     document.querySelector('#process-filter-chips button').click();
-    expect(document.querySelector('#process-filter-clear').hidden).toBe(false);
+    expect(document.querySelector('#process-filter-panel-footer').hidden).toBe(false);
     document.querySelector('#process-filter-clear').click();
     await flush();
     expect(document.querySelector('#process-filter-count').hidden).toBe(true);
+    expect(document.querySelector('#process-filter-panel-footer').hidden).toBe(true);
 
     document.querySelector('#process-sort-trigger').click();
     document.querySelector('[data-sort-mode="added-oldest"]').click();
@@ -362,18 +428,69 @@ describe('application entry point', () => {
     document.querySelector('[data-sort-mode="added-oldest"]').click();
     await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([otherJob, matchingJob]));
     const viewMenuTrigger = document.querySelector('#filter-menu-trigger');
+    viewMenuTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#filter-menu').hidden).toBe(true);
     viewMenuTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
     expect(document.activeElement).toBe(document.querySelector('[data-filter="waiting"]'));
+    viewMenuTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="invalid"]'));
+    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="all"]'));
     document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    expect(document.activeElement).toBe(document.querySelector('[data-filter="ongoing"]'));
+    expect(document.activeElement).toBe(document.querySelector('[data-filter="invalid"]'));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(document.activeElement).toBe(viewMenuTrigger);
+    viewMenuTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    document.querySelector('#filter-menu').dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.querySelector('[data-filter="waiting"]') }));
+    expect(document.querySelector('#filter-menu').hidden).toBe(false);
+    document.querySelector('#filter-menu').dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    expect(document.querySelector('#filter-menu').hidden).toBe(true);
+    document.querySelector('#search-input').focus();
+    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    viewMenuTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    document.querySelector('#filter-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#filter-menu').hidden).toBe(true);
+    expect(document.activeElement).toBe(viewMenuTrigger);
+    viewMenuTrigger.click();
+    expect(document.querySelector('#filter-menu').hidden).toBe(false);
+    expect(viewMenuTrigger.getAttribute('aria-expanded')).toBe('true');
+    viewMenuTrigger.click();
+    expect(document.querySelector('#filter-menu').hidden).toBe(true);
+    expect(viewMenuTrigger.getAttribute('aria-expanded')).toBe('false');
     document.querySelector('#process-filter-trigger').click();
     expect(document.querySelector('#process-filter-panel').hidden).toBe(false);
+    document.querySelector('#process-filter-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#process-filter-panel').hidden).toBe(true);
+    expect(document.activeElement).toBe(document.querySelector('#process-filter-trigger'));
+    document.querySelector('#process-filter-trigger').click();
+    document.querySelector('#process-filter-trigger').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#process-filter-panel').hidden).toBe(true);
+    document.querySelector('#process-filter-trigger').click();
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(document.querySelector('#process-filter-panel').hidden).toBe(true);
+    document.querySelector('#search-period-trigger').click();
+    expect(document.querySelector('#search-period-menu').hidden).toBe(false);
+    document.dispatchEvent(new Event('click'));
+    expect(document.querySelector('#search-period-menu').hidden).toBe(false);
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('#search-period-menu').hidden).toBe(true);
     document.querySelector('#process-sort-trigger').click();
     expect(document.querySelector('#process-sort-menu').hidden).toBe(false);
+    document.querySelector('#process-sort-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelector('#process-sort-trigger').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    expect(document.querySelector('#process-sort-menu').hidden).toBe(true);
+    document.querySelector('#process-sort-trigger').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    const sortOptions = [...document.querySelectorAll('[data-sort-mode]')];
+    const sortMenu = document.querySelector('#process-sort-menu');
+    sortOptions[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(sortOptions.at(-1));
+    sortOptions.at(-1).dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(sortOptions[0]);
+    sortOptions[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(sortOptions.at(-1));
+    sortOptions.at(-1).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(sortOptions[0]);
+    sortMenu.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
     document.querySelector('#process-sort-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.querySelector('#process-sort-menu').hidden).toBe(true);
     const technologySearch = document.querySelector('#process-filter-technology-search');
@@ -467,6 +584,7 @@ describe('application entry point', () => {
     await flush();
     expect(mocks.api.createJob).toHaveBeenLastCalledWith(expect.objectContaining({
       salary_type: 'no_min', salary_min: null, salary_max: 100000,
+      create_default_stages: false,
     }));
 
     document.querySelector('#btn-new-process').click();
@@ -476,6 +594,8 @@ describe('application entry point', () => {
     failedCreateForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await flush();
     expect(mocks.showToast).toHaveBeenCalledWith('Create failed', 'error');
+    document.querySelector('#modal-backdrop').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('.modal-title')).toBeNull();
 
 
     // Export and import use the same ZIP dialog and confirmation regardless of data adapter.
@@ -528,20 +648,18 @@ describe('application entry point', () => {
     await flush();
     expect(document.querySelector('#backup-import-status').textContent).toBe('Failed to import backup');
     const emptyBackup = Object.assign(new Error('empty'), { requiresEmptyConfirmation: true });
-    const confirmEmpty = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
-    vi.stubGlobal('confirm', confirmEmpty);
+    mocks.confirmAction.mockReset().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     mocks.api.importBackup.mockRejectedValueOnce(emptyBackup);
     importButton.click();
-    await flush();
+    await vi.waitFor(() => expect(mocks.confirmAction).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(importButton.disabled).toBe(false));
     expect(importButton.disabled).toBe(false);
     mocks.api.importBackup.mockRejectedValueOnce(emptyBackup).mockResolvedValueOnce({ success: true });
     importButton.click();
-    await flush();
-    expect(confirmEmpty).toHaveBeenCalledTimes(2);
-    expect(mocks.api.importBackup).toHaveBeenLastCalledWith(backupFile, true);
+    await vi.waitFor(() => expect(mocks.api.importBackup).toHaveBeenLastCalledWith(backupFile, true));
     dataButton.click();
-    document.querySelector('#btn-close-data-modal').click();
-    vi.unstubAllGlobals();
+    document.querySelector('#modal-backdrop').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('.modal-title')).toBeNull();
 
     // Reload the module with valid saved filters to cover preference restoration and validation.
     window.localStorage.setItem('war-room.process.filters.v1', JSON.stringify({
@@ -582,6 +700,43 @@ describe('application entry point', () => {
     }
     document.querySelector('#process-filter-clear').click();
     await flush();
+
+    const loadError = document.querySelector('#app-load-error');
+    const retryButton = document.querySelector('#app-load-retry');
+    mocks.api.getJobCounts.mockRejectedValue(new Error('temporary network failure'));
+    retryButton.click();
+    expect(retryButton.disabled).toBe(true);
+    expect(retryButton.textContent).toBe('Retrying…');
+    await vi.waitFor(() => expect(loadError.hidden).toBe(false));
+    expect(retryButton.disabled).toBe(false);
+    expect(retryButton.textContent).toBe('Try again');
+    mocks.api.getJobCounts.mockResolvedValue({ all: 1, waiting: 0, ongoing: 1, accepted: 0, rejected: 0 });
+    retryButton.click();
+    await vi.waitFor(() => expect(loadError.hidden).toBe(true));
+
+    const description = document.createElement('textarea');
+    description.className = 'role-description-textarea';
+    let descriptionContentHeight = 72;
+    Object.defineProperty(description, 'scrollHeight', { configurable: true, get: () => descriptionContentHeight });
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+      if (element === description) return { maxHeight: '120px' };
+      return originalGetComputedStyle(element);
+    });
+    document.body.append(description);
+    description.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(description.style.height).toBe('72px');
+    expect(description.style.overflowY).toBe('hidden');
+    descriptionContentHeight = 180;
+    description.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    expect(description.style.height).toBe('120px');
+    expect(description.style.overflowY).toBe('auto');
+
+    const resetView = mocks.renderCardGrid.mock.calls.at(-1)[6].onResetView;
+    document.querySelector('#search-input').value = 'stale search';
+    document.querySelector('#search-period-filter').value = 'period-1';
+    resetView();
+    expect(document.querySelector('#search-input').value).toBe('');
+    expect(document.querySelector('#search-period-filter').value).toBe('all');
 
   });
 });

@@ -6,10 +6,12 @@ const { api, calls } = vi.hoisted(() => {
   return { api, calls };
 });
 const toast = vi.hoisted(() => vi.fn());
+const confirmAction = vi.hoisted(() => vi.fn());
 vi.mock('../../public/js/api.js', () => ({ api }));
 vi.mock('../../public/js/flip.js', () => ({ closeWithFlip: vi.fn((modal, backdrop, done) => { backdrop.classList.remove('active'); done?.(); }), cancelPendingFlipClose: vi.fn() }));
 vi.mock('../../public/js/components/questionList.js', () => ({ enableQuestionReordering: vi.fn() }));
 vi.mock('../../public/js/utils/toast.js', () => ({ showToast: toast }));
+vi.mock('../../public/js/utils/confirmDialog.js', () => ({ confirmAction }));
 
 import { openDetailModal } from '../../public/js/components/detailModal.js';
 import { closeWithFlip } from '../../public/js/flip.js';
@@ -37,6 +39,15 @@ async function editMarkdown(modal, field, value) {
   await tick();
 }
 
+async function submitStageForm(modal, { title, type, description = "" }) {
+  const form = modal.querySelector(".stage-create-form");
+  form.elements.custom_title.value = title;
+  form.elements.stage_type.value = type;
+  form.elements.description.value = description;
+  form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await tick();
+}
+
 const job = (stages = []) => ({
   id: 'job-1', company_name: 'Acme', position_title: 'Engineer', status: 'ongoing', salary_type: 'limited',
   salary_min: 80000, salary_max: 100000, salary_currency: 'EUR', is_referral: false,
@@ -53,6 +64,7 @@ beforeEach(() => {
   delete document.body.dataset.demo;
   window.localStorage.removeItem('war-room-detail-split-ratio');
   toast.mockClear();
+  confirmAction.mockReset().mockImplementation(async ({ title, message }) => window.confirm(`${title} ${message}`));
   closeWithFlip.mockClear();
   Object.values(calls).forEach((fn) => fn.mockReset().mockResolvedValue({}));
   api.getSearchPeriods.mockResolvedValue([]);
@@ -64,6 +76,7 @@ describe('detail modal', () => {
     const modal = document.querySelector('#detail-modal');
 
     await openDetailModal('job-1');
+    expect(modal.querySelector('.modal-close-btn').getAttribute('aria-label')).toBe('Close dialog');
     modal.querySelector('.modal-close-btn').click();
     expect(closeWithFlip).toHaveBeenCalledTimes(1);
 
@@ -276,7 +289,7 @@ describe('detail modal', () => {
 
     expect(modal.querySelector('.modal-split-layout')).not.toBeNull();
     expect(modal.querySelector('.questions-workspace').textContent).toContain('(0)');
-    expect(modal.querySelector('.interviewers-list').textContent).toContain('No interviewers listed');
+    expect(modal.querySelector('.interviewers-list').textContent).toContain('No interviewers added for this stage yet');
     expect(modal.querySelector('.interview-mode-tag').textContent).toBe('In person');
     modal.querySelector('.interview-mode-tag').click();
     await tick();
@@ -394,6 +407,68 @@ describe('detail modal', () => {
     expect(previous.hidden).toBe(true);
   });
 
+  it('navigates interview stage tabs with the keyboard and restores focus', async () => {
+    const stages = ['Recruiter', 'Technical', 'Leadership'].map((custom_title, index) => ({
+      id: `s${index + 1}`, stage_type: 'Other', custom_title,
+      status: index === 0 ? 'current' : 'pending', questions: [],
+    }));
+    api.getJob.mockResolvedValue(job(stages));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+
+    const firstTab = modal.querySelector('#stage-tab-0');
+    firstTab.focus();
+    const previous = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
+    firstTab.dispatchEvent(previous);
+    expect(previous.defaultPrevented).toBe(true);
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Leadership');
+    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-2'));
+
+    modal.querySelector('#stage-tab-2').dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Recruiter');
+    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-0'));
+
+    modal.querySelector('#stage-tab-0').dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Leadership');
+    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-2'));
+  });
+
+  it('keeps the active stage clear of scroll controls on phones', async () => {
+    const stages = [
+      { id: 's1', stage_type: 'HR', status: 'completed', questions: [] },
+      { id: 's2', stage_type: 'Technical', status: 'current', questions: [] },
+    ];
+    api.getJob.mockResolvedValue(job(stages));
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this.classList?.contains('stages-tab-bar')) {
+        if (!this.dataset.testScrollSetup) {
+          Object.defineProperties(this, {
+            clientWidth: { configurable: true, value: 290 },
+            scrollWidth: { configurable: true, value: 500 },
+            scrollLeft: { configurable: true, writable: true, value: 0 },
+          });
+          this.dataset.testScrollSetup = 'true';
+        }
+        return { left: 10, right: 300, width: 290, top: 0, bottom: 40, height: 40 };
+      }
+      if (this.classList?.contains('stage-tab-item') && this.classList.contains('active')) {
+        return { left: 150, right: 390, width: 240, top: 0, bottom: 36, height: 36 };
+      }
+      return originalRect.call(this);
+    });
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(115);
+
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    modal.querySelector('.stage-tab-item.active').click();
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(140);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it('opens and cancels the edit details form', async () => {
     api.getJob.mockResolvedValue(job());
     const modal = document.querySelector('#detail-modal');
@@ -403,6 +478,29 @@ describe('detail modal', () => {
     expect(modal.querySelector('.edit-process-form')).not.toBeNull();
     modal.querySelector('.btn-cancel-edit').click();
     expect(api.getJob).toHaveBeenCalledWith('job-1');
+  });
+
+  it('saves application and first-contact dates, restoring a date when save fails', async () => {
+    const fixture = { ...job(), application_sent_date: '2026-10-10', recruiter_first_contact_date: '' };
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+
+    const sentDate = modal.querySelector('[data-process-date="application_sent_date"]');
+    expect(sentDate.value).toBe('2026-10-10');
+    sentDate.value = '2026-10-11';
+    sentDate.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { application_sent_date: '2026-10-11' });
+
+    const contactDate = modal.querySelector('[data-process-date="recruiter_first_contact_date"]');
+    contactDate.value = '2026-10-12';
+    api.updateJob.mockRejectedValueOnce(new Error('Could not save process date'));
+    contactDate.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(contactDate.value).toBe('');
+    expect(contactDate.disabled).toBe(false);
+    expect(toast).toHaveBeenCalledWith('Could not save process date', 'error');
   });
 
   it('lets a job move into a search period from its edit form', async () => {
@@ -634,12 +732,12 @@ describe('detail modal', () => {
     const fixture = { ...job(stages), interviewers: [{ name: 'Alex', role: 'Engineer', notes: 'Staff' }] };
     api.getJob.mockResolvedValue(fixture);
     vi.stubGlobal('confirm', vi.fn(() => true));
-    vi.stubGlobal('prompt', vi.fn().mockReturnValueOnce('Sam').mockReturnValueOnce('Lead').mockReturnValueOnce('Panelist'));
     const modal = document.querySelector('#detail-modal');
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
     expect(modal.querySelector('.editable-stage-notes').textContent).toBe('Discuss platform ownership');
 
     const recruiterSelect = modal.querySelector('.stage-recruiter-source-select');
+    expect(recruiterSelect.getAttribute('aria-label')).toBe('Relationship / Role');
     recruiterSelect.value = 'internal';
     recruiterSelect.dispatchEvent(new Event('change'));
     await tick();
@@ -661,6 +759,11 @@ describe('detail modal', () => {
     await editInline(modal, '.editable-stage-interviewer-note', 'Hiring manager');
     expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Alex', role: 'Engineer', notes: 'Hiring manager' }] });
     modal.querySelector('.btn-add-stage-interviewer').click();
+    const addInterviewerForm = modal.querySelector('.stage-interviewer-form');
+    addInterviewerForm.querySelector('[name="name"]').value = 'Sam';
+    addInterviewerForm.querySelector('[name="role"]').value = 'Lead';
+    addInterviewerForm.querySelector('[name="notes"]').value = 'Panelist';
+    addInterviewerForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await tick();
     expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Alex', role: 'Engineer', notes: 'Staff' }, { name: 'Sam', role: 'Lead', notes: 'Panelist' }] });
     modal.querySelector('.btn-del-stage-interviewer').click();
@@ -702,20 +805,50 @@ describe('detail modal', () => {
     expect(api.deleteStage).toHaveBeenCalledWith('s2');
   });
 
+  it('adds interviewers with an inline form and keeps it open when saving fails', async () => {
+    const fixture = job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]);
+    api.getJob.mockResolvedValue(fixture);
+    api.updateStage.mockRejectedValueOnce(new Error('Could not save interviewer'));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+
+    const trigger = modal.querySelector('.btn-add-stage-interviewer');
+    trigger.click();
+    const form = modal.querySelector('.stage-interviewer-form');
+    const name = form.querySelector('[name="name"]');
+    expect(form.hidden).toBe(false);
+    expect(document.activeElement).toBe(name);
+    expect(form.checkValidity()).toBe(false);
+
+    name.value = '   ';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateStage).not.toHaveBeenCalled();
+
+    name.value = 'Sam';
+    form.querySelector('[name="role"]').value = 'Lead';
+    form.querySelector('[name="notes"]').value = 'Panelist';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s1', { interviewers: [{ name: 'Sam', role: 'Lead', notes: 'Panelist' }] });
+    expect(form.hidden).toBe(false);
+    expect(form.querySelector('[type="submit"]').disabled).toBe(false);
+    expect(toast).toHaveBeenCalledWith('Could not save interviewer', 'error');
+  });
+
   it('supports adding stages and scheduling, clearing, and canceling meetings', async () => {
     const stages = [{ id: 's1', stage_type: 'HR', status: 'current', questions: [] }];
     const fixture = job(stages);
     api.getJob.mockResolvedValue(fixture);
     vi.stubGlobal('confirm', vi.fn(() => true));
-    vi.stubGlobal('prompt', vi.fn().mockReturnValueOnce('Culture').mockReturnValueOnce('Cultural').mockReturnValueOnce('Leadership values'));
     const modal = document.querySelector('#detail-modal');
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
     modal.querySelector('#btn-add-stage-tab').click();
-    await tick();
+    await submitStageForm(modal, { title: 'Culture', type: 'Cultural', description: 'Leadership values' });
     expect(api.createStage).toHaveBeenCalledWith({ job_id: fixture.id, stage_type: 'Cultural', custom_title: 'Culture', description: 'Leadership values', status: 'pending' });
     const createdStages = api.createStage.mock.calls.length;
-    prompt.mockReturnValueOnce(null);
     modal.querySelector('#btn-add-stage-tab').click();
+    modal.querySelector('.stage-create-cancel').click();
     expect(api.createStage).toHaveBeenCalledTimes(createdStages);
 
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
@@ -731,6 +864,7 @@ describe('detail modal', () => {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await tick();
     expect(api.scheduleMeeting).toHaveBeenCalledWith('s1', expect.objectContaining({ meeting_date: '2026-10-01', meeting_time: '11:00', meeting_type: 'onsite', notes: 'Bring portfolio' }));
+    Object.assign(fixture.stages[0], { meeting_date: '2026-10-01', meeting_time: '11:00', meeting_type: 'onsite', notes: 'Bring portfolio' });
 
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
     modal.querySelector('.btn-edit-meeting-schedule').click();
@@ -740,7 +874,7 @@ describe('detail modal', () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     modal.querySelector('.btn-clear-schedule').click();
     await tick();
-    expect(api.scheduleMeeting).toHaveBeenCalledWith('s1', { meeting_date: null, meeting_time: null, meeting_url: null, meeting_type: 'video' });
+    expect(api.scheduleMeeting).toHaveBeenLastCalledWith('s1', { meeting_date: null, meeting_time: null, meeting_url: null, meeting_type: 'onsite' });
 
   });
 
@@ -861,13 +995,16 @@ describe('detail modal', () => {
     expect(api.uploadAttachment.mock.calls[2][0].get('stage_id')).toBe('s2');
 
     modal.querySelector('.stage-tab-item[data-idx="0"]').click();
-    vi.stubGlobal('prompt', vi.fn().mockReturnValueOnce(null));
     modal.querySelector('.btn-add-stage-interviewer').click();
+    const addInterviewerForm = modal.querySelector('.stage-interviewer-form');
+    expect(addInterviewerForm.hidden).toBe(false);
+    addInterviewerForm.querySelector('[data-cancel-interviewer]').click();
     await tick();
     expect(api.updateStage).not.toHaveBeenCalledWith('s1', expect.objectContaining({ interviewers: expect.any(Array) }));
 
-    vi.stubGlobal('prompt', vi.fn().mockReturnValueOnce('New panelist').mockReturnValueOnce(null).mockReturnValueOnce(''));
     modal.querySelector('.btn-add-stage-interviewer').click();
+    addInterviewerForm.querySelector('[name="name"]').value = 'New panelist';
+    addInterviewerForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await tick();
     expect(api.updateStage).toHaveBeenCalledWith('s1', {
       interviewers: [
@@ -973,9 +1110,8 @@ describe('detail modal', () => {
     expect(api.deleteJob).not.toHaveBeenCalled();
     expect(api.deleteStage).not.toHaveBeenCalled();
 
-    vi.stubGlobal('prompt', vi.fn().mockReturnValueOnce('Reference Check').mockReturnValueOnce('').mockReturnValueOnce(''));
     modal.querySelector('#btn-add-stage-tab').click();
-    await tick();
+    await submitStageForm(modal, { title: 'Reference Check', type: 'Technical' });
     expect(api.createStage).toHaveBeenCalledWith({
       job_id: 'job-1', stage_type: 'Technical', custom_title: 'Reference Check', description: '', status: 'pending',
     });

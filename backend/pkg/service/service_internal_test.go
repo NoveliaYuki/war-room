@@ -545,7 +545,8 @@ func assertAttachmentPersistenceErrors(t *testing.T, fixture attachmentOwnerFixt
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_default_stage BEFORE INSERT ON stages BEGIN SELECT RAISE(ABORT, 'stage unavailable'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.service.CreateJob(models.CreateJobInput{CompanyName: "Rollback", PositionTitle: "Engineer"}); err == nil {
+	createDefaultStages := true
+	if _, err := fixture.service.CreateJob(models.CreateJobInput{CompanyName: "Rollback", PositionTitle: "Engineer", CreateDefaultStages: &createDefaultStages}); err == nil {
 		t.Fatal("default stage insertion error should fail job creation")
 	}
 	jobs, err := fixture.repo.GetAllJobs("", "")

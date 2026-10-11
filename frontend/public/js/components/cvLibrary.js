@@ -3,6 +3,7 @@ import { activateModal } from "../modalA11y.js";
 import { icon } from "../icons.js";
 import { escapeAttr, escapeHtml } from "../utils/sanitize.js";
 import { showToast } from "../utils/toast.js";
+import { confirmAction } from "../utils/confirmDialog.js";
 
 /** Formats an upload timestamp for the user's locale. */
 export function formatCvUploadDate(value) {
@@ -20,7 +21,7 @@ function versionsFrom(response) {
 
 /** Renders and wires the standalone shared CV version library. */
 export async function openCvLibrary(modalEl, onClose) {
-  const load = async (focusSelector = "#btn-close-cv-library") => {
+  const load = async (focusSelector = "#btn-cv-library-upload") => {
     modalEl.innerHTML = `
       <div class="modal-header data-transfer-header">
         <div><div class="modal-title">CV Library</div><div class="modal-company">Manage the versions of your CV</div></div>
@@ -28,7 +29,7 @@ export async function openCvLibrary(modalEl, onClose) {
       </div>
       <div class="data-transfer-content cv-library-content">
         <div class="cv-library-toolbar"><button id="btn-cv-library-upload" class="btn-primary cv-upload-label" type="button">${icon("plus", 15)} Upload new version</button>
-          <input id="cv-library-upload-file" class="cv-library-file-input" type="file" accept="application/pdf,.pdf" aria-label="Choose a new CV version" />
+          <input id="cv-library-upload-file" class="cv-library-file-input" type="file" accept="application/pdf,.pdf" aria-label="Choose a new CV version" tabindex="-1" />
         </div>
         <div class="data-transfer-status" id="cv-library-status" role="status" aria-live="polite"></div>
         <div id="cv-version-list" class="cv-version-list" aria-live="polite"></div>
@@ -45,11 +46,12 @@ export async function openCvLibrary(modalEl, onClose) {
       try {
         await api.uploadCvVersion(file);
         showToast("CV version uploaded", "success");
-        await load();
+        await load("#btn-cv-library-upload");
       } catch (error) {
         status.textContent = error.message || "Failed to upload CV version";
         input.disabled = false;
         input.value = "";
+        modalEl.querySelector("#btn-cv-library-upload")?.focus();
       }
     });
     activateModal(modalEl, focusSelector);
@@ -66,12 +68,15 @@ export async function openCvLibrary(modalEl, onClose) {
       const versions = versionsFrom(await api.getCvVersions());
       status.textContent = "";
       if (!versions.length) {
-        list.innerHTML = '<p class="cv-library-empty">No CV versions yet. Upload your current CV to get started.</p>';
+        list.innerHTML = `<div class="cv-library-empty" role="status"><span class="cv-library-empty-icon" aria-hidden="true">${icon("fileText", 20)}</span><div class="cv-library-empty-copy"><strong>No CV versions yet</strong><span>Upload your latest CV so it’s ready to attach to applications.</span></div></div>`;
         return;
       }
+      const latestVersion = versions.reduce((latest, version) => (
+        !latest || Number(version.version_number) > Number(latest.version_number) ? version : latest
+      ), null);
       list.innerHTML = versions.map((version) => `
         <article class="cv-version-row">
-          <div class="cv-version-info"><strong>CV v${escapeHtml(version.version_number)}</strong>
+          <div class="cv-version-info"><div class="cv-version-heading"><strong>CV v${escapeHtml(version.version_number)}</strong>${version.id === latestVersion?.id ? '<span class="cv-version-latest">Latest</span>' : ""}</div>
             <span class="cv-version-filename" title="${escapeAttr(version.original_name)}">${escapeHtml(version.original_name)}</span>
             <span class="cv-version-date">Uploaded ${escapeHtml(formatCvUploadDate(version.uploaded_at))}</span>
           </div>
@@ -99,12 +104,20 @@ export async function openCvLibrary(modalEl, onClose) {
         }
       }));
       list.querySelectorAll(".cv-version-delete").forEach((button) => button.addEventListener("click", async () => {
-        if (!window.confirm(`Delete CV v${button.dataset.version}? This cannot be undone.`)) return;
+        const fallbackIndex = [...list.querySelectorAll(".cv-version-delete")].indexOf(button);
+        const confirmed = await confirmAction({
+          title: `Delete CV v${button.dataset.version}?`,
+          message: "This version will be permanently removed from your CV library.",
+          confirmLabel: "Delete CV",
+          danger: true,
+        });
+        if (!confirmed) return;
         button.disabled = true;
         try {
           await api.deleteCvVersion(button.dataset.id);
           showToast("CV version deleted", "success");
           await refreshList();
+          focusCvVersionDelete(button.dataset.id, fallbackIndex);
         } catch (error) {
           status.textContent = error.message || "Failed to delete CV version";
           button.disabled = false;
@@ -115,6 +128,12 @@ export async function openCvLibrary(modalEl, onClose) {
       list.innerHTML = '<button class="btn-secondary" id="btn-cv-library-retry" type="button">Try again</button>';
       list.querySelector("#btn-cv-library-retry").addEventListener("click", refreshList);
     }
+  }
+
+  function focusCvVersionDelete(id, fallbackIndex = 0) {
+    const buttons = [...modalEl.querySelectorAll(".cv-version-delete")];
+    const fallback = buttons[Math.max(0, Math.min(fallbackIndex, buttons.length - 1))];
+    (buttons.find((button) => button.dataset.id === id) || fallback || modalEl.querySelector("#btn-cv-library-upload"))?.focus();
   }
 
   await load();

@@ -125,6 +125,12 @@
 }
 
 .stage-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
   color: var(--text-muted);
   padding: 4px 6px;
   border-radius: var(--radius-xs);
@@ -240,15 +246,16 @@
 }
 
 @media (max-width: 760px) {
-  .stage-hero-actions .stage-action-btn,
+  .btn-add-stage-interviewer { min-height: 44px; }
+  .stage-action-btn,
   .btn-del-stage-interviewer,
   .question-delete-btn,
   .question-drag-handle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .question-drag-handle {
@@ -293,6 +300,11 @@
   background: var(--bg-subtle);
 }
 
+.question-answer-box:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
 /* Add Question Form */
 .add-question-form {
   display: flex;
@@ -313,6 +325,11 @@
 .add-question-input:focus {
   border-color: var(--accent-blue);
   outline: none;
+}
+
+.add-question-input:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
 }
 
 .btn-add-question {

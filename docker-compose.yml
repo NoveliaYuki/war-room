@@ -30,6 +30,8 @@ services:
     restart: unless-stopped
     ports:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_HOST_PORT:-3000}:8080"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
       interval: 5s
@@ -71,6 +73,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: "no"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
       interval: 5s

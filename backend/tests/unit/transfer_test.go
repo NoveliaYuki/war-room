@@ -73,7 +73,7 @@ func requireArchiveNoError(t *testing.T, err error) {
 func roundTripSource(t *testing.T) ([]byte, string, string, int) {
 	t.Helper()
 	_, source, _, cfg := newCoverageApp(t)
-	job, err := source.CreateJob(models.CreateJobInput{CompanyName: "Example", PositionTitle: "Engineer", CompanyDomain: ptr("example.org"), Interviewers: []models.Interviewer{{Name: "Alex", Role: "Lead"}}})
+	job, err := source.CreateJob(models.CreateJobInput{CompanyName: "Example", PositionTitle: "Engineer", CompanyDomain: ptr("example.org"), Interviewers: []models.Interviewer{{Name: "Alex", Role: "Lead"}}, CreateDefaultStages: ptr(true)})
 	requireArchiveNoError(t, err)
 	attachment, err := source.StoreAttachment(job.ID, nil, "resume.txt", strings.NewReader("resume"), 6, "text/plain")
 	requireArchiveNoError(t, err)

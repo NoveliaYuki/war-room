@@ -13,7 +13,9 @@ import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, trapModalTab } from "./modalA11y.js";
 import { showToast } from "./utils/toast.js";
+import { confirmAction } from "./utils/confirmDialog.js";
 import { escapeHtml } from "./utils/sanitize.js";
+import { renderMarkdown } from "./utils/markdown.js";
 import { filterJobs } from "./utils/processFilters.js";
 import { readSavedSortMode, sortJobsForDisplay } from "./utils/processOrdering.js";
 
@@ -65,7 +67,10 @@ function resolveSalaryType(minimum, maximum) {
 }
 
 const cardGridEl = document.querySelector("#cards-grid");
+const appLoadErrorEl = document.querySelector("#app-load-error");
+const appLoadRetryButton = document.querySelector("#app-load-retry");
 const processToolbarEl = document.querySelector("#process-toolbar");
+const processSortControlEl = document.querySelector(".process-sort-control");
 const modalEl = document.querySelector("#detail-modal");
 const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
@@ -80,18 +85,6 @@ const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
 const dataManagementButton = document.querySelector("#btn-data-management");
 
-function syncToolbarSearchFilterWidth() {
-  if (!processToolbarEl || !cardGridEl) {
-    processToolbarEl?.style.removeProperty("--toolbar-search-filter-width");
-    return;
-  }
-
-  const gridStyle = window.getComputedStyle(cardGridEl);
-  const columns = gridStyle.gridTemplateColumns.split(" ").filter(Boolean);
-  const width = Number.parseFloat(columns[0]);
-  if (width > 0) processToolbarEl.style.setProperty("--toolbar-search-filter-width", `${width}px`);
-}
-window.addEventListener("resize", () => window.requestAnimationFrame(syncToolbarSearchFilterWidth));
 const technologyLibraryButton = document.querySelector("#btn-technology-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
 const processFilterTrigger = document.querySelector("#process-filter-trigger");
@@ -111,7 +104,9 @@ const processFilterNoReferral = document.querySelector("#process-filter-no-refer
 const processFilterTechnologySearch = document.querySelector("#process-filter-technology-search");
 const processFilterTechnologyOptions = document.querySelector("#process-filter-technology-options");
 const processFilterClear = document.querySelector("#process-filter-clear");
+const processFilterPanelFooter = document.querySelector("#process-filter-panel-footer");
 const processFilterChips = document.querySelector("#process-filter-chips");
+const processToolbarActiveState = document.querySelector("#process-toolbar-active-state");
 const processSortTrigger = document.querySelector("#process-sort-trigger");
 const processSortCurrent = document.querySelector("#process-sort-current");
 const processSortMenu = document.querySelector("#process-sort-menu");
@@ -164,10 +159,9 @@ function closeMobileMenu() {
 /** Closes the process view menu and restores focus when a choice hides. */
 function closeFilterMenu(restoreFocus = false) {
   if (!filterMenu || filterMenu.hidden) return;
-  const focusWasInMenu = filterMenu.contains(document.activeElement);
   filterMenu.hidden = true;
   filterMenuTrigger?.setAttribute("aria-expanded", "false");
-  if (restoreFocus || focusWasInMenu) filterMenuTrigger?.focus();
+  if (restoreFocus) filterMenuTrigger?.focus();
 }
 
 /** Updates the compact view control with the active view and its current count. */
@@ -187,44 +181,102 @@ function updateFilterSummary() {
  */
 async function refreshApp() {
   try {
-    const counts = await api.getJobCounts();
-    document.querySelector("#count-all").textContent = counts.all;
-    document.querySelector("#count-waiting").textContent = counts.waiting;
-    document.querySelector("#count-ongoing").textContent = counts.ongoing;
-    document.querySelector("#count-accepted").textContent = counts.accepted;
-    document.querySelector("#count-rejected").textContent = counts.rejected;
-
-    const meetings = await api.getMeetings();
-    const countMeetingsEl = document.querySelector("#count-meetings");
-    if (countMeetingsEl) {
-      countMeetingsEl.textContent = meetings.length;
-    }
-    updateFilterSummary();
-    updateSortControl();
-    await loadAvailableTechnologies();
-    searchPeriods = await api.getSearchPeriods();
-    renderSearchPeriodOptions();
-    updateProcessFilterSummary();
-
-    if (currentFilter === "schedule") {
-      cardGridEl.classList.add("schedule-mode");
-      await renderScheduleView(cardGridEl, modalEl, backdropEl, refreshApp);
-      return;
-    }
-
-    cardGridEl.classList.remove("schedule-mode");
-    const jobs = await api.getJobs(currentFilter, currentSearch);
-    const filteredJobs = filterJobs(jobs, processFilters);
-    const sortMode = currentFilter === "all" ? "manual" : readSavedSortMode(window.localStorage, currentFilter);
-    renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode, {
-      filter: currentFilter,
-      totalCount: counts.all,
-      statusCount: counts[currentFilter] ?? counts.all,
-    });
-    syncToolbarSearchFilterWidth();
+    const boardData = await refreshBoardCounts();
+    await renderSelectedBoardView(boardData);
+    clearAppLoadError();
   } catch (err) {
     console.error("Failed to load jobs data:", err);
+    showAppLoadError();
   }
+}
+
+async function refreshBoardCounts() {
+  const allPeriodCounts = await api.getJobCounts();
+  const meetings = await api.getMeetings();
+  const countMeetingsEl = document.querySelector("#count-meetings");
+  if (countMeetingsEl) countMeetingsEl.textContent = meetings.length;
+  updateFilterSummary();
+  updateSortControl();
+  await loadAvailableTechnologies();
+  searchPeriods = await api.getSearchPeriods();
+  renderSearchPeriodOptions();
+  const scopedCounts = await getCountsForSelectedPeriod(allPeriodCounts);
+  updateBoardCountLabels(scopedCounts);
+  updateFilterSummary();
+  updateProcessFilterSummary();
+  return { allPeriodCounts, scopedCounts };
+}
+
+function updateBoardCountLabels(counts) {
+  document.querySelector("#count-all").textContent = counts.all;
+  document.querySelector("#count-waiting").textContent = counts.waiting;
+  document.querySelector("#count-ongoing").textContent = counts.ongoing;
+  document.querySelector("#count-accepted").textContent = counts.accepted;
+  document.querySelector("#count-rejected").textContent = counts.rejected;
+}
+
+async function renderSelectedBoardView({ allPeriodCounts, scopedCounts }) {
+  if (currentFilter === "schedule") {
+    cardGridEl.classList.add("schedule-mode");
+    await renderScheduleView(cardGridEl, modalEl, backdropEl, refreshApp);
+    return;
+  }
+  cardGridEl.classList.remove("schedule-mode");
+  await renderProcessCards(allPeriodCounts, scopedCounts);
+}
+
+async function renderProcessCards(allPeriodCounts, scopedCounts) {
+  const jobs = await api.getJobs(currentFilter, currentSearch);
+  const filteredJobs = filterJobs(jobs, processFilters);
+  const sortMode = currentFilter === "all" ? "manual" : readSavedSortMode(window.localStorage, currentFilter);
+  renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode, {
+    filter: currentFilter,
+    totalCount: allPeriodCounts.all,
+    statusCount: scopedCounts[currentFilter] ?? scopedCounts.all,
+    hasCustomView: hasActiveCustomView(),
+    onResetView: resetSearchAndFilters,
+  });
+}
+
+function hasActiveCustomView() {
+  return Boolean(currentSearch.trim()) || processFilters.searchPeriod !== "all"
+    || processFilters.arrangements.length > 0 || Boolean(processFilters.expectedSalaryQuery)
+    || processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null
+    || Boolean(processFilters.currency) || Boolean(processFilters.referral)
+    || processFilters.technologies.length > 0;
+}
+
+function clearAppLoadError() {
+  if (!appLoadErrorEl) return;
+  appLoadErrorEl.hidden = true;
+  if (appLoadRetryButton) {
+    appLoadRetryButton.disabled = false;
+    appLoadRetryButton.textContent = "Try again";
+  }
+}
+
+function showAppLoadError() {
+  if (!appLoadErrorEl) return;
+  appLoadErrorEl.hidden = false;
+  if (appLoadRetryButton) {
+    appLoadRetryButton.disabled = false;
+    appLoadRetryButton.textContent = "Try again";
+  }
+}
+
+async function getCountsForSelectedPeriod(allPeriodCounts) {
+  if (processFilters.searchPeriod === "all") return allPeriodCounts;
+  const jobs = await api.getJobs("all");
+  const counts = { all: 0, waiting: 0, ongoing: 0, accepted: 0, rejected: 0 };
+  for (const job of jobs) {
+    const matchesPeriod = processFilters.searchPeriod === "unassigned"
+      ? !job.search_period_id
+      : job.search_period_id === processFilters.searchPeriod;
+    if (!matchesPeriod) continue;
+    counts.all += 1;
+    if (Object.hasOwn(counts, job.status) && job.status !== "all") counts[job.status] += 1;
+  }
+  return counts;
 }
 
 /** Restores validated card filter choices from browser storage. */
@@ -259,10 +311,14 @@ function renderSearchPeriodOptions() {
   searchPeriodFilter.value = selected;
   const selectedOption = options.find((option) => option.value === selected);
   searchPeriodCurrent.textContent = selectedOption.label;
+  searchPeriodCurrent.dataset.compactLabel = selected === "all" ? "All"
+    : selected === "unassigned" ? "No period" : searchPeriodCurrent.textContent;
+  searchPeriodTrigger.title = selectedOption.menuLabel;
+  searchPeriodTrigger.dataset.selected = String(selected !== "all");
   searchPeriodTrigger.setAttribute("aria-label", `Search period: ${selectedOption.menuLabel}`);
   searchPeriodMenu.innerHTML = `
-    <div class="search-period-menu-options">${options.map((option) => `<button type="button" role="radio" aria-checked="${option.value === selected}" data-search-period="${escapeHtml(option.value)}">${escapeHtml(option.menuLabel)}</button>`).join("")}</div>
-    <div class="search-period-menu-footer"><button id="btn-manage-search-periods" type="button">Manage search periods</button></div>`;
+    <div class="search-period-menu-options" role="presentation">${options.map((option) => `<button type="button" role="menuitemradio" aria-checked="${option.value === selected}" data-search-period="${escapeHtml(option.value)}">${escapeHtml(option.menuLabel)}</button>`).join("")}</div>
+    <div class="search-period-menu-footer"><button type="button" role="menuitem" data-manage-search-periods>Manage search periods</button></div>`;
 }
 
 function periodForToday() {
@@ -300,6 +356,27 @@ function parseFilterNumber(value) {
   return value !== null && value !== "" && Number.isFinite(Number(value)) ? Number(value) : null;
 }
 
+function resizeRoleDescription(textarea) {
+  textarea.style.height = "auto";
+  const maxHeight = Number.parseFloat(window.getComputedStyle(textarea).maxHeight);
+  const contentHeight = textarea.scrollHeight;
+  const height = Number.isFinite(maxHeight) ? Math.min(contentHeight, maxHeight) : contentHeight;
+  textarea.style.height = `${height}px`;
+  textarea.style.overflowY = contentHeight > height ? "auto" : "hidden";
+}
+
+document.addEventListener("input", (event) => {
+  if (event.target instanceof HTMLTextAreaElement && event.target.matches(".role-description-textarea")) {
+    resizeRoleDescription(event.target);
+  }
+});
+
+document.addEventListener("focusin", (event) => {
+  if (event.target instanceof HTMLTextAreaElement && event.target.matches(".role-description-textarea")) {
+    resizeRoleDescription(event.target);
+  }
+});
+
 async function loadAvailableTechnologies() {
   if (!processFilterTechnologyOptions || technologiesLoaded) return;
   try {
@@ -323,28 +400,42 @@ function renderTechnologyFilterOptions() {
 
 /** Updates the compact filter count and active filter summary. */
 function updateProcessFilterSummary() {
-  const count = Number(processFilters.arrangements.length > 0)
-    + Number(Boolean(processFilters.expectedSalaryQuery))
-    + Number(processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null)
-    + Number(Boolean(processFilters.currency))
-    + Number(Boolean(processFilters.referral))
-    + Number(processFilters.technologies.length > 0);
+  const count = getActiveProcessFilterCount();
   const badge = document.querySelector("#process-filter-count");
   const summary = document.querySelector("#process-filter-summary");
   if (badge) {
     badge.textContent = String(count);
     badge.hidden = count === 0;
   }
+  updateProcessFilterTriggerLabel(count);
   const chips = getProcessFilterChips();
-  if (processFilterChips) {
-    processFilterChips.innerHTML = chips.map(({ category, label, value = "" }) => `
-      <button type="button" class="process-filter-chip" data-remove-filter="${category}" ${value ? `data-filter-value="${escapeHtml(value)}"` : ""} aria-label="Remove ${escapeHtml(label)} filter">
-        <span>${escapeHtml(label)}</span><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m3 3 6 6m0-6L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-    `).join("");
-  }
-  if (processFilterClear) processFilterClear.hidden = chips.length === 0;
+  if (processFilterChips) processFilterChips.innerHTML = chips.map(renderProcessFilterChip).join("");
+  if (processToolbarActiveState) processToolbarActiveState.hidden = chips.length === 0;
+  if (processFilterPanelFooter) processFilterPanelFooter.hidden = count === 0;
   if (summary) summary.textContent = "";
+}
+
+function renderProcessFilterChip({ category, label, value = "" }) {
+  const valueAttribute = value ? `data-filter-value="${escapeHtml(value)}"` : "";
+  const accessibleLabel = category === "searchPeriod" ? label.replace(/^Period: /, "") : label;
+  const periodIcon = category === "searchPeriod" ? '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>' : "";
+  return `<button type="button" class="process-filter-chip${category === "searchPeriod" ? " search-period-scope-chip" : ""}" data-remove-filter="${category}" ${valueAttribute} aria-label="Clear ${category === "searchPeriod" ? "search period" : "filter"}: ${escapeHtml(accessibleLabel)}" title="${escapeHtml(label)}">${periodIcon}<span>${escapeHtml(label)}</span><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m3 3 6 6m0-6L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>`;
+}
+
+function getActiveProcessFilterCount() {
+  return Number(processFilters.arrangements.length > 0)
+    + Number(Boolean(processFilters.expectedSalaryQuery))
+    + Number(processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null)
+    + Number(Boolean(processFilters.currency))
+    + Number(Boolean(processFilters.referral))
+    + Number(processFilters.technologies.length > 0);
+}
+
+function updateProcessFilterTriggerLabel(activeFilterCount) {
+  if (!processFilterTrigger) return;
+  const count = activeFilterCount ?? getActiveProcessFilterCount();
+  const filterDescription = count ? `; ${count} active ${count === 1 ? "filter" : "filters"}` : "; no active filters";
+  processFilterTrigger.setAttribute("aria-label", `Filters${filterDescription}`);
 }
 
 function getProcessFilterChips() {
@@ -414,10 +505,10 @@ function saveProcessFilters() {
 
 /** Updates the visible order selector and explains the active status order. */
 function updateSortControl() {
-  const row = document.querySelector("#process-toolbar");
-  if (!row || !processSortTrigger || !processSortCurrent) return;
+  if (!processToolbarEl || !processSortControlEl || !processSortTrigger || !processSortCurrent) return;
   const isStatusTab = ["waiting", "ongoing", "accepted", "rejected"].includes(currentFilter);
-  row.hidden = !isStatusTab;
+  processToolbarEl.hidden = currentFilter === "schedule";
+  processSortControlEl.hidden = !isStatusTab;
   if (!isStatusTab) return;
   const mode = readSavedSortMode(window.localStorage, currentFilter);
   const labels = { "added-newest": "Added · Newest", "added-oldest": "Added · Oldest", "status-newest": "Status · Newest", "status-oldest": "Status · Oldest", advanced: "Advanced", early: "Least advanced", manual: "Manual" };
@@ -439,6 +530,20 @@ processSortTrigger?.addEventListener("click", () => {
   processSortMenu.hidden = !willOpen;
   processSortTrigger.setAttribute("aria-expanded", String(willOpen));
 });
+processSortTrigger?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && processSortMenu && !processSortMenu.hidden) {
+    event.preventDefault();
+    closeSortMenu();
+    processSortTrigger.focus();
+    return;
+  }
+  if (!processSortMenu || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
+  event.preventDefault();
+  processSortMenu.hidden = false;
+  processSortTrigger.setAttribute("aria-expanded", "true");
+  const selected = processSortMenu.querySelector('[aria-checked="true"]');
+  (selected || processSortOptions[0])?.focus();
+});
 
 processSortMenu?.addEventListener("click", (event) => {
   const option = event.target.closest("[data-sort-mode]");
@@ -449,13 +554,32 @@ processSortMenu?.addEventListener("click", (event) => {
     // Sorting remains available for the current render when browser storage is unavailable.
   }
   closeSortMenu();
+  processSortTrigger?.focus();
   void refreshApp();
 });
 
 processSortMenu?.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    closeSortMenu();
+    processSortTrigger?.focus();
+    return;
+  }
+  const options = [...processSortOptions];
+  const index = options.indexOf(event.target);
+  if (index < 0) return;
+  let nextIndex = null;
+  if (event.key === "ArrowDown") nextIndex = (index + 1) % options.length;
+  if (event.key === "ArrowUp") nextIndex = (index - 1 + options.length) % options.length;
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = options.length - 1;
+  if (nextIndex === null) return;
+  event.preventDefault();
+  options[nextIndex]?.focus();
+});
+processSortControlEl?.addEventListener("focusout", (event) => {
+  if (event.relatedTarget instanceof Node && processSortControlEl.contains(event.relatedTarget)) return;
   closeSortMenu();
-  processSortTrigger?.focus();
 });
 
 /** Derives a salary type from submitted bounds or keeps the selected type. */
@@ -494,7 +618,7 @@ function buildJobPayload(form) {
     interview_notes: data.get("interview_notes"),
     is_referral: data.get("is_referral") === "on",
     search_period_id: data.get("search_period_id") || "",
-    create_default_stages: data.get("create_default_stages") === "on",
+    create_default_stages: false,
   };
 }
 
@@ -564,6 +688,7 @@ function filterFromShortcut(event, isTyping) {
 function closeModal() {
   closeWithFlip(modalEl, backdropEl, () => {
     modalEl.innerHTML = "";
+    modalEl.classList.remove("new-process-modal");
     restoreModalFocus();
   });
 }
@@ -609,7 +734,7 @@ async function openSearchPeriodsModal() {
         <label>Name<input name="name" maxlength="100" required placeholder="March 2026" /></label>
         <div class="form-grid form-grid-two">
           <label>Start date<input name="start_date" type="date" required /></label>
-          <label>End date <span class="search-period-optional">Optional · leave blank while the search is active</span><input name="end_date" type="date" /></label>
+          <label>End date<input name="end_date" type="date" /><span class="search-period-optional">Optional · leave blank while the search is active</span></label>
         </div>
         <div class="search-period-form-actions">
           <button class="btn-primary" type="submit">Create period</button>
@@ -618,7 +743,7 @@ async function openSearchPeriodsModal() {
       </form>
       <div id="search-period-list" class="search-period-list"></div>
     </div>`;
-  activateModal(modalEl, "#btn-close-search-periods");
+  activateModal(modalEl, '[name="name"]');
   const closeButton = modalEl.querySelector("#btn-close-search-periods");
   const form = modalEl.querySelector("#search-period-form");
   const list = modalEl.querySelector("#search-period-list");
@@ -646,6 +771,11 @@ async function openSearchPeriodsModal() {
           <button class="btn-secondary" type="button" data-delete-period="${escapeHtml(period.id)}">Delete</button>
         </div>
       </article>`).join("") : '<div class="search-period-empty"><strong>No search periods yet</strong><span>Create one above. Unassigned cards added within its date range will be grouped automatically.</span></div>';
+  };
+  const focusPeriodAfterDelete = (id, fallbackIndex) => {
+    const deleteButtons = [...list.querySelectorAll("[data-delete-period]")];
+    const fallback = deleteButtons[Math.max(0, Math.min(fallbackIndex, deleteButtons.length - 1))];
+    (deleteButtons.find((button) => button.dataset.deletePeriod === id) || fallback || nameField)?.focus();
   };
   const reload = async () => {
     searchPeriods = await api.getSearchPeriods();
@@ -695,7 +825,16 @@ async function openSearchPeriodsModal() {
     }
     if (deleteButton) {
       const period = searchPeriods.find((item) => item.id === deleteButton.dataset.deletePeriod);
-      if (!period || !window.confirm(`Delete “${period.name}”? Its ${period.job_count} job${period.job_count === 1 ? "" : "s"} will become unassigned.`)) return;
+      if (!period) return;
+      const fallbackIndex = [...list.querySelectorAll("[data-delete-period]")]
+        .findIndex((button) => button.dataset.deletePeriod === period.id);
+      const confirmed = await confirmAction({
+        title: "Delete search period?",
+        message: `Its ${period.job_count} job${period.job_count === 1 ? "" : "s"} will become unassigned.`,
+        confirmLabel: "Delete period",
+        danger: true,
+      });
+      if (!confirmed) return;
       try {
         await api.deleteSearchPeriod(period.id);
         if (processFilters.searchPeriod === period.id) {
@@ -703,6 +842,7 @@ async function openSearchPeriodsModal() {
           try { window.localStorage.setItem(PROCESS_FILTER_STORAGE_KEY, JSON.stringify(processFilters)); } catch { /* Keep the filter reset for this session. */ }
         }
         await reload();
+        focusPeriodAfterDelete(period.id, fallbackIndex);
         await refreshApp();
         showToast("Search period deleted; its jobs are unassigned", "success");
       } catch (error) { showToast(error.message, "error"); }
@@ -774,9 +914,9 @@ function openDataModal() {
         <p>Choose a War Room ZIP backup created with Export backup.</p>
         <label class="data-transfer-file-label" for="backup-import-file">Backup ZIP file</label>
         <div class="data-transfer-file-picker">
-          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".zip,application/zip" aria-label="Choose backup file" />
+          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".zip,application/zip" aria-label="Choose backup file" tabindex="-1" />
           <button id="backup-import-choose" class="data-transfer-choose" type="button">Choose file</button>
-          <span id="backup-import-file-name" class="data-transfer-file-name">No file selected</span>
+          <span id="backup-import-file-name" class="data-transfer-file-name" role="status" aria-live="polite" aria-atomic="true">No file selected</span>
         </div>
         <div class="data-transfer-warning">Import replaces all processes, the technology catalog, company logos, and uploaded files currently saved in this War Room.</div>
         <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" /> I understand this replaces the current data</label>
@@ -862,7 +1002,12 @@ async function importBackup(file, allowEmpty = false) {
     if (err.requiresEmptyConfirmation) {
       button.disabled = false;
       status.textContent = "";
-      const confirmed = window.confirm("This ZIP backup contains no saved processes. Importing it will replace the current data with an empty workspace. Are you sure you want to continue?");
+      const confirmed = await confirmAction({
+        title: "Replace this workspace with an empty backup?",
+        message: "This ZIP contains no saved processes. Continuing will remove the processes currently in your workspace.",
+        confirmLabel: "Replace workspace",
+        danger: true,
+      });
       if (confirmed) await importBackup(file, true);
       return;
     }
@@ -882,6 +1027,11 @@ function handleEscape(event) {
   }
   if (filterMenu && !filterMenu.hidden) {
     closeFilterMenu(true);
+    return true;
+  }
+  if (menuToggle?.getAttribute("aria-expanded") === "true") {
+    closeMobileMenu();
+    menuToggle.focus();
     return true;
   }
   return false;
@@ -914,130 +1064,152 @@ function handleGlobalKeydown(event) {
 function openNewProcessModal() {
   cancelPendingFlipClose(true);
   resetModalAnimation();
+  modalEl.classList.remove("data-transfer-modal");
+  modalEl.classList.add("new-process-modal");
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
     <div class="modal-header">
       <h2 class="modal-title inline-icon-text">${icon("plus", 16)} Add New Selection Process</h2>
-      <button class="modal-close-btn">${icon("close", 14)}</button>
+      <button class="modal-close-btn" type="button" aria-label="Close dialog">${icon("close", 14)}</button>
     </div>
     <form id="new-process-form" class="process-form">
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label">Company Name</label>
-          <input type="text" name="company_name" placeholder="Company Name (Leave blank if Unknown)" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-          <span style="font-size: 11px; color: var(--text-muted);">Defaults to 'Unknown' if external recruiter hasn't disclosed client</span>
+          <label class="meta-label" for="create-position-title">Position Title *</label>
+          <input id="create-position-title" type="text" name="position_title" placeholder="e.g. Senior AI Systems Engineer" autocomplete="organization-title" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label">Position Title *</label>
-          <input type="text" name="position_title" placeholder="e.g. Senior AI Systems Engineer" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="create-company-name">Company Name (optional)</label>
+          <input id="create-company-name" type="text" name="company_name" placeholder="e.g. Acme" autocomplete="organization" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <span class="process-form-helper">If the client is not disclosed, leave this blank; the card will use “Unknown.”</span>
         </div>
       </div>
 
-      <div>
+      ${searchPeriods.length ? `<div>
         <label class="meta-label" for="create-search-period">Search Period</label>
         <select id="create-search-period" name="search_period_id">
           ${searchPeriodOptions(periodForToday()?.id || "")}
         </select>
-      </div>
+      </div>` : ""}
 
-      <div class="form-grid form-grid-three">
-        <div>
-          <label class="meta-label">Salary Type</label>
-          <select name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-            <option value="limited">Limited Range (Min - Max)</option>
-            <option value="no_min">Up to Max (No Minimum)</option>
-            <option value="no_max">From Min (No Maximum)</option>
-            <option value="unknown" selected>Unknown / Undisclosed</option>
-          </select>
-        </div>
-        <div>
-          <label class="meta-label">Minimum Salary (€)</label>
-          <input type="number" name="salary_min" placeholder="e.g. 80000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        </div>
-        <div>
-          <label class="meta-label">Maximum Salary (€)</label>
-          <input type="number" name="salary_max" placeholder="e.g. 110000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        </div>
-      </div>
-
-      <div class="form-grid form-grid-three">
-        <div>
-          <label class="meta-label">Recruiter Source</label>
-          <select name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-            <option value="none">Direct / No Recruiter</option>
-            <option value="internal">Internal Recruiter / Talent</option>
-            <option value="external">External Agency Recruiter</option>
-          </select>
-        </div>
-        <div>
-          <label class="meta-label">Recruiter Name (Optional)</label>
-          <input type="text" name="recruiter_name" placeholder="e.g. Alex Rivera" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        </div>
-        <div>
-          <label class="meta-label">Recruiting Agency (If External)</label>
-          <input type="text" name="recruiter_agency" placeholder="e.g. CyberTalent Search" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        </div>
-      </div>
-
-      <div class="form-grid form-grid-two">
-        <div>
-          <label class="meta-label">Job Post Link (LinkedIn or Company Careers)</label>
-          <input type="url" name="job_post_url" placeholder="https://linkedin.com/jobs/view/... or leave empty if recruiter reachout" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        </div>
-        <div>
-          <label class="meta-label">Company Domain (For Logo)</label>
-          <input type="text" name="company_domain" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        </div>
-      </div>
-
-      <h3 class="edit-section-heading">Job details</h3>
+      <h3 class="edit-section-heading">Job posting</h3>
       <div>
-        <label class="meta-label">Keywords & Things to Remember (MAX 100 CHARACTERS)</label>
-        <input type="text" name="keyword_note" maxlength="100" placeholder="e.g. Remote EU, Seed startup, Rust+Go, async-first culture" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
-        <div style="font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 2px;">
-          <span id="keyword-char-count">0</span> / 100 chars
-        </div>
+        <label class="meta-label" for="create-job-post-url">Job Post Link (Optional)</label>
+        <input id="create-job-post-url" type="url" name="job_post_url" placeholder="https://company.com/jobs/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        <span class="process-form-helper">Leave blank for recruiter-only opportunities</span>
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text">${icon("building", 13)} Company & Role Overview</label>
-        <textarea name="company_overview" rows="3" placeholder="Paste the complete role description from the job posting, preserving its Markdown formatting." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+        <label class="meta-label inline-icon-text" for="create-company-overview">${icon("building", 13)} Company & Role Overview</label>
+        <div class="create-overview-editor">
+          <div class="markdown-editor-tabs" role="tablist" aria-label="Company and role overview editor mode">
+            <button id="create-overview-tab-source" type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="create-overview-source-panel" tabindex="0">Markdown</button>
+            <button id="create-overview-tab-preview" type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="create-overview-preview" tabindex="-1">Preview</button>
+          </div>
+          <div id="create-overview-source-panel" role="tabpanel" aria-labelledby="create-overview-tab-source">
+            <textarea id="create-company-overview" class="role-description-textarea" name="company_overview" rows="4" placeholder="Paste the full role description from the job posting." aria-describedby="create-company-overview-help" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+          </div>
+          <div id="create-overview-preview" class="markdown-field-preview create-overview-preview markdown-preview" role="tabpanel" aria-labelledby="create-overview-tab-preview" tabindex="0" hidden></div>
+        </div>
+        <span id="create-company-overview-help" class="process-form-helper">Paste the complete role description; use Preview to check its Markdown formatting.</span>
       </div>
 
-      <h3 class="edit-section-heading">My notes</h3>
-      <div>
-        <label class="meta-label inline-icon-text">${icon("compass", 13)} Why I Want to Change Company (Top FAQ & Motivations)</label>
-        <textarea name="reasons_to_change" rows="3" placeholder="Why do you want to change company? Key motivations, strategic rationale, growth drivers..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
-      </div>
+      <details class="process-form-disclosure">
+        <summary class="process-form-disclosure-summary">
+          <span class="process-form-disclosure-copy"><strong>Additional job details</strong><span>Optional salary, recruiter, company domain and keywords</span></span>
+          ${icon("chevronDown", 16)}
+        </summary>
+        <div class="process-form-disclosure-content">
+          <div class="form-grid form-grid-three">
+            <div>
+              <label class="meta-label" for="create-salary-type">Salary Type</label>
+              <select id="create-salary-type" name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
+                <option value="limited">Limited Range (Min - Max)</option>
+                <option value="no_min">Up to Max (No Minimum)</option>
+                <option value="no_max">From Min (No Maximum)</option>
+                <option value="unknown" selected>Unknown / Undisclosed</option>
+              </select>
+            </div>
+            <div>
+              <label class="meta-label" for="create-salary-min">Minimum Salary (€)</label>
+              <input id="create-salary-min" type="number" name="salary_min" placeholder="e.g. 80000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+            </div>
+            <div>
+              <label class="meta-label" for="create-salary-max">Maximum Salary (€)</label>
+              <input id="create-salary-max" type="number" name="salary_max" placeholder="e.g. 110000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+            </div>
+          </div>
 
-      <div>
-        <label class="meta-label inline-icon-text">${icon("user", 13)} Relevant Experience</label>
-        <textarea name="experience_notes" rows="3" placeholder="Experience and examples that match this role..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
-      </div>
+          <div class="form-grid form-grid-three">
+            <div>
+              <label class="meta-label" for="create-recruiter-type">Recruiter Source</label>
+              <select id="create-recruiter-type" name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
+                <option value="none">Direct / No Recruiter</option>
+                <option value="internal">Internal Recruiter / Talent</option>
+                <option value="external">External Agency Recruiter</option>
+              </select>
+            </div>
+            <div>
+              <label class="meta-label" for="create-recruiter-name">Recruiter Name (Optional)</label>
+              <input id="create-recruiter-name" type="text" name="recruiter_name" autocomplete="name" placeholder="e.g. Alex Rivera" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+            </div>
+            <div>
+              <label class="meta-label" for="create-recruiter-agency">Recruiting Agency (If External)</label>
+              <input id="create-recruiter-agency" type="text" name="recruiter_agency" autocomplete="organization" placeholder="e.g. CyberTalent Search" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+            </div>
+          </div>
 
-      <div>
-        <label class="meta-label inline-icon-text">${icon("euro", 13)} Expected Salary for This Offer</label>
-        <input type="text" name="expected_salary" placeholder="e.g. €85k base plus equity; flexible depending on the offer" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-      </div>
+          <div>
+            <label class="meta-label" for="create-company-domain">Company Domain (For Logo)</label>
+            <input id="create-company-domain" type="text" name="company_domain" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          </div>
 
-      <div>
-        <label class="meta-label inline-icon-text">${icon("fileText", 13)} My Notes / Anything Else (Optional)</label>
-        <textarea name="interview_notes" rows="3" placeholder="Write anything else you want to remember about this selection process..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
-      </div>
+          <div>
+            <label class="meta-label" for="create-keyword-note">Keywords and notes</label>
+            <input id="create-keyword-note" type="text" name="keyword_note" maxlength="100" placeholder="e.g. Remote EU, Seed startup, Rust+Go, async-first culture" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
+            <div style="font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 2px;">
+              <span id="keyword-char-count">0</span> / 100 chars
+            </div>
+          </div>
+        </div>
+      </details>
 
-      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+      <details class="process-form-disclosure">
+        <summary class="process-form-disclosure-summary">
+          <span class="process-form-disclosure-copy"><strong>Interview preparation</strong><span>Optional motivations, experience, salary target and notes</span></span>
+          ${icon("chevronDown", 16)}
+        </summary>
+        <div class="process-form-disclosure-content">
+          <div>
+            <label class="meta-label inline-icon-text" for="create-reasons-to-change">${icon("compass", 13)} Why I Want to Change Company (Top FAQ & Motivations)</label>
+            <textarea id="create-reasons-to-change" name="reasons_to_change" rows="3" placeholder="Why do you want to change company? Key motivations, strategic rationale, growth drivers..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+          </div>
+
+          <div>
+            <label class="meta-label inline-icon-text" for="create-relevant-experience">${icon("user", 13)} Relevant Experience</label>
+            <textarea id="create-relevant-experience" name="experience_notes" rows="3" placeholder="Experience and examples that match this role..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+          </div>
+
+          <div>
+            <label class="meta-label inline-icon-text" for="create-expected-salary">${icon("euro", 13)} Expected Salary for This Offer</label>
+            <input id="create-expected-salary" type="text" name="expected_salary" placeholder="e.g. €85k base plus equity; flexible depending on the offer" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          </div>
+
+          <div>
+            <label class="meta-label inline-icon-text" for="create-interview-notes">${icon("fileText", 13)} My Notes / Anything Else (Optional)</label>
+            <textarea id="create-interview-notes" name="interview_notes" rows="3" placeholder="Write anything else you want to remember about this selection process..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+          </div>
+        </div>
+      </details>
+
+      <div class="process-form-referral-choice">
         <input type="checkbox" name="is_referral" id="create-referral-cb" style="accent-color: #c084fc; width: 16px; height: 16px; cursor: pointer;" />
-        <label for="create-referral-cb" style="font-size: 13px; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 6px;">
+        <label for="create-referral-cb" class="process-form-referral-label">
           ${icon("userCheck", 13)} Direct Candidate Referral (Check if this opportunity is from a referral)
         </label>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-        <input type="checkbox" name="create_default_stages" id="create-stages-cb" checked style="accent-color: var(--accent-blue);" />
-        <label for="create-stages-cb" style="font-size: 13px; color: var(--text-secondary); cursor: pointer;">
-          Automatically initialize standard stages (HR Screen, Technical, Cultural, Offer & Decision)
-        </label>
-      </div>
+      <p class="process-stage-creation-note">Interview stages start empty. Add only stages confirmed by the employer, or add them as the process unfolds.</p>
 
       <div class="form-actions">
         <button type="button" class="btn-secondary btn-cancel">Cancel</button>
@@ -1047,11 +1219,40 @@ function openNewProcessModal() {
   `;
 
   const form = modalEl.querySelector("#new-process-form");
-  activateModal(modalEl, 'input[name="company_name"]');
+  activateModal(modalEl, "#create-position-title");
   const keywordInput = form.querySelector('input[name="keyword_note"]');
   const countEl = modalEl.querySelector("#keyword-char-count");
   const closeBtn = modalEl.querySelector(".modal-close-btn");
   const cancelBtn = modalEl.querySelector(".btn-cancel");
+  const overviewInput = form.querySelector("#create-company-overview");
+  const overviewSource = form.querySelector("#create-overview-source-panel");
+  const overviewPreview = form.querySelector("#create-overview-preview");
+  const overviewTabs = [...form.querySelectorAll('[role="tablist"] .markdown-editor-tab')];
+
+  const activateOverviewTab = (index) => {
+    const isPreview = index === 1;
+    overviewSource.hidden = isPreview;
+    overviewPreview.hidden = !isPreview;
+    if (isPreview) overviewPreview.innerHTML = renderMarkdown(overviewInput.value) || '<span class="empty-note">Nothing to preview yet.</span>';
+    overviewTabs.forEach((tab, tabIndex) => {
+      tab.classList.toggle("is-active", tabIndex === index);
+      tab.setAttribute("aria-selected", String(tabIndex === index));
+      tab.tabIndex = tabIndex === index ? 0 : -1;
+    });
+  };
+
+  overviewTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => activateOverviewTab(index));
+    tab.addEventListener("keydown", (event) => {
+      const nextIndex = event.key === "ArrowRight" ? (index + 1) % overviewTabs.length
+        : event.key === "ArrowLeft" ? (index + overviewTabs.length - 1) % overviewTabs.length
+          : event.key === "Home" ? 0 : event.key === "End" ? overviewTabs.length - 1 : -1;
+      if (nextIndex < 0) return;
+      event.preventDefault();
+      activateOverviewTab(nextIndex);
+      overviewTabs[nextIndex].focus();
+    });
+  });
 
   keywordInput.addEventListener("input", () => {
     countEl.textContent = keywordInput.value.length;
@@ -1060,6 +1261,7 @@ function openNewProcessModal() {
   const closeForm = () => {
     closeWithFlip(modalEl, backdropEl, () => {
       modalEl.innerHTML = "";
+      modalEl.classList.remove("new-process-modal");
       restoreModalFocus();
     });
   };
@@ -1106,6 +1308,30 @@ processFilterTrigger?.addEventListener("click", () => {
   processFilterPanel.hidden = !willOpen;
   processFilterTrigger.setAttribute("aria-expanded", String(willOpen));
 });
+processFilterTrigger?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !processFilterPanel || processFilterPanel.hidden) return;
+  event.preventDefault();
+  closeProcessFilterPanel(true);
+});
+processFilterPanel?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeProcessFilterPanel(true);
+});
+processFilterPanel?.addEventListener("focusout", (event) => {
+  if (event.relatedTarget instanceof Node && processFilterPanel.contains(event.relatedTarget)) return;
+  setTimeout(() => {
+    if (!processFilterPanel.contains(document.activeElement)) closeProcessFilterPanel();
+  }, 0);
+});
+
+function closeProcessFilterPanel(restoreFocus = false) {
+  if (!processFilterPanel) return;
+  processFilterPanel.hidden = true;
+  processFilterTrigger?.setAttribute("aria-expanded", "false");
+  if (restoreFocus) processFilterTrigger?.focus();
+}
 
 [...processFilterArrangements, processFilterCurrency, processFilterAnyReferral, processFilterReferral, processFilterNoReferral].forEach((control) => control?.addEventListener("change", saveProcessFilters));
 [processFilterPostedSalaryMin, processFilterPostedSalaryMax].forEach((control) => control?.addEventListener("change", saveProcessFilters));
@@ -1128,7 +1354,8 @@ searchPeriodTrigger?.addEventListener("keydown", (event) => {
   (selected || searchPeriodMenu.querySelector("button"))?.focus();
 });
 searchPeriodMenu?.addEventListener("click", (event) => {
-  if (event.target.closest("#btn-manage-search-periods")) {
+  event.stopPropagation();
+  if (event.target.closest("[data-manage-search-periods]")) {
     searchPeriodMenu.hidden = true;
     searchPeriodTrigger?.setAttribute("aria-expanded", "false");
     openSearchPeriodsModal();
@@ -1137,10 +1364,12 @@ searchPeriodMenu?.addEventListener("click", (event) => {
   const option = event.target.closest("[data-search-period]");
   if (!option || !searchPeriodFilter || !searchPeriodTrigger || !searchPeriodMenu) return;
   searchPeriodFilter.value = option.dataset.searchPeriod;
+  processFilters.searchPeriod = option.dataset.searchPeriod;
+  renderSearchPeriodOptions();
+  searchPeriodTrigger.focus();
   searchPeriodMenu.hidden = true;
   searchPeriodTrigger.setAttribute("aria-expanded", "false");
   saveProcessFilters();
-  searchPeriodTrigger.focus();
 });
 searchPeriodMenu?.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
@@ -1150,12 +1379,17 @@ searchPeriodMenu?.addEventListener("keydown", (event) => {
     searchPeriodTrigger?.focus();
     return;
   }
-  const options = [...searchPeriodMenu.querySelectorAll('button[role="radio"]')];
+  const options = [...searchPeriodMenu.querySelectorAll('button[role="menuitemradio"], button[role="menuitem"]')];
   const index = options.indexOf(event.target);
-  const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-  if (!direction || !options.length) return;
+  if (index < 0 || !options.length) return;
+  let nextIndex = null;
+  if (event.key === "ArrowDown") nextIndex = (index + 1) % options.length;
+  if (event.key === "ArrowUp") nextIndex = (index - 1 + options.length) % options.length;
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = options.length - 1;
+  if (nextIndex === null) return;
   event.preventDefault();
-  options[(index + direction + options.length) % options.length]?.focus();
+  options[nextIndex]?.focus();
 });
 searchPeriodSelectWrap?.addEventListener("focusout", (event) => {
   if (event.relatedTarget instanceof Node && searchPeriodSelectWrap.contains(event.relatedTarget)) return;
@@ -1165,12 +1399,24 @@ searchPeriodSelectWrap?.addEventListener("focusout", (event) => {
 
 processFilterChips?.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-remove-filter]");
-  if (chip) clearProcessFilterCategory(chip.dataset.removeFilter, chip.dataset.filterValue);
+  if (!chip) return;
+  const keyboardActivated = event.detail === 0;
+  const chipIndex = [...processFilterChips.querySelectorAll("[data-remove-filter]")].indexOf(chip);
+  clearProcessFilterCategory(chip.dataset.removeFilter, chip.dataset.filterValue);
+  if (!keyboardActivated) return;
+  const remainingChips = [...processFilterChips.querySelectorAll("[data-remove-filter]")];
+  const nextChip = remainingChips[Math.min(chipIndex, remainingChips.length - 1)];
+  (nextChip || (processFilterPanelFooter && !processFilterPanelFooter.hidden ? processFilterClear : processFilterTrigger))?.focus();
 });
 
 function clearProcessFilterCategory(category, value = "") {
   switch (category) {
     case "arrangement": clearArrangementFilter(value); break;
+    case "searchPeriod":
+      processFilters.searchPeriod = "all";
+      if (searchPeriodFilter) searchPeriodFilter.value = "all";
+      renderSearchPeriodOptions();
+      break;
     case "referral": clearReferralFilter(); break;
     case "expectedSalary": clearExpectedSalaryFilter(); break;
     case "postingSalary": clearPostingSalaryFilter(); break;
@@ -1206,22 +1452,35 @@ function clearPostingSalaryFilter() {
   if (processFilterCurrency) processFilterCurrency.value = "";
 }
 
-processFilterClear?.addEventListener("click", () => {
+processFilterClear?.addEventListener("click", (event) => {
   processFilterArrangements.forEach((control) => { control.checked = false; });
   if (processFilterExpectedSalary) processFilterExpectedSalary.value = "";
   if (processFilterPostedSalaryMin) processFilterPostedSalaryMin.value = "";
   if (processFilterPostedSalaryMax) processFilterPostedSalaryMax.value = "";
   if (processFilterCurrency) processFilterCurrency.value = "";
-  if (processFilterReferral) processFilterReferral.checked = false;
-  if (processFilterNoReferral) processFilterNoReferral.checked = false;
+  clearReferralFilter();
   if (processFilterTechnologySearch) processFilterTechnologySearch.value = "";
   processFilters.technologies = [];
-  processFilters.searchPeriod = "all";
-  if (searchPeriodFilter) searchPeriodFilter.value = "all";
-  renderSearchPeriodOptions();
   renderTechnologyFilterOptions();
   saveProcessFilters();
+  closeProcessFilterPanel(true);
 });
+
+function resetSearchAndFilters() {
+  clearTimeout(searchDebounceTimer);
+  currentSearch = "";
+  if (searchInput) searchInput.value = "";
+  processFilters = {
+    arrangements: [], searchPeriod: "all", expectedSalaryQuery: "",
+    postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [],
+  };
+  if (searchPeriodFilter) searchPeriodFilter.value = "all";
+  initializeProcessFilterControls();
+  renderTechnologyFilterOptions();
+  renderSearchPeriodOptions();
+  searchInput?.focus();
+  saveProcessFilters();
+}
 
 document.addEventListener("click", (event) => {
   if (!searchPeriodMenu || searchPeriodMenu.hidden || !(event.target instanceof Element) || event.target.closest(".search-period-select-wrap")) return;
@@ -1246,6 +1505,12 @@ filterMenuTrigger?.addEventListener("keydown", (event) => {
 });
 
 filterMenu?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeFilterMenu(true);
+    return;
+  }
   const options = [...filterTabs];
   const index = options.indexOf(document.activeElement);
   if (index < 0) return;
@@ -1255,8 +1520,13 @@ filterMenu?.addEventListener("keydown", (event) => {
     options[(index + direction + options.length) % options.length]?.focus();
   }
 });
+filterMenu?.addEventListener("focusout", (event) => {
+  if (event.relatedTarget instanceof Element && event.relatedTarget.closest(".filter-tabs")) return;
+  closeFilterMenu();
+});
 
 document.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
   if (!event.target.closest(".filter-tabs")) closeFilterMenu();
   if (!event.target.closest(".process-filter-control") && processFilterPanel && !processFilterPanel.hidden) {
     processFilterPanel.hidden = true;
@@ -1274,6 +1544,11 @@ searchInput.addEventListener("input", () => {
 });
 
 searchFocusButton?.addEventListener("click", () => searchInput.focus());
+appLoadRetryButton?.addEventListener("click", () => {
+  appLoadRetryButton.disabled = true;
+  appLoadRetryButton.textContent = "Retrying…";
+  void refreshApp();
+});
 
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
 dataManagementButton?.addEventListener("click", openDataModal);
@@ -1289,10 +1564,7 @@ menuToggle?.addEventListener("click", () => {
 backdropEl.addEventListener("click", (e) => {
   if (e.target === backdropEl) {
     if (modalEl.classList.contains("data-transfer-modal")) closeTransferModal();
-    else closeWithFlip(modalEl, backdropEl, () => {
-      modalEl.innerHTML = "";
-      restoreModalFocus();
-    });
+    else closeModal();
   }
 });
 

@@ -117,6 +117,7 @@ export const initialJobs = roles.map((role, index) => {
   const isExternalRecruiter = role.company === "Stripe";
   const salaryMin = Array.isArray(role.salary) ? role.salary[0] : role.salary.min ?? null;
   const salaryMax = Array.isArray(role.salary) ? role.salary[1] : role.salary.max ?? null;
+  const createdAt = Math.floor((now - (role.createdDaysAgo ?? index * 2) * 86400000) / 1000);
   const job = {
     id: `demo-${index + 1}`, company_name: role.company, position_title: role.title, status: role.status,
     salary_type: role.salary.type || "limited", salary_min: salaryMin, salary_max: salaryMax, salary_currency: "EUR",
@@ -136,7 +137,8 @@ export const initialJobs = roles.map((role, index) => {
         : `€${role.salary[0].toLocaleString()}–€${role.salary[1].toLocaleString()}`,
     work_arrangement: role.arrangement, employment_type: "permanent", is_referral: Boolean(role.referral),
     order_index: index,
-    created_at: Math.floor((now - (role.createdDaysAgo ?? index * 2) * 86400000) / 1000),
+    application_sent_date: role.status === "waiting" && !role.referral ? formatLocalDate(new Date(createdAt * 1000)) : undefined,
+    created_at: createdAt,
     status_changed_at: Math.floor((now - (role.statusChangedDaysAgo ?? index) * 86400000) / 1000),
     updated_at: Math.floor(now / 1000),
     attachments: [], interviewers: [], stages: [], technologies: role.technologies.map(technologyRecord),

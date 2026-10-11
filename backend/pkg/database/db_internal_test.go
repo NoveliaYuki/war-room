@@ -1,14 +1,17 @@
 package database
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -21,6 +24,34 @@ type migrationTestExecutor struct {
 	db        *sql.DB
 	failQuery string
 	failExec  string
+}
+
+type journalModeFailureDriver struct{}
+
+type journalModeFailureConn struct{}
+
+func init() {
+	sql.Register("journal-mode-failure", journalModeFailureDriver{})
+}
+
+func (journalModeFailureDriver) Open(string) (driver.Conn, error) {
+	return journalModeFailureConn{}, nil
+}
+
+func (journalModeFailureConn) Prepare(string) (driver.Stmt, error) {
+	return nil, errors.New("prepared statements are unavailable")
+}
+
+func (journalModeFailureConn) Close() error { return nil }
+
+func (journalModeFailureConn) Begin() (driver.Tx, error) {
+	return nil, errors.New("transactions are unavailable")
+}
+
+func (journalModeFailureConn) Ping(context.Context) error { return nil }
+
+func (journalModeFailureConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+	return nil, errors.New("journal mode is unavailable")
 }
 
 func TestAddCVVersionJobReferenceLeavesExistingColumnUntouched(t *testing.T) {
@@ -155,6 +186,76 @@ func TestInitDBReturnsDatabaseOpenErrors(t *testing.T) {
 	})
 	if !errors.Is(err, openError) {
 		t.Fatalf("database open error=%v, want wrapped opener error", err)
+	}
+}
+
+func TestInitDBReturnsJournalModeErrors(t *testing.T) {
+	database, err := sql.Open("journal-mode-failure", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = initDBWithOpener(&config.Config{DBPath: filepath.Join(t.TempDir(), "db.sqlite")}, func(string, string) (*sql.DB, error) {
+		return database, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "configure sqlite journal mode") {
+		t.Fatalf("journal mode error=%v, want wrapped configuration error", err)
+	}
+}
+
+func TestConfigureJournalModePrefersWAL(t *testing.T) {
+	var requested []string
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		requested = append(requested, mode)
+		return "wal", nil
+	})
+	if err != nil {
+		t.Fatalf("configure journal mode: %v", err)
+	}
+	if !reflect.DeepEqual(requested, []string{"WAL"}) {
+		t.Fatalf("requested journal modes=%v, want only WAL", requested)
+	}
+}
+
+func TestConfigureJournalModeFallsBackToDELETE(t *testing.T) {
+	var requested []string
+	walError := errors.New("WAL unavailable")
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		requested = append(requested, mode)
+		if mode == "WAL" {
+			return "", walError
+		}
+		return "delete", nil
+	})
+	if err != nil {
+		t.Fatalf("configure fallback journal mode: %v", err)
+	}
+	if !reflect.DeepEqual(requested, []string{"WAL", "DELETE"}) {
+		t.Fatalf("requested journal modes=%v, want WAL then DELETE", requested)
+	}
+}
+
+func TestConfigureJournalModeReportsFallbackFailure(t *testing.T) {
+	fallbackError := errors.New("DELETE unavailable")
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		if mode == "WAL" {
+			return "", errors.New("WAL unavailable")
+		}
+		return "", fallbackError
+	})
+	if !errors.Is(err, fallbackError) {
+		t.Fatalf("journal mode error=%v, want wrapped DELETE failure", err)
+	}
+}
+
+func TestConfigureJournalModeRejectsUnexpectedFallback(t *testing.T) {
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		if mode == "WAL" {
+			return "", errors.New("WAL unavailable")
+		}
+		return "memory", nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "unexpected fallback journal mode") {
+		t.Fatalf("unexpected fallback mode error=%v", err)
 	}
 }
 
