@@ -701,7 +701,9 @@ function closeModal() {
 /** Closes the data transfer dialog and returns focus to its trigger. */
 function closeManagementModal(focusTarget) {
   backdropEl.classList.remove("active");
+  backdropEl.classList.remove("search-period-manager-backdrop");
   modalEl.classList.remove("data-transfer-modal");
+  modalEl.classList.remove("search-period-manager-modal");
   modalEl.innerHTML = "";
   resetModalAnimation();
   restoreModalFocus();
@@ -730,6 +732,8 @@ async function openSearchPeriodsModal() {
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
   const suggestedPeriodName = defaultSearchPeriodName(currentMonth, "");
   modalEl.classList.add("data-transfer-modal");
+  modalEl.classList.add("search-period-manager-modal");
+  backdropEl.classList.add("search-period-manager-backdrop");
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
     <div class="modal-header data-transfer-header">
@@ -751,8 +755,9 @@ async function openSearchPeriodsModal() {
       </form>
       <div id="search-period-list" class="search-period-list"></div>
     </div>`;
-  activateModal(modalEl, '[name="name"]');
   const closeButton = modalEl.querySelector("#btn-close-search-periods");
+  const initialFocus = window.matchMedia?.("(max-width: 600px)").matches ? "#btn-close-search-periods" : '[name="name"]';
+  activateModal(modalEl, initialFocus);
   const form = modalEl.querySelector("#search-period-form");
   const list = modalEl.querySelector("#search-period-list");
   const idField = form.elements.id;

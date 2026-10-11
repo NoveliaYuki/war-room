@@ -71,6 +71,12 @@
   transform: none;
 }
 
+.modal-container.search-period-manager-modal {
+  width: min(560px, calc(100vw - 32px));
+  height: auto;
+  max-height: min(720px, calc(100dvh - 32px));
+}
+
 .data-transfer-header { flex-shrink: 0; }
 .data-transfer-header .modal-title { margin: 0; }
 .data-transfer-content { overflow-y: auto; padding: 22px 26px 26px; }
@@ -1691,6 +1697,9 @@ body.is-resizing-split * {
   .modal-container { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
   .modal-container.new-process-modal { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
   .modal-container.data-transfer-modal { width: 100%; max-width: none; height: 100dvh; max-height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
+  .modal-backdrop.search-period-manager-backdrop { align-items: center; padding: 12px; }
+  .modal-container.data-transfer-modal.search-period-manager-modal { width: calc(100vw - 24px); max-width: 560px; height: auto; max-height: calc(100dvh - 24px); border: 1px solid var(--border-medium); border-radius: var(--radius-xl); }
+  .search-period-manager { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .data-transfer-content { padding: 20px 16px 28px; }
   .data-transfer-content #btn-export-backup,
   .data-transfer-content #backup-import-choose,

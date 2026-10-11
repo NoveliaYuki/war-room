@@ -163,8 +163,11 @@ describe('application entry point', () => {
     });
     mocks.api.updateSearchPeriod.mockResolvedValue({ success: true });
     mocks.api.deleteSearchPeriod.mockImplementation(async () => { currentSearchPeriods = []; return { success: true }; });
+    window.matchMedia = vi.fn(() => ({ matches: true, addEventListener: vi.fn() }));
     document.querySelector('[data-manage-search-periods]').click();
     await flush();
+    expect(document.activeElement).toBe(document.querySelector('#btn-close-search-periods'));
+    window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }));
     let periodForm = document.querySelector('#search-period-form');
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -288,8 +291,12 @@ describe('application entry point', () => {
     document.querySelector('[data-search-period="all"]').click();
     await flush();
     document.querySelector('#btn-close-search-periods').click();
+    expect(document.querySelector('#detail-modal').classList.contains('search-period-manager-modal')).toBe(false);
+    expect(document.querySelector('#modal-backdrop').classList.contains('search-period-manager-backdrop')).toBe(false);
     document.querySelector('[data-manage-search-periods]').click();
     await flush();
+    expect(document.querySelector('#detail-modal').classList.contains('search-period-manager-modal')).toBe(true);
+    expect(document.querySelector('#modal-backdrop').classList.contains('search-period-manager-backdrop')).toBe(true);
     const emptyPeriodListForm = document.querySelector('#search-period-form');
     emptyPeriodListForm.elements.name.value = 'Manual period';
     emptyPeriodListForm.elements.start_date.value = startDate;
