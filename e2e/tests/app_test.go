@@ -240,6 +240,7 @@ type toolbarLayout struct {
 	Search               layoutBox `json:"search"`
 	SearchFontSize       float64   `json:"searchFontSize"`
 	SearchFilterWidth    layoutBox `json:"searchFilterWidth"`
+	FirstCard            layoutBox `json:"firstCard"`
 	Filter               layoutBox `json:"filter"`
 	ViewControls         layoutBox `json:"viewControls"`
 	Sort                 layoutBox `json:"sort"`
@@ -485,6 +486,12 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 		  const group = document.querySelector(".toolbar-search-filter").getBoundingClientRect();
 		  return { x: group.x, y: group.y, width: group.width, height: group.height, right: group.right };
 		})(),
+	    firstCard: (() => {
+	      const card = document.querySelector(".process-card");
+	      if (!card) return { x: 0, y: 0, width: 0, height: 0, right: 0 };
+	      const rect = card.getBoundingClientRect();
+	      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right };
+	    })(),
 	    filter: box(".process-filter-control"),
 	    viewControls: box(".toolbar-view-controls"),
 	    sort: box(".process-sort-control"),
@@ -540,17 +547,8 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
-	if width >= 1360 && layout.Search.Width < 680 {
-		t.Errorf("%dpx viewport should preserve the search field's preferred width when space is available (got %.1fpx)", width, layout.Search.Width)
-	}
-	if layout.SearchFilterWidth.Width > 762 {
-		t.Errorf("%dpx search and filters should stay within the 760px preferred width (got %.1fpx)", width, layout.SearchFilterWidth.Width)
-	}
-	if width >= 1000 && layout.SearchFilterWidth.Width < 758 {
-		t.Errorf("%dpx search and filters should keep the 760px preferred width while the toolbar has room (got %.1fpx)", width, layout.SearchFilterWidth.Width)
-	}
-	if width < 1000 && layout.SearchFilterWidth.Width < 550 {
-		t.Errorf("%dpx search and filters should use available toolbar space before shrinking (got %.1fpx)", width, layout.SearchFilterWidth.Width)
+	if layout.FirstCard.Width > 0 && abs(layout.SearchFilterWidth.Right-layout.FirstCard.Right) > 3 {
+		t.Errorf("%dpx search and filters should end at the first card's edge (group %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Right, layout.FirstCard.Right)
 	}
 	expectedSearchWidth := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
 	if abs(layout.Search.Width-expectedSearchWidth) > 2 {
