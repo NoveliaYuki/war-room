@@ -283,6 +283,10 @@
   .process-toolbar { grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
 }
 
+@media (min-width: 722px) and (max-width: 1000px) {
+  .process-filter-panel { right: 0; left: auto; }
+}
+
 @media (max-width: 360px) {
   .process-toolbar { grid-template-columns: auto minmax(0, 1fr); }
   .toolbar-view-controls { grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; width: auto; }

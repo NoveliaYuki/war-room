@@ -353,6 +353,57 @@ func TestPeriodSelectionIsSeparateFromProcessFilters(t *testing.T) {
 	assertPeriodSelectionDoesNotActivateFilters(t, page)
 }
 
+func TestFilterPopoverStaysWithinNarrowViewports(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	trigger := page.Locator("#process-filter-trigger")
+	for _, width := range []int{1000, 900, 801, 760, 722, 721, 390, 320} {
+		setPageViewport(t, page, width, 844)
+		bounds := readFilterPopoverBounds(t, trigger, page.Locator("#process-filter-panel"), width)
+		if bounds.Left < 0 || bounds.Right > bounds.ViewportWidth {
+			t.Errorf("Filters popover should remain within the %dpx viewport, got left %.1fpx and right %.1fpx", width, bounds.Left, bounds.Right)
+		}
+	}
+}
+
+type popoverBounds struct {
+	Left          float64 `json:"left"`
+	Right         float64 `json:"right"`
+	ViewportWidth float64 `json:"viewportWidth"`
+}
+
+func readFilterPopoverBounds(t *testing.T, trigger, panel playwright.Locator, width int) popoverBounds {
+	t.Helper()
+	expanded, err := trigger.GetAttribute("aria-expanded")
+	if err != nil {
+		t.Fatalf("read Filters state at %dpx: %v", width, err)
+	}
+	if expanded == "true" {
+		if err := trigger.Click(); err != nil {
+			t.Fatalf("close Filters before checking %dpx: %v", width, err)
+		}
+	}
+	if err := trigger.Click(); err != nil {
+		t.Fatalf("open Filters at %dpx: %v", width, err)
+	}
+	state, err := panel.Evaluate(`element => {
+	  const rect = element.getBoundingClientRect();
+	  return { left: rect.left, right: rect.right, viewportWidth: window.innerWidth };
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read Filters bounds at %dpx: %v", width, err)
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("encode Filters bounds at %dpx: %v", width, err)
+	}
+	var bounds popoverBounds
+	if err := json.Unmarshal(encoded, &bounds); err != nil {
+		t.Fatalf("decode Filters bounds at %dpx: %v", width, err)
+	}
+	return bounds
+}
+
 func assertPeriodSelectionDoesNotActivateFilters(t *testing.T, page playwright.Page) {
 	t.Helper()
 	for _, selector := range []string{"#process-filter-count", "#process-filter-clear", `[data-remove-filter="searchPeriod"]`} {
