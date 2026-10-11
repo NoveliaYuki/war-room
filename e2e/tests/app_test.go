@@ -940,6 +940,7 @@ func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
 		valid, err := page.Evaluate(`() => {
 			const card = document.querySelector(".process-card");
 			const menu = document.querySelector("#btn-menu-toggle");
+			const dataManagement = document.querySelector("#btn-data-management");
 			const cardRect = card?.getBoundingClientRect();
 			const overflowingControl = card && [...card.querySelectorAll("button, a, input, select")].some(control => {
 				const rect = control.getBoundingClientRect();
@@ -948,6 +949,7 @@ func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
 			return document.documentElement.scrollWidth <= window.innerWidth &&
 				card && card.getBoundingClientRect().right <= window.innerWidth &&
 				!overflowingControl && card.scrollWidth <= card.clientWidth + 1 &&
+				dataManagement && dataManagement.getBoundingClientRect().height >= 44 &&
 				getComputedStyle(menu).display !== "none";
 		}`, nil)
 		if err != nil || valid != true {

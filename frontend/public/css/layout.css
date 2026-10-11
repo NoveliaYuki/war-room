@@ -571,6 +571,7 @@
   .header-search-actions { display: contents; }
   .filter-tabs { width: fit-content; max-width: 100%; }
   .schedule-trigger { min-height: 44px; }
+  #btn-data-management { min-height: 44px; }
   .filter-menu { width: min(260px, calc(100vw - 28px)); }
   .search-input { width: 100%; font-size: 13px; }
   .search-input:focus { width: 100%; }
