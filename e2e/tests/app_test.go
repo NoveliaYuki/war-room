@@ -1160,6 +1160,25 @@ func TestDemoStageTabsExposeHorizontalOverflow(t *testing.T) {
 	if err != nil || valid != true {
 		t.Errorf("on phone widths, keep stage controls grouped and the interviewer role select easy to tap (valid=%v, err=%v)", valid, err)
 	}
+	assertPhoneOverviewTapTargets(t, page)
+}
+
+func assertPhoneOverviewTapTargets(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if err := page.Locator(`[data-mobile-pane="overview"]`).Click(); err != nil {
+		t.Fatalf("open phone job overview: %v", err)
+	}
+	valid, err := page.Evaluate(`() => {
+		const search = document.querySelector("#detail-modal #technology-assignment-search");
+		const editButtons = [...document.querySelectorAll("#detail-modal .split-pane-left .markdown-field-edit")];
+		return search?.getBoundingClientRect().height >= 44
+			&& Number.parseFloat(getComputedStyle(search).fontSize) >= 16
+			&& editButtons.length > 0
+			&& editButtons.every(button => button.getBoundingClientRect().width >= 44);
+	}`, nil)
+	if err != nil || valid != true {
+		t.Errorf("on phone widths, make technology search readable and markdown edit buttons easy to tap (valid=%v, err=%v)", valid, err)
+	}
 }
 
 func TestIntermediateViewportUsesOpenSearchMenu(t *testing.T) {

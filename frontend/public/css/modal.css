@@ -1652,6 +1652,8 @@ body.is-resizing-split * {
   #detail-modal .split-pane-left .job-cv-row button,
   #detail-modal .split-pane-left .btn-delete-job,
   #detail-modal .split-pane-left .btn-close-modal { min-height: 44px; }
+  #detail-modal .split-pane-left .markdown-field-edit { min-width: 44px; }
+  #detail-modal .technology-assignment-search { min-height: 44px; font-size: 16px; }
   #detail-modal .btn-stage-current,
   #detail-modal .btn-add-question { min-height: 44px; box-sizing: border-box; }
   #detail-modal .stage-recruiter-source-select { min-height: 44px; box-sizing: border-box; font-size: 16px; }
