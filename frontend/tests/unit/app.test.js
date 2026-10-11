@@ -25,7 +25,7 @@ describe('application entry point', () => {
     delete document.documentElement.dataset.theme;
     document.body.innerHTML = `
       <div id="app-load-error" hidden><button id="app-load-retry" type="button">Try again</button></div>
-      <div id="cards-grid"></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
+      <div id="cards-grid" aria-busy="true"><div class="board-loading-state" role="status">Loading selection processes</div></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
       <button id="btn-menu-toggle" aria-expanded="false"></button>
       <button id="btn-new-process" class="new-process-trigger"></button>
       <button id="btn-theme-toggle"></button>
@@ -62,8 +62,12 @@ describe('application entry point', () => {
     const appImport = import('../../public/js/app.js');
     await vi.waitFor(() => expect(mocks.api.getJobs).toHaveBeenCalledTimes(1));
     expect(document.body.dataset.appReady).toBeUndefined();
+    expect(document.querySelector('#cards-grid').getAttribute('aria-busy')).toBe('true');
+    expect(document.querySelector('.board-loading-state')).not.toBeNull();
     resolveInitialJobs([]);
     await appImport;
+    expect(document.querySelector('#cards-grid').getAttribute('aria-busy')).toBe('false');
+    expect(document.querySelector('.board-loading-state')).toBeNull();
     const matchingJob = {
       id: 'matching', work_arrangement: 'remote', is_referral: true, expected_salary: '€95k target',
       salary_min: 100000, salary_max: 120000, salary_currency: 'EUR',

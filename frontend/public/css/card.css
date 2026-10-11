@@ -9,6 +9,38 @@
   gap: 20px;
 }
 
+.board-loading-state { grid-column: 1 / -1; min-width: 0; }
+.board-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 20px; }
+.board-skeleton-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px 12px; min-height: 380px; padding: 20px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-card); }
+.board-skeleton-logo,
+.board-skeleton-heading,
+.board-skeleton-title,
+.board-skeleton-meta,
+.board-skeleton-rule,
+.board-skeleton-section-label,
+.board-skeleton-line,
+.board-skeleton-date,
+.board-skeleton-tech-tags span,
+.board-skeleton-stage { background: linear-gradient(100deg, var(--bg-surface-elevated) 20%, color-mix(in srgb, var(--bg-surface-elevated) 65%, var(--text-muted)) 38%, var(--bg-surface-elevated) 56%); background-size: 220% 100%; animation: boardSkeletonShimmer 1.5s ease-in-out infinite; }
+.board-skeleton-logo { grid-row: span 2; width: 44px; height: 44px; border-radius: var(--radius-md); }
+.board-skeleton-heading { align-self: end; width: min(100%, 120px); height: 13px; border-radius: 6px; }
+.board-skeleton-title { width: min(100%, 220px); height: 18px; border-radius: 6px; }
+.board-skeleton-meta { grid-column: 1 / -1; width: min(100%, 260px); height: 30px; margin-top: 4px; border-radius: var(--radius-full); }
+.board-skeleton-rule { grid-column: 1 / -1; height: 1px; margin-block: 8px; }
+.board-skeleton-section-label { grid-column: 1 / -1; width: 92px; height: 9px; border-radius: 5px; }
+.board-skeleton-line { grid-column: 1 / -1; width: 100%; height: 11px; border-radius: 6px; }
+.board-skeleton-line.is-short { width: 68%; }
+.board-skeleton-date { grid-column: 1 / -1; width: 82px; height: 11px; margin-top: 2px; border-radius: 6px; }
+.board-skeleton-tech { display: grid; grid-column: 1 / -1; gap: 10px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface); }
+.board-skeleton-tech .board-skeleton-section-label { width: 70px; }
+.board-skeleton-tech-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.board-skeleton-tech-tags span { width: 54px; height: 24px; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); }
+.board-skeleton-tech-tags span:nth-child(2) { width: 72px; }
+.board-skeleton-tech-tags span:nth-child(3) { width: 62px; }
+.board-skeleton-stage { grid-column: 1 / -1; width: min(48%, 170px); height: 12px; margin-top: 4px; border-radius: 6px; }
+@keyframes boardSkeletonShimmer { to { background-position-x: -220%; } }
+@media (prefers-reduced-motion: reduce) { .board-skeleton-logo, .board-skeleton-heading, .board-skeleton-title, .board-skeleton-meta, .board-skeleton-rule, .board-skeleton-section-label, .board-skeleton-line, .board-skeleton-date, .board-skeleton-tech-tags span, .board-skeleton-stage { animation: none; } }
+
 .process-toolbar {
   display: grid;
   grid-template-columns: minmax(0, min(600px, calc((100% - 20px) / 2))) minmax(0, 1fr) auto;

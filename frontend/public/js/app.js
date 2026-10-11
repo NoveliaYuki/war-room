@@ -219,10 +219,12 @@ async function renderSelectedBoardView({ allPeriodCounts, scopedCounts }) {
   if (currentFilter === "schedule") {
     cardGridEl.classList.add("schedule-mode");
     await renderScheduleView(cardGridEl, modalEl, backdropEl, refreshApp);
-    return;
+  } else {
+    cardGridEl.classList.remove("schedule-mode");
+    await renderProcessCards(allPeriodCounts, scopedCounts);
   }
-  cardGridEl.classList.remove("schedule-mode");
-  await renderProcessCards(allPeriodCounts, scopedCounts);
+  cardGridEl.querySelector(".board-loading-state")?.remove();
+  cardGridEl.setAttribute("aria-busy", "false");
 }
 
 async function renderProcessCards(allPeriodCounts, scopedCounts) {
@@ -257,6 +259,8 @@ function clearAppLoadError() {
 
 function showAppLoadError() {
   if (!appLoadErrorEl) return;
+  cardGridEl.querySelector(".board-loading-state")?.remove();
+  cardGridEl.setAttribute("aria-busy", "false");
   appLoadErrorEl.hidden = false;
   if (appLoadRetryButton) {
     appLoadRetryButton.disabled = false;
