@@ -311,9 +311,15 @@
   .process-filter-referral label { min-height: 44px; }
   .process-filter-technology-options label { min-height: 44px; }
   .settings-data-footer { align-items: flex-start; }
+}
+
+@media (max-width: 720px) {
   .search-period-manager { gap: 16px; padding: 14px 12px 18px; }
   .search-period-form { gap: 14px; padding: 14px; }
   .search-period-form input { box-sizing: border-box; min-height: 44px; font-size: 16px; }
+  @supports (-webkit-touch-callout: none) {
+    .search-period-form input[type="date"] { width: calc(100% - 26px); }
+  }
   .search-period-form-actions > button,
   .search-period-actions > button { min-height: 44px; }
   .search-period-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
