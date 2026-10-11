@@ -11,7 +11,7 @@
 
 .process-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 600px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, min(600px, calc((100% - 20px) / 2))) minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   column-gap: 20px;
@@ -183,7 +183,15 @@
 .process-sort-control { position: relative; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font: 500 13px var(--font-sans); }
 .process-sort-control[hidden] { display: none; }
 
-@media (min-width: 781px) {
+@media (min-width: 1116px) {
+  .process-toolbar { grid-template-columns: minmax(0, calc((100% - 40px) / 3)) minmax(0, 1fr) auto; }
+}
+
+@media (min-width: 722px) and (max-width: 760px) {
+  .process-toolbar { grid-template-columns: minmax(0, calc((100% - 14px) / 2)) minmax(0, 1fr) auto; }
+}
+
+@media (min-width: 722px) {
   .toolbar-view-controls { display: contents; }
   .process-sort-control { grid-column: 3; grid-row: 1; justify-self: end; }
 }
@@ -243,7 +251,7 @@
   .toolbar-search-filter { display: contents; }
   .process-search { grid-column: 1 / -1; grid-row: 1; width: 100%; min-width: 0; max-width: 100%; }
   .process-filter-control { grid-column: 1; grid-row: 2; justify-self: start; width: max-content; }
-  .toolbar-view-controls { grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
+  .toolbar-view-controls { display: flex; grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
   .process-sort-control { min-height: 42px; margin: 0; }
   .process-toolbar-active-state { grid-column: 1 / -1; grid-row: 3; }
   .process-filter-summary { grid-column: 1; grid-row: 4; justify-self: end; }
@@ -277,10 +285,6 @@
   .search-period-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
   .search-period-actions { flex-wrap: nowrap; }
   .search-period-actions > button { min-width: 60px; padding-inline: 10px; }
-}
-
-@media (min-width: 722px) and (max-width: 780px) {
-  .process-toolbar { grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
 }
 
 @media (min-width: 722px) and (max-width: 1000px) {
@@ -1001,4 +1005,8 @@ html.is-reordering-cards body {
   .card-company { grid-column: 2; grid-row: 1; display: block; min-width: 0; }
   .card-position { grid-column: 2 / -1; grid-row: 2; margin-top: 0; }
   .card-header-actions { grid-column: 3; grid-row: 1; }
+}
+
+@media (max-width: 760px) {
+  .keyword-note { min-height: 0; }
 }

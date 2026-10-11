@@ -256,7 +256,7 @@ type toolbarLayout struct {
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	page := newPage(t)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {760, 900}, {722, 900}, {721, 900}, {390, 844}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {390, 844}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -268,7 +268,7 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 		}
 	}
 	openDemoPage(t, page)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {760, 900}, {722, 900}, {721, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1116, 900}, {1115, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -641,15 +641,8 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
-	columnGap := 20.0
-	gapCount := 2.0
-	if width <= 780 {
-		columnGap = 14
-		gapCount = 1
-	}
-	expectedGroupWidth := min(600, layout.Toolbar.Width-layout.Sort.Width-columnGap*gapCount)
-	if abs(layout.SearchFilterWidth.Width-expectedGroupWidth) > 2 {
-		t.Errorf("%dpx search and filters should keep their preferred width until space is constrained (got %.1fpx, expected %.1fpx)", width, layout.SearchFilterWidth.Width, expectedGroupWidth)
+	if abs(layout.SearchFilterWidth.Width-layout.FirstCard.Width) > 2 {
+		t.Errorf("%dpx search and filters should align with the first card (group %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Width, layout.FirstCard.Width)
 	}
 	expectedSearchWidth := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
 	if abs(layout.Search.Width-expectedSearchWidth) > 2 {
@@ -1092,6 +1085,19 @@ func TestDemoTechnologyStacksFitNarrowCards(t *testing.T) {
 	}`, nil)
 	if err != nil || valid != true {
 		t.Fatalf("technology stack cards exceed the phone viewport (valid=%v, err=%v)", valid, err)
+	}
+}
+
+func TestMobileCardHighlightsDoNotReserveDesktopHeight(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 390, 844)
+	minimumHeight, err := page.Locator(".process-card .keyword-note").First().Evaluate("element => getComputedStyle(element).minHeight", nil)
+	if err != nil {
+		t.Fatalf("read phone role highlight minimum height: %v", err)
+	}
+	if minimumHeight != "0px" {
+		t.Errorf("phone role highlights should use their natural height, got %v", minimumHeight)
 	}
 }
 
@@ -1763,8 +1769,9 @@ func dragCardAfter(t *testing.T, page playwright.Page, source, target playwright
 	t.Helper()
 	scrollCardIntoView(t, source)
 	waitForCardEntranceAnimations(t, page, source, target)
-	if err := source.Hover(); err != nil {
-		t.Fatalf("hover source card before dragging: %v", err)
+	dragHandle := source.Locator(".btn-card-drag")
+	if err := dragHandle.Hover(); err != nil {
+		t.Fatalf("hover source card drag handle: %v", err)
 	}
 	mouse := page.Mouse()
 	if err := mouse.Down(); err != nil {

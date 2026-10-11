@@ -115,6 +115,12 @@ describe('cardGrid', () => {
     expect(card.querySelector('.card-tech-count').textContent).toBe('3');
   });
 
+  it('omits the technology preview when no technologies are recorded', () => {
+    const { card } = setup([makeJob({ technologies: [] })]);
+
+    expect(card.querySelector('.card-tech-stack')).toBeNull();
+  });
+
   it('limits card technology previews and points to the full stack in process details', () => {
     const { card } = setup([makeJob({ technologies: [
       { id: 'react', name: 'React' },

@@ -123,16 +123,15 @@ function renderCardRoleHighlights(job) {
 
 function renderCardTechnologyStack(job) {
   const technologies = job.technologies || [];
+  if (!technologies.length) return "";
   const visibleTechnologies = technologies.slice(0, CARD_TECHNOLOGY_PREVIEW_LIMIT);
   const remainingCount = technologies.length - visibleTechnologies.length;
-  const contents = technologies.length
-    ? `${visibleTechnologies.map((technology) => {
-      const alias = technology.aliases?.find((item) => item.trim() && item.trim().length < technology.name.length);
-      const label = alias || technology.name;
-      const title = alias ? ` title="${escapeAttr(technology.name)}"` : "";
-      return `<span class="card-technology-chip"${title}>${escapeHtml(label)}</span>`;
-    }).join("")}${remainingCount ? `<span class="card-technology-more" title="Open details to view the full stack">+${remainingCount} more</span>` : ""}`
-    : '<span class="card-summary-empty">No technologies recorded</span>';
+  const contents = `${visibleTechnologies.map((technology) => {
+    const alias = technology.aliases?.find((item) => item.trim() && item.trim().length < technology.name.length);
+    const label = alias || technology.name;
+    const title = alias ? ` title="${escapeAttr(technology.name)}"` : "";
+    return `<span class="card-technology-chip"${title}>${escapeHtml(label)}</span>`;
+  }).join("")}${remainingCount ? `<span class="card-technology-more" title="Open details to view the full stack">+${remainingCount} more</span>` : ""}`;
   const previewLabel = remainingCount
     ? `Technology stack preview: ${visibleTechnologies.length} shown, ${remainingCount} more in process details.`
     : `Technology stack: ${technologies.length} items.`;
