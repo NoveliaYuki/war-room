@@ -562,11 +562,17 @@ func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertCompactControlRows(t, width, layout)
 	assertToolbarRow(t, width, layout.Filter, layout.Sort)
-	if abs(layout.Search.Width-layout.Toolbar.Width) > 2 {
-		t.Errorf("%dpx viewport should let search use the full toolbar width (search %.1fpx, toolbar %.1fpx)", width, layout.Search.Width, layout.Toolbar.Width)
-	}
+	assertSearchWidthUsesAvailableSpace(t, width, layout)
 	if layout.FilterHeight < 40 || layout.SortHeight < 40 {
 		t.Errorf("%dpx viewport has undersized touch controls (filter %.0fpx, sort %.0fpx)", width, layout.FilterHeight, layout.SortHeight)
+	}
+}
+
+func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbarLayout) {
+	t.Helper()
+	expected := min(layout.Toolbar.Width, 681)
+	if abs(layout.Search.Width-expected) > 2 {
+		t.Errorf("%dpx viewport should keep search at its preferred width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
 	}
 }
 
@@ -583,9 +589,7 @@ func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
 	if abs((layout.Sort.Y+layout.Sort.Height/2)-(layout.Filter.Y+layout.Filter.Height/2)) > 1 {
 		t.Errorf("%dpx toolbar should keep sort aligned with Filters", width)
 	}
-	if abs(layout.Search.Width-layout.Toolbar.Width) > 2 {
-		t.Errorf("%dpx viewport should let search use the full toolbar width (search %.1fpx, toolbar %.1fpx)", width, layout.Search.Width, layout.Toolbar.Width)
-	}
+	assertSearchWidthUsesAvailableSpace(t, width, layout)
 	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
 		t.Errorf("%dpx sort control should remain aligned to the toolbar's right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
 	}

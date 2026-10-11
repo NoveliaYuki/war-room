@@ -244,7 +244,7 @@
 @media (max-width: 780px) {
   .process-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 8px; }
   .toolbar-search-filter { display: contents; }
-  .process-search { grid-column: 1 / -1; grid-row: 1; width: 100%; min-width: 0; max-width: none; }
+  .process-search { grid-column: 1 / -1; grid-row: 1; width: min(100%, 681px); min-width: 0; max-width: 100%; }
   .process-filter-control { grid-column: 1; grid-row: 2; justify-self: start; width: max-content; }
   .toolbar-view-controls { grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
   .process-sort-control { min-height: 42px; margin: 0; }
@@ -710,6 +710,17 @@
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.card-technology-more {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 .card-stage-indicator {

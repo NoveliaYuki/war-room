@@ -115,6 +115,24 @@ describe('cardGrid', () => {
     expect(card.querySelector('.card-tech-count').textContent).toBe('3');
   });
 
+  it('limits card technology previews and points to the full stack in process details', () => {
+    const { card } = setup([makeJob({ technologies: [
+      { id: 'react', name: 'React' },
+      { id: 'kubernetes', name: 'Kubernetes' },
+      { id: 'typescript', name: 'TypeScript' },
+      { id: 'go', name: 'Go' },
+      { id: 'docker', name: 'Docker' },
+      { id: 'terraform', name: 'Terraform' },
+    ] })]);
+
+    expect([...card.querySelectorAll('.card-technology-chip')].map((chip) => chip.textContent))
+      .toEqual(['React', 'Kubernetes', 'TypeScript', 'Go']);
+    expect(card.querySelector('.card-technology-more').textContent).toBe('+2 more');
+    expect(card.querySelector('.card-tech-stack').getAttribute('aria-label'))
+      .toBe('Technology stack preview: 4 shown, 2 more in process details.');
+    expect(card.querySelector('.card-tech-count').textContent).toBe('6');
+  });
+
   it('shows concise technology aliases and combines same-day added and CV dates', () => {
     const { card } = setup([makeJob({
       technologies: [{ id: 'mcp', name: 'Model Context Protocol', aliases: ['MCP'] }],

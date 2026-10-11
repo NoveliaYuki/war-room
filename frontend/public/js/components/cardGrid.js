@@ -20,6 +20,7 @@ const EMPLOYMENT_TYPE_LABELS = new Map([
 	["b2b", "B2B"],
 	["permanent_b2b", "Permanent / B2B"],
 ]);
+const CARD_TECHNOLOGY_PREVIEW_LIMIT = 4;
 
 const EMPTY_STATUS_COPY = {
 	waiting: { title: "No waiting processes yet", description: "Processes you mark as waiting will appear here." },
@@ -122,15 +123,20 @@ function renderCardRoleHighlights(job) {
 
 function renderCardTechnologyStack(job) {
   const technologies = job.technologies || [];
+  const visibleTechnologies = technologies.slice(0, CARD_TECHNOLOGY_PREVIEW_LIMIT);
+  const remainingCount = technologies.length - visibleTechnologies.length;
   const contents = technologies.length
-    ? technologies.map((technology) => {
+    ? `${visibleTechnologies.map((technology) => {
       const alias = technology.aliases?.find((item) => item.trim() && item.trim().length < technology.name.length);
       const label = alias || technology.name;
       const title = alias ? ` title="${escapeAttr(technology.name)}"` : "";
       return `<span class="card-technology-chip"${title}>${escapeHtml(label)}</span>`;
-    }).join("")
+    }).join("")}${remainingCount ? `<span class="card-technology-more" title="Open details to view the full stack">+${remainingCount} more</span>` : ""}`
     : '<span class="card-summary-empty">No technologies recorded</span>';
-  return `<div class="card-tech-stack"><div class="card-summary-label">Tech stack <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
+  const previewLabel = remainingCount
+    ? `Technology stack preview: ${visibleTechnologies.length} shown, ${remainingCount} more in process details.`
+    : `Technology stack: ${technologies.length} items.`;
+  return `<div class="card-tech-stack" role="group" aria-label="${escapeAttr(previewLabel)}"><div class="card-summary-label">Tech stack <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
 }
 
 /** Formats date-only fields without shifting them across time zones. */
