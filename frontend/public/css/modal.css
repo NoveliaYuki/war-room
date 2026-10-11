@@ -1578,6 +1578,9 @@ body.is-resizing-split * {
 
   .stage-focus-group .meta-grid { grid-template-columns: minmax(0, 1fr); }
   .stage-interviewer-form { grid-template-columns: minmax(0, 1fr); }
+  .stage-interviewer-form input,
+  .stage-interviewer-form textarea { min-height: 44px; font-size: 16px; }
+  .stage-interviewer-form-actions > button { min-height: 44px; }
   .stage-interviewer-notes,
   .stage-interviewer-form-actions { grid-column: 1; }
   .btn-add-stage-interviewer { min-height: 44px; }

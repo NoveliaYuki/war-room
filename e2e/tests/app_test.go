@@ -291,10 +291,7 @@ func TestQuestionEditorInputsAreMobileFriendly(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
 	setPageViewport(t, page, 390, 844)
-	card := page.Locator(".process-card").First()
-	if err := card.Locator(".btn-card-open-details").Click(); err != nil {
-		t.Fatalf("open demo process details: %v", err)
-	}
+	openMobileStagePane(t, page)
 	if err := page.Locator("#active-add-question-form .add-question-input").WaitFor(); err != nil {
 		t.Fatalf("wait for the mobile question input: %v", err)
 	}
@@ -327,6 +324,85 @@ func TestQuestionEditorInputsAreMobileFriendly(t *testing.T) {
 	}
 	if metrics.InputHeight < 44 || metrics.InputFontSize < 16 || metrics.NotesFontSize < 16 {
 		t.Errorf("mobile question editor should provide 44px touch input and 16px text, got input %.0fpx/%.0fpx and notes %.0fpx", metrics.InputHeight, metrics.InputFontSize, metrics.NotesFontSize)
+	}
+
+}
+
+func TestInterviewerFormInputsAreMobileFriendly(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 390, 844)
+	openMobileInterviewerForm(t, page)
+	assertMobileInterviewerForm(t, readMobileInterviewerForm(t, page))
+}
+
+type mobileInterviewerFieldMetric struct {
+	Height   float64 `json:"height"`
+	FontSize float64 `json:"fontSize"`
+}
+
+type mobileInterviewerFormMetrics struct {
+	Fields  []mobileInterviewerFieldMetric `json:"fields"`
+	Actions []float64                      `json:"actions"`
+}
+
+func openMobileStagePane(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if err := page.Locator(".process-card").First().Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open demo process details: %v", err)
+	}
+	if err := page.Locator(`#detail-modal [data-mobile-pane="stages"]`).Click(); err != nil {
+		t.Fatalf("open the mobile interview stages pane: %v", err)
+	}
+}
+
+func openMobileInterviewerForm(t *testing.T, page playwright.Page) {
+	t.Helper()
+	openMobileStagePane(t, page)
+	if err := page.Locator(".btn-add-stage-interviewer").Click(); err != nil {
+		t.Fatalf("open the mobile interviewer form: %v", err)
+	}
+	if err := page.Locator(".stage-interviewer-form").WaitFor(); err != nil {
+		t.Fatalf("wait for the mobile interviewer form: %v", err)
+	}
+}
+
+func readMobileInterviewerForm(t *testing.T, page playwright.Page) mobileInterviewerFormMetrics {
+	t.Helper()
+	state, err := page.Evaluate(`() => {
+	  const form = document.querySelector(".stage-interviewer-form");
+	  const fields = [...form.querySelectorAll("input, textarea")];
+	  const actions = [...form.querySelectorAll(".stage-interviewer-form-actions button")];
+	  return {
+	    fields: fields.map(field => ({ height: field.getBoundingClientRect().height, fontSize: Number.parseFloat(getComputedStyle(field).fontSize) })),
+	    actions: actions.map(button => button.getBoundingClientRect().height),
+	  };
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read mobile interviewer form styles: %v", err)
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("encode mobile interviewer form styles: %v", err)
+	}
+	var metrics mobileInterviewerFormMetrics
+	if err := json.Unmarshal(encoded, &metrics); err != nil {
+		t.Fatalf("decode mobile interviewer form styles: %v", err)
+	}
+	return metrics
+}
+
+func assertMobileInterviewerForm(t *testing.T, metrics mobileInterviewerFormMetrics) {
+	t.Helper()
+	for _, field := range metrics.Fields {
+		if field.Height < 44 || field.FontSize < 16 {
+			t.Errorf("mobile interviewer fields should provide 44px touch targets and 16px text, got %.0fpx/%.0fpx", field.Height, field.FontSize)
+		}
+	}
+	for _, height := range metrics.Actions {
+		if height < 44 {
+			t.Errorf("mobile interviewer actions should be at least 44px high, got %.0fpx", height)
+		}
 	}
 }
 
@@ -652,9 +728,8 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
-	const preferredSearchFilterWidth = 421.0
-	if abs(layout.SearchFilterWidth.Width-preferredSearchFilterWidth) > 2 {
-		t.Errorf("%dpx search and filters should retain their preferred width (group %.1fpx, expected %.1fpx)", width, layout.SearchFilterWidth.Width, preferredSearchFilterWidth)
+	if abs(layout.SearchFilterWidth.Width-layout.FirstCard.Width) > 4 {
+		t.Errorf("%dpx search and filters should align with the first card (group %.1fpx, card %.1fpx)", width, layout.SearchFilterWidth.Width, layout.FirstCard.Width)
 	}
 	expectedSearchWidth := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
 	if abs(layout.Search.Width-expectedSearchWidth) > 2 {
