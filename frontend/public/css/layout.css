@@ -8,6 +8,8 @@
   padding: 0 28px 60px;
 }
 
+#main-content { container-type: inline-size; }
+
 .app-load-error {
   display: flex;
   align-items: center;

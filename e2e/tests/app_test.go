@@ -237,6 +237,7 @@ type layoutBox struct {
 type toolbarLayout struct {
 	ViewportWidth        float64   `json:"viewportWidth"`
 	DocumentWidth        float64   `json:"documentWidth"`
+	CardColumns          int       `json:"cardColumns"`
 	Search               layoutBox `json:"search"`
 	SearchFontSize       float64   `json:"searchFontSize"`
 	SearchFilterWidth    layoutBox `json:"searchFilterWidth"`
@@ -574,6 +575,7 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	  return {
 	    viewportWidth: window.innerWidth,
 	    documentWidth: document.documentElement.scrollWidth,
+	    cardColumns: getComputedStyle(document.querySelector(".cards-grid")).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
 	    search: box(".process-search"),
 	    searchFontSize: Number.parseFloat(getComputedStyle(document.querySelector("#search-input")).fontSize),
 		searchFilterWidth: (() => {
@@ -625,14 +627,12 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	if !layout.PeriodInFilters || layout.PeriodInViewControls {
 		t.Errorf("%dpx period selector should live inside Filters", width)
 	}
-	if width > 721 {
+	if layout.CardColumns > 1 {
 		assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
 		assertWideToolbar(t, width, layout)
-	}
-	if width <= 721 && width > 420 {
+	} else if width > 420 {
 		assertCompactToolbar(t, width, layout)
-	}
-	if width <= 420 {
+	} else {
 		assertNarrowToolbar(t, width, layout)
 	}
 	assertHeaderActionAlignment(t, width, layout)
