@@ -167,6 +167,7 @@ describe('application entry point', () => {
     const startDate = `${now.getFullYear()}-${month}-01`;
     const endDate = `${now.getFullYear()}-${month}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
     const periodName = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${startDate}T00:00:00Z`));
+    expect(periodForm.elements.name.placeholder).toBe(periodName);
     periodForm.elements.start_date.value = startDate;
     periodForm.elements.start_date.dispatchEvent(new Event('change'));
     periodForm.elements.end_date.value = endDate;

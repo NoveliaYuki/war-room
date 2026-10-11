@@ -14,7 +14,7 @@ import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, trapModalTab } from "./modalA11y.js";
 import { showToast } from "./utils/toast.js";
 import { confirmAction } from "./utils/confirmDialog.js";
-import { escapeHtml } from "./utils/sanitize.js";
+import { escapeAttr, escapeHtml } from "./utils/sanitize.js";
 import { renderMarkdown } from "./utils/markdown.js";
 import { filterJobs } from "./utils/processFilters.js";
 import { readSavedSortMode, sortJobsForDisplay } from "./utils/processOrdering.js";
@@ -721,6 +721,9 @@ async function openSearchPeriodsModal() {
   closeMobileMenu();
   cancelPendingFlipClose(true);
   resetModalAnimation();
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const suggestedPeriodName = defaultSearchPeriodName(currentMonth, "");
   modalEl.classList.add("data-transfer-modal");
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
@@ -731,7 +734,7 @@ async function openSearchPeriodsModal() {
     <div class="search-period-manager">
       <form id="search-period-form" class="search-period-form">
         <input type="hidden" name="id" />
-        <label>Name<input name="name" maxlength="100" required placeholder="March 2026" /></label>
+        <label>Name<input name="name" maxlength="100" required placeholder="${escapeAttr(suggestedPeriodName)}" /></label>
         <div class="form-grid form-grid-two">
           <label>Start date<input name="start_date" type="date" required /></label>
           <label>End date<input name="end_date" type="date" /><span class="search-period-optional">Optional · leave blank while the search is active</span></label>
