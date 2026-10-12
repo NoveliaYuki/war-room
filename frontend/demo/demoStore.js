@@ -10,7 +10,7 @@ const STORAGE_KEY = "war-room-demo-data-v13";
 const TECHNOLOGY_STORAGE_KEY = "war-room-demo-technologies-v1";
 const SCHEDULE_DATE_KEY = "war-room-demo-schedule-date";
 const DEMO_SEED_VERSION_KEY = "war-room-demo-seed-version";
-const DEMO_SEED_VERSION = "6";
+const DEMO_SEED_VERSION = "7";
 const NEW_DEMO_SEED_IDS = new Set(["demo-10", "demo-11", "demo-12"]);
 const NEW_DEMO_TECHNOLOGY_IDS = new Set(["tech-aws", "tech-terraform"]);
 const BACKUP_FORMAT = "war-room-demo-backup";
@@ -114,11 +114,15 @@ function migrateDemoTechnologyCatalog() {
 function migrateDemoTimestamps(records, seededJobs) {
   const now = Math.floor(Date.now() / 1000);
   records.forEach((job) => {
+    const seed = seededJobs.get(job.id);
     for (const field of ["created_at", "updated_at", "status_changed_at"]) {
       if (Number(job[field]) > 1e12) job[field] = Math.floor(Number(job[field]) / 1000);
     }
     if (!Number(job.status_changed_at)) {
-      job.status_changed_at = seededJobs.get(job.id)?.status_changed_at || Number(job.created_at) || now;
+      job.status_changed_at = seed?.status_changed_at || Number(job.created_at) || now;
+    }
+    if (job.status === "waiting" && !job.is_referral && !job.application_sent_date && seed?.application_sent_date) {
+      job.application_sent_date = seed.application_sent_date;
     }
   });
 }
@@ -747,7 +751,13 @@ function validateDemoTechnology(name, aliases, excludeID = "") {
 }
 
 function jobWithCurrentTechnologies(job) {
-  return { ...job, technologies: (job.technologies || []).map((item) => technologies.find((technology) => technology.id === item.id) || item).map((item) => ({ id: item.id, name: item.name })) };
+  return {
+    ...job,
+    technologies: (job.technologies || []).map((item) => {
+      const technology = technologies.find((entry) => entry.id === item.id) || item;
+      return { id: technology.id, name: technology.name, aliases: technology.aliases || [] };
+    }),
+  };
 }
 
 function listDemoTechnologies() {
@@ -789,6 +799,7 @@ function makeJob(payload) {
     experience_notes: payload.experience_notes || "", expected_salary: payload.expected_salary || "",
     work_arrangement: payload.work_arrangement || "unknown", employment_type: payload.employment_type || "unknown",
     search_period_id: requestedPeriod || null,
+    application_sent_date: payload.is_referral ? null : today,
     is_referral: Boolean(payload.is_referral), order_index: jobs.length, created_at: nowSeconds, status_changed_at: nowSeconds, updated_at: nowSeconds,
     interviewers: [], stages: [], attachments: [],
     technologies: [],

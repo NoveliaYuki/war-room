@@ -25,7 +25,14 @@
 export function makeInlineEditable(element, options = {}) {
   if (!element) return;
   element.classList.add("editable-text");
-  element.addEventListener(options.eventName || "dblclick", (event) => startInlineEditing(element, options, event));
+  const eventName = options.eventName || "dblclick";
+  element.dataset.editEvent = eventName;
+  const editHint = eventName === "click" ? "Click to edit" : "Double-click to edit";
+  const existingTitle = element.getAttribute("title");
+  if (!existingTitle?.toLowerCase().includes("edit")) {
+    element.title = existingTitle ? `${existingTitle} · ${editHint}` : editHint;
+  }
+  element.addEventListener(eventName, (event) => startInlineEditing(element, options, event));
 }
 
 /** Resolves the current value before replacing the display with an editor. */

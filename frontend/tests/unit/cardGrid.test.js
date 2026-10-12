@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   },
   openWithFlip: vi.fn(),
   openDetailModal: vi.fn(),
+  confirmAction: vi.fn(),
   inlineEditors: [],
   toast: vi.fn(),
 }));
@@ -17,6 +18,7 @@ vi.mock('../../public/js/api.js', () => ({ api: mocks.api }));
 vi.mock('../../public/js/flip.js', () => ({ openWithFlip: mocks.openWithFlip }));
 vi.mock('../../public/js/components/detailModal.js', () => ({ openDetailModal: mocks.openDetailModal }));
 vi.mock('../../public/js/utils/toast.js', () => ({ showToast: mocks.toast }));
+vi.mock('../../public/js/utils/confirmDialog.js', () => ({ confirmAction: mocks.confirmAction }));
 vi.mock('../../public/js/inlineEdit.js', () => ({
   makeInlineEditable: (element, options) => mocks.inlineEditors.push({ element, options }),
   parseSalaryInput: (value) => ({ salary_input: value }),
@@ -91,10 +93,10 @@ describe('cardGrid', () => {
     mocks.openWithFlip.mockReset();
     mocks.openDetailModal.mockReset();
     mocks.toast.mockReset();
+    mocks.confirmAction.mockReset().mockResolvedValue(true);
     mocks.inlineEditors.length = 0;
     vi.useRealTimers();
     window.showToast = undefined;
-    vi.stubGlobal('confirm', vi.fn(() => true));
   });
 
   afterEach(() => {
@@ -113,10 +115,50 @@ describe('cardGrid', () => {
     expect(card.querySelector('.card-tech-count').textContent).toBe('3');
   });
 
-  it('reserves the touch gesture for card drag and manually managed page scrolling', () => {
+  it('omits the technology preview when no technologies are recorded', () => {
+    const { card } = setup([makeJob({ technologies: [] })]);
+
+    expect(card.querySelector('.card-tech-stack')).toBeNull();
+  });
+
+  it('limits card technology previews and points to the full stack in process details', () => {
+    const { card } = setup([makeJob({ technologies: [
+      { id: 'react', name: 'React' },
+      { id: 'kubernetes', name: 'Kubernetes' },
+      { id: 'typescript', name: 'TypeScript' },
+      { id: 'go', name: 'Go' },
+      { id: 'docker', name: 'Docker' },
+      { id: 'terraform', name: 'Terraform' },
+    ] })]);
+
+    expect([...card.querySelectorAll('.card-technology-chip')].map((chip) => chip.textContent))
+      .toEqual(['React', 'Kubernetes', 'TypeScript', 'Go']);
+    expect(card.querySelector('.card-technology-more').textContent).toBe('+2 more');
+    expect(card.querySelector('.card-tech-stack').getAttribute('aria-label'))
+      .toBe('Technology stack preview: 4 shown, 2 more in process details.');
+    expect(card.querySelector('.card-tech-count').textContent).toBe('6');
+  });
+
+  it('shows concise technology aliases and combines same-day added and CV dates', () => {
+    const { card } = setup([makeJob({
+      technologies: [{ id: 'mcp', name: 'Model Context Protocol', aliases: ['MCP'] }],
+      created_at: '2026-10-10',
+      application_sent_date: '2026-10-10',
+      recruiter_first_contact_date: '2026-10-12',
+    })]);
+
+    const technology = card.querySelector('.card-technology-chip');
+    expect(technology.textContent).toBe('MCP');
+    expect(technology.title).toBe('Model Context Protocol');
+    expect([...card.querySelectorAll('.card-process-dates strong')].map((label) => label.textContent))
+      .toEqual(['Added & CV sent', 'Recruiter']);
+  });
+
+  it('keeps card content scrollable while reserving the drag handle for reordering', () => {
     const { card } = setup();
 
-    expect(card.style.touchAction).toBe('none');
+    expect(card.style.touchAction).toBe('pan-y');
+    expect(card.querySelector('.btn-card-drag').style.touchAction).toBe('none');
   });
 
   it('keeps cards natively scrollable when automatic ordering is active', () => {
@@ -193,7 +235,7 @@ describe('cardGrid', () => {
       'Remote', 'Hybrid', 'On-site',
     ]);
     expect(container.querySelector('[data-id="unknown"] .work-arrangement-tag')).toBeNull();
-    expect(container.querySelector('[data-id="remote"] .card-summary .keyword-note').textContent).toBe('No role highlights added');
+    expect(container.querySelector('[data-id="remote"] .card-summary')).toBeNull();
   });
 
   it('renders unknown companies and stage summaries while filtering salary highlights', () => {
@@ -280,7 +322,7 @@ describe('cardGrid', () => {
   it('does not repeat referral in the card summary', () => {
     const { card } = setup([makeJob({ is_referral: true, keyword_note: 'Referral' })]);
     expect(card.querySelector('.referral-tag').textContent).toContain('Referral');
-    expect(card.querySelector('.keyword-note').textContent).toContain('No role highlights added');
+    expect(card.querySelector('.card-summary')).toBeNull();
   });
 
   it('renders the count stage label without showing a job-level recruiter', () => {
@@ -294,9 +336,17 @@ describe('cardGrid', () => {
     const openButton = card.querySelector('.btn-card-open-details');
 
     expect(openButton.textContent.trim()).toBe('');
-    expect(openButton.getAttribute('aria-label')).toBe('Open details for Engineer');
+    expect(openButton.getAttribute('aria-label')).toBe('Open details for Engineer at Acme');
     openButton.click();
     expect(mocks.openDetailModal).toHaveBeenCalledOnce();
+  });
+
+  it('gives the icon-only delete button an accessible name', () => {
+    const { card } = setup();
+    const deleteButton = card.querySelector('.btn-card-delete');
+
+    expect(deleteButton.textContent.trim()).toBe('');
+    expect(deleteButton.getAttribute('aria-label')).toBe('Delete selection process for Engineer at Acme');
   });
 
   it('keeps role highlights at the top and stage navigation in the bottom footer', () => {
@@ -355,7 +405,7 @@ describe('cardGrid', () => {
     const refresh = vi.fn();
     const { card } = setup([makeJob()], { refresh });
     const referral = card.querySelector('.editable-card-referral');
-    const event = new Event('dblclick', { bubbles: true, cancelable: true });
+    const event = new Event('click', { bubbles: true, cancelable: true });
     const stop = vi.spyOn(event, 'stopPropagation');
     referral.dispatchEvent(event);
     await Promise.resolve();
@@ -363,37 +413,32 @@ describe('cardGrid', () => {
     expect(stop).toHaveBeenCalledOnce();
     expect(mocks.api.updateJob).toHaveBeenCalledWith('job-1', { is_referral: 1 });
     expect(refresh).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(referral.disabled).toBe(false));
 
     const showToast = vi.fn();
     window.showToast = showToast;
     mocks.api.updateJob.mockRejectedValueOnce(new Error('toggle failed'));
-    referral.dispatchEvent(new Event('dblclick', { bubbles: true, cancelable: true }));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(mocks.toast).toHaveBeenCalledWith('toggle failed', 'error');
+    referral.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('toggle failed', 'error'));
     expect(showToast).not.toHaveBeenCalled();
 
     mocks.api.deleteJob.mockResolvedValueOnce();
     card.querySelector('.btn-card-delete').click();
-    await Promise.resolve();
-    expect(mocks.api.deleteJob).toHaveBeenCalledWith('job-1');
-    expect(refresh).toHaveBeenCalledTimes(2);
-    vi.stubGlobal('confirm', vi.fn(() => false));
+    await vi.waitFor(() => expect(mocks.api.deleteJob).toHaveBeenCalledWith('job-1'));
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    mocks.confirmAction.mockResolvedValueOnce(false);
     card.querySelector('.btn-card-delete').click();
     expect(mocks.api.deleteJob).toHaveBeenCalledOnce();
     mocks.api.deleteJob.mockRejectedValueOnce(new Error('delete failed'));
-    vi.stubGlobal('confirm', vi.fn(() => true));
     card.querySelector('.btn-card-delete').click();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(mocks.toast).toHaveBeenCalledWith('delete failed', 'error');
+    await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('delete failed', 'error'));
   });
 
   it('shows referral success feedback and tolerates missing refresh callbacks', async () => {
     const { card } = setup([makeJob({ is_referral: true })]);
     const showToast = vi.fn();
     window.showToast = showToast;
-    card.querySelector('.editable-card-referral').dispatchEvent(new Event('dblclick', { bubbles: true }));
+    card.querySelector('.editable-card-referral').dispatchEvent(new Event('click', { bubbles: true }));
     await Promise.resolve();
     expect(mocks.api.updateJob).toHaveBeenCalledWith('job-1', { is_referral: 0 });
     expect(showToast).toHaveBeenCalledWith('Marked as Non-referral', 'success', 1200);
@@ -407,7 +452,7 @@ describe('cardGrid', () => {
     const { card } = setup([makeJob()]);
     const showToast = vi.fn();
     window.showToast = showToast;
-    card.querySelector('.editable-card-referral').dispatchEvent(new Event('dblclick', { bubbles: true }));
+    card.querySelector('.editable-card-referral').dispatchEvent(new Event('click', { bubbles: true }));
     await Promise.resolve();
     expect(showToast).toHaveBeenCalledWith('Marked as Referral', 'success', 1200);
   });
@@ -437,7 +482,7 @@ describe('cardGrid', () => {
     vi.advanceTimersByTime(2);
     expect(mocks.openDetailModal).toHaveBeenCalledTimes(buttonCalls);
     card.querySelector('.editable-card-company').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    vi.advanceTimersByTime(220);
+    vi.advanceTimersByTime(500);
     await Promise.resolve();
     expect(mocks.openDetailModal).toHaveBeenCalledTimes(buttonCalls + 1);
     const callsBeforeDrag = mocks.openDetailModal.mock.calls.length;
@@ -536,7 +581,7 @@ describe('cardGrid', () => {
     card.dispatchEvent(contextMenuBeforeHold);
     expect(contextMenuBeforeHold.defaultPrevented).toBe(false);
 
-    card.dispatchEvent(touchEvent('touchstart'));
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart'));
     const touchMoveBeforeHold = touchEvent('touchmove', { x: 10, y: 10 });
     window.dispatchEvent(touchMoveBeforeHold);
     expect(touchMoveBeforeHold.defaultPrevented).toBe(false);
@@ -569,7 +614,7 @@ describe('cardGrid', () => {
     vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 });
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
-    card.dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
     vi.advanceTimersByTime(499);
     vi.setSystemTime(Date.now() + 2);
     window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 30 }));
@@ -585,7 +630,7 @@ describe('cardGrid', () => {
     const { card } = setup();
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
-    card.dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
     vi.advanceTimersByTime(50);
     window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 18 }));
     vi.advanceTimersByTime(180);
@@ -606,7 +651,7 @@ describe('cardGrid', () => {
     vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(top);
 
-    bottom.dispatchEvent(touchEvent('touchstart', { x: 20, y: 270 }));
+    bottom.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 20, y: 270 }));
     vi.advanceTimersByTime(500);
     window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 10 }));
     window.dispatchEvent(touchEvent('touchend'));
@@ -624,7 +669,7 @@ describe('cardGrid', () => {
     vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(bottom);
 
-    top.dispatchEvent(touchEvent('touchstart', { x: 20, y: 10 }));
+    top.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 20, y: 10 }));
     vi.advanceTimersByTime(500);
     window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 470 }));
     window.dispatchEvent(touchEvent('touchend'));
@@ -633,12 +678,30 @@ describe('cardGrid', () => {
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
   });
 
+  it('reorders cards with the keyboard and announces the saved position', async () => {
+    const announcer = document.createElement('p');
+    announcer.id = 'card-reorder-announcer';
+    document.body.append(announcer);
+    const { container } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b', company_name: 'Beta' })]);
+    const firstHandle = container.querySelector('[data-id="a"] .btn-card-drag');
+    firstHandle.focus();
+    const blockedMove = new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true });
+    firstHandle.dispatchEvent(blockedMove);
+    expect(blockedMove.defaultPrevented).toBe(false);
+    expect([...container.querySelectorAll('.process-card')].map((card) => card.dataset.id)).toEqual(['a', 'b']);
+
+    firstHandle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['b', 'a']));
+    await vi.waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-id="a"] .btn-card-drag')));
+    expect(announcer.textContent).toBe('Engineer at Acme moved to position 2 of 2.');
+  });
+
   it('forwards vertical movement to page scrolling until the hold becomes a drag', () => {
     vi.useFakeTimers();
     const { card } = setup();
     const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
 
-    card.dispatchEvent(touchEvent('touchstart', { x: 10, y: 100 }));
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 10, y: 100 }));
     window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 80 }));
     expect(scrollBy).not.toHaveBeenCalled();
     window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 50 }));
@@ -652,7 +715,7 @@ describe('cardGrid', () => {
     vi.useFakeTimers();
     const { card } = setup();
 
-    card.dispatchEvent(touchEvent('touchstart'));
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart'));
     window.dispatchEvent(touchEvent('touchmove', { x: 60, y: 10 }));
     vi.advanceTimersByTime(180);
 

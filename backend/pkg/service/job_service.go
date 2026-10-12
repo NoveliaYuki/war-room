@@ -103,7 +103,7 @@ func getFullJobDetails(repo *repository.Repository, id string) (*models.Job, err
 	return job, nil
 }
 
-// CreateJob validates and persists a job and its default stages.
+// CreateJob validates and persists a job and any explicitly requested stages.
 func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error) {
 	if err := s.validateCreateTechnologies(input.TechnologyIDs); err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func (s *JobService) assignCreateTechnologies(job *models.Job, ids []string) err
 }
 
 func (s *JobService) createStagesIfRequested(job *models.Job, input models.CreateJobInput) error {
-	if input.CreateDefaultStages != nil && !*input.CreateDefaultStages {
+	if input.CreateDefaultStages == nil || !*input.CreateDefaultStages {
 		return nil
 	}
 	return s.createDefaultStages(job, input)

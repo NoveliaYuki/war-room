@@ -185,6 +185,10 @@ func initDBWithOpener(cfg *config.Config, openDatabase func(string, string) (*sq
 		_ = db.Close()
 		return nil, fmt.Errorf("connect to sqlite database: %w", err)
 	}
+	if err := configureJournalMode(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("configure sqlite journal mode: %w", err)
+	}
 
 	if _, err := db.Exec(schemaSQL); err != nil {
 		_ = db.Close()
@@ -209,10 +213,43 @@ func sqliteDataSource(databasePath string) string {
 	query := url.Values{}
 	query.Set("_foreign_keys", "on")
 	query.Set("_busy_timeout", "5000")
-	query.Set("_journal_mode", "WAL")
 	query.Set("_synchronous", "NORMAL")
 	location.RawQuery = query.Encode()
 	return location.String()
+}
+
+func configureJournalMode(db *sql.DB) error {
+	return configureJournalModeWithSetter(func(mode string) (string, error) {
+		var actual string
+		var query string
+		switch mode {
+		case "WAL":
+			query = "PRAGMA journal_mode=WAL"
+		case "DELETE":
+			query = "PRAGMA journal_mode=DELETE"
+		default:
+			return "", fmt.Errorf("unsupported SQLite journal mode %q", mode)
+		}
+		err := db.QueryRow(query).Scan(&actual)
+		return actual, err
+	})
+}
+
+func configureJournalModeWithSetter(setJournalMode func(string) (string, error)) error {
+	mode, walErr := setJournalMode("WAL")
+	if walErr == nil && strings.EqualFold(mode, "wal") {
+		return nil
+	}
+
+	mode, fallbackErr := setJournalMode("DELETE")
+	if fallbackErr != nil {
+		return fmt.Errorf("WAL mode failed (%v) and DELETE mode failed: %w", walErr, fallbackErr)
+	}
+	if !strings.EqualFold(mode, "delete") {
+		return fmt.Errorf("SQLite returned unexpected fallback journal mode %q", mode)
+	}
+	log.Print("SQLite WAL mode unavailable; using DELETE journal mode")
+	return nil
 }
 
 type columnMigration struct {

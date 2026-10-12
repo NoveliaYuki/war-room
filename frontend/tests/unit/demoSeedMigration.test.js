@@ -74,4 +74,16 @@ describe('demo seed migration', () => {
     expect(job.description).toContain("NVIDIA's hybrid team");
     expect(job.stages[0]).toMatchObject({ status: 'current', description: 'Technical conversation at NVIDIA.', recruiter_agency: 'NVIDIA Talent Acquisition' });
   });
+
+  it('preserves legacy stage fields that are absent or belong to another recruiter', () => {
+    const job = {
+      id: 'demo-3',
+      company_name: 'Factorial',
+      company_domain: 'factorialhr.com',
+      stages: [{ description: null, recruiter_agency: 'External recruiter' }],
+    };
+
+    expect(migrateLegacyDemoJob([job], updatedSeed)).toBe(true);
+    expect(job.stages[0]).toEqual({ description: null, recruiter_agency: 'External recruiter' });
+  });
 });

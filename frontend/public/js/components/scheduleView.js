@@ -1,5 +1,6 @@
 import { showToast } from "../utils/toast.js";
 import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
+import { formatCalendarDate } from "../utils/date.js";
 /**
  * @fileoverview Everyday Schedule & Meetings View Component.
  * Answers every day whether you have a meeting to attend or not,
@@ -42,14 +43,12 @@ function getLocalDateString(offsetDays = 0) {
  */
 function formatNiceDate(dateStr) {
   if (!dateStr) return "Unscheduled Date";
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const d = new Date(year, month - 1, day);
-  return d.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatCalendarDate(dateStr, { weekday: true });
+}
+
+/** Formats a meeting count with the matching singular or plural noun. */
+function formatMeetingCount(count) {
+  return `${count} meeting${count === 1 ? "" : "s"}`;
 }
 
 function getStageTypeClass(type) {
@@ -227,7 +226,7 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
             <span>Today (${niceToday})</span>
           </div>
           <span class="${hasMeetingsToday ? 'today-badge-alert' : 'today-badge-calm'}">
-            ${hasMeetingsToday ? `${todayMeetings.length} Meeting(s) Scheduled Today` : 'No Meetings Today'}
+            ${hasMeetingsToday ? `${formatMeetingCount(todayMeetings.length)} scheduled today` : 'No meetings today'}
           </span>
         </div>
 
@@ -257,7 +256,7 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
             <h3 class="day-group-title">
               <span>Tomorrow (${formatNiceDate(tomorrowStr)})</span>
             </h3>
-            <span class="day-group-count">${tomorrowMeetings.length} meeting(s)</span>
+            <span class="day-group-count">${formatMeetingCount(tomorrowMeetings.length)}</span>
           </div>
           <div class="meetings-list">
             ${renderMeetingsRows(tomorrowMeetings)}
@@ -275,7 +274,7 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
             <h3 class="day-group-title">
               <span>Upcoming Dates</span>
             </h3>
-            <span class="day-group-count">${upcomingMeetings.length} meeting(s)</span>
+            <span class="day-group-count">${formatMeetingCount(upcomingMeetings.length)}</span>
           </div>
           <div class="meetings-list">
             ${renderMeetingsRows(upcomingMeetings)}

@@ -13,6 +13,7 @@ describe('avatar', () => {
     const avatar = renderCompanyAvatar('');
     expect(avatar).toContain('<svg');
     expect(avatar).toContain('viewBox="0 0 64 64"');
+    expect(renderCompanyAvatar('', '', 32)).toContain('viewBox="0 0 32 32"');
   });
   it('supports different sizes', () => {
     const avatar = renderCompanyAvatar('Example Company', 'example.com', 48);

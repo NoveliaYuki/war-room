@@ -13,12 +13,14 @@ import { icon } from "../icons.js";
 import { makeInlineEditable, parseSalaryInput } from "../inlineEdit.js";
 import { escapeHtml, escapeAttr } from "../utils/sanitize.js";
 import { formatSalary } from "../utils/salary.js";
+import { confirmAction } from "../utils/confirmDialog.js";
 
 const EMPLOYMENT_TYPE_LABELS = new Map([
 	["permanent", "Permanent"],
 	["b2b", "B2B"],
 	["permanent_b2b", "Permanent / B2B"],
 ]);
+const CARD_TECHNOLOGY_PREVIEW_LIMIT = 4;
 
 const EMPTY_STATUS_COPY = {
 	waiting: { title: "No waiting processes yet", description: "Processes you mark as waiting will appear here." },
@@ -73,7 +75,8 @@ function getCardSalaryRawValue(job) {
 function renderReferralTag(job) {
   const stateClass = job.is_referral ? "is-referral" : "not-referral";
   const label = job.is_referral ? "Referral" : "No referral";
-  return `<span class="referral-tag ${stateClass} editable-card-referral inline-icon-text" data-id="${escapeAttr(job.id)}" title="Double click to toggle Referral status">${icon("userCheck", 11)} ${label}</span>`;
+  const action = job.is_referral ? "Remove referral" : "Mark as referral";
+  return `<button type="button" class="referral-tag ${stateClass} editable-card-referral inline-icon-text" data-id="${escapeAttr(job.id)}" aria-pressed="${Boolean(job.is_referral)}" aria-label="${label}. ${action}." title="${action}">${icon("userCheck", 11)} ${label}</button>`;
 }
 
 /** Renders a job's employment type on its card. */
@@ -114,22 +117,25 @@ function getCardRoleHighlights(job) {
 /** Renders the role highlights in the card's consistent summary slot. */
 function renderCardRoleHighlights(job) {
   const highlights = getCardRoleHighlights(job);
-  return highlights.length
-    ? escapeHtml(highlights.join(" • "))
-    : '<span class="card-summary-empty">No role highlights added</span>';
+  if (!highlights.length) return "";
+  return `<div class="card-summary"><div class="card-summary-label">Role highlights</div><div class="keyword-note editable-card-keyword" data-raw-value="${escapeAttr(job.keyword_note || "")}" title="Role highlights">${escapeHtml(highlights.join(" • "))}</div></div>`;
 }
 
 function renderCardTechnologyStack(job) {
   const technologies = job.technologies || [];
-  const contents = technologies.length
-    ? technologies.map((technology) => {
-      const alias = technology.aliases?.find((item) => item.trim() && item.trim().length < technology.name.length);
-      const label = alias || technology.name;
-      const title = alias ? ` title="${escapeAttr(technology.name)}"` : "";
-      return `<span class="card-technology-chip"${title}>${escapeHtml(label)}</span>`;
-    }).join("")
-    : '<span class="card-summary-empty">No technologies recorded</span>';
-  return `<div class="card-tech-stack"><div class="card-summary-label">Tech stack <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
+  if (!technologies.length) return "";
+  const visibleTechnologies = technologies.slice(0, CARD_TECHNOLOGY_PREVIEW_LIMIT);
+  const remainingCount = technologies.length - visibleTechnologies.length;
+  const contents = `${visibleTechnologies.map((technology) => {
+    const alias = technology.aliases?.find((item) => item.trim() && item.trim().length < technology.name.length);
+    const label = alias || technology.name;
+    const title = alias ? ` title="${escapeAttr(technology.name)}"` : "";
+    return `<span class="card-technology-chip"${title}>${escapeHtml(label)}</span>`;
+  }).join("")}${remainingCount ? `<span class="card-technology-more" title="Open details to view the full stack">+${remainingCount} more</span>` : ""}`;
+  const previewLabel = remainingCount
+    ? `Technology stack preview: ${visibleTechnologies.length} shown, ${remainingCount} more in process details.`
+    : `Technology stack: ${technologies.length} items.`;
+  return `<div class="card-tech-stack" role="group" aria-label="${escapeAttr(previewLabel)}"><div class="card-summary-label">Tech stack <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
 }
 
 /** Formats date-only fields without shifting them across time zones. */
@@ -142,13 +148,17 @@ function formatCardDate(value) {
 
 /** Renders the creation and optional application/contact dates on a job card. */
 function renderCardProcessDates(job) {
-  const dates = [["Added", formatCardDate(job.created_at)], ["CV sent", formatCardDate(job.application_sent_date)], ["Recruiter", formatCardDate(job.recruiter_first_contact_date)]]
-    .filter(([, date]) => date);
-  return `<div class="card-process-dates" aria-label="Process dates">${dates.map(([label, date]) => `<span><strong>${label}</strong> ${escapeHtml(date)}</span>`).join("")}</div>`;
+  const addedDate = formatCardDate(job.created_at);
+  const cvSentDate = formatCardDate(job.application_sent_date);
+  const dates = addedDate && cvSentDate && addedDate === cvSentDate
+    ? [["Added & CV sent", addedDate], ["Recruiter", formatCardDate(job.recruiter_first_contact_date)]]
+    : [["Added", addedDate], ["CV sent", cvSentDate], ["Recruiter", formatCardDate(job.recruiter_first_contact_date)]];
+  const availableDates = dates.filter(([, date]) => date);
+  return `<div class="card-process-dates" aria-label="Process dates">${availableDates.map(([label, date]) => `<span><strong>${label}</strong> ${escapeHtml(date)}</span>`).join("")}</div>`;
 }
 
 /** Creates and fills the static markup for one job card. */
-function createCardElement(job) {
+function createCardElement(job, sortMode) {
   const card = document.createElement("div");
   card.className = "process-card";
   card.style.touchAction = "pan-y";
@@ -158,20 +168,25 @@ function createCardElement(job) {
   const stageIndicator = getStageIndicator(job);
   const salaryText = formatSalaryShort(job.salary_type, job.salary_min, job.salary_max, job.salary_currency);
   const companyClass = isUnknownCompany(job.company_name) ? "is-unknown" : "";
+  const accessibleCompanyName = isUnknownCompany(job.company_name) ? "undisclosed company" : job.company_name;
+  const processLabel = `${job.position_title} at ${accessibleCompanyName}`;
   const salaryClass = job.salary_type === "unknown" ? "undisclosed" : "";
+  const dragHandle = sortMode === "manual"
+    ? `<button class="btn-card-drag" type="button" aria-label="Reorder ${escapeAttr(processLabel)}" aria-keyshortcuts="ArrowUp ArrowDown" title="Hold and drag to reorder · use ↑ or ↓ to move">${icon("gripLines", 15)}</button>`
+    : "";
   card.innerHTML = `<div class="card-content"><div class="card-header"><div class="card-avatar">${avatarHtml}</div><div class="card-title-group">
     <div class="card-company editable-card-company ${companyClass}" data-raw-value="${escapeAttr(job.company_name)}">${renderCardCompany(job.company_name)}</div>
     <h3 class="card-position editable-card-position" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h3>
   </div><div class="card-header-actions"><span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(job.status)}</span>
-    <button class="btn-card-delete" title="Delete this selection process" data-id="${escapeAttr(job.id)}">${icon("trash", 13)}</button></div></div>
+    <button class="btn-card-delete" type="button" aria-label="Delete selection process for ${escapeAttr(processLabel)}" title="Delete this selection process" data-id="${escapeAttr(job.id)}">${icon("trash", 15)}</button></div></div>
   <div class="card-body"><span class="salary-tag editable-card-salary ${salaryClass}" data-raw-value="${escapeAttr(getCardSalaryRawValue(job))}">${escapeHtml(salaryText)}</span>
     ${renderReferralTag(job)}${renderEmploymentTypeTag(job.employment_type)}${renderWorkArrangementTag(job.work_arrangement)}</div>
-  <div class="card-summary"><div class="card-summary-label">Role highlights</div><div class="keyword-note editable-card-keyword" data-raw-value="${escapeAttr(job.keyword_note || "")}" title="Role highlights">${renderCardRoleHighlights(job)}</div></div>
+  ${renderCardRoleHighlights(job)}
   ${renderCardProcessDates(job)}
   ${renderCardTechnologyStack(job)}</div>
   <div class="card-footer">
     <div class="card-stage-indicator"><span class="card-stage-summary" title="${escapeAttr(stageIndicator.text)}">${stageIndicator.markup}</span>
-      <button class="btn-card-open-details" type="button" aria-label="Open details for ${escapeAttr(job.position_title)}" title="Open details">${icon("arrowUpRight", 14)}</button></div></div>`;
+      <div class="card-footer-actions">${dragHandle}<button class="btn-card-open-details" type="button" aria-label="Open details for ${escapeAttr(processLabel)}" title="Open details">${icon("arrowUpRight", 14)}</button></div></div></div>`;
   setWideLogoFrame(card);
   return card;
 }
@@ -238,19 +253,25 @@ function bindTextEditor(element, job, options, onGlobalRefresh) {
 /** Binds the referral status toggle to its card badge. */
 function bindCardReferralToggle(element, job, onGlobalRefresh) {
   if (!element) return;
-  element.classList.add("editable-text");
-  element.addEventListener("dblclick", async (event) => {
+  element.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (element.disabled) return;
+    element.disabled = true;
     try {
-      event.preventDefault();
-      event.stopPropagation();
       const nextValue = job.is_referral ? 0 : 1;
       await api.updateJob(job.id, { is_referral: nextValue });
       if (typeof window !== "undefined" && typeof window.showToast === "function") {
         window.showToast(nextValue ? "Marked as Referral" : "Marked as Non-referral", "success", 1200);
       }
-      onGlobalRefresh?.();
+      await onGlobalRefresh?.();
+      const updatedButton = [...document.querySelectorAll(".editable-card-referral")]
+        .find((button) => button.dataset.id === String(job.id));
+      (updatedButton || document.querySelector("#process-filter-trigger"))?.focus();
     } catch (error) {
       showToast(error.message, "error");
+    } finally {
+      if (element.isConnected) element.disabled = false;
     }
   });
 }
@@ -260,9 +281,24 @@ function bindCardDeletion(card, job, onGlobalRefresh) {
   card.querySelector(".btn-card-delete").addEventListener("click", async (event) => {
     try {
       event.stopPropagation();
-      if (!confirm(`Delete selection process for "${job.company_name} - ${job.position_title}"?`)) return;
+      const confirmed = await confirmAction({
+        title: "Delete selection process?",
+        message: `${job.company_name} — ${job.position_title} will be permanently removed.`,
+        confirmLabel: "Delete process",
+        danger: true,
+      });
+      if (!confirmed) return;
+      const cardsBeforeDelete = [...(card.parentElement?.querySelectorAll(".process-card") || [])];
+      const currentIndex = cardsBeforeDelete.indexOf(card);
+      const adjacentCardId = cardsBeforeDelete[currentIndex + 1]?.dataset.id
+        || cardsBeforeDelete[currentIndex - 1]?.dataset.id;
       await api.deleteJob(job.id);
-      onGlobalRefresh?.();
+      await onGlobalRefresh?.();
+      const adjacentCard = [...document.querySelectorAll(".process-card")]
+        .find((item) => item.dataset.id === adjacentCardId);
+      const focusTarget = adjacentCard?.querySelector(".btn-card-open-details")
+        || document.querySelector("#cards-grid .btn-create-first-process, #cards-grid .btn-reset-process-view");
+      focusTarget?.focus();
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -285,17 +321,18 @@ function isNestedControl(target) {
 
 /** Binds card click and double-click behavior for opening details. */
 function bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive) {
+  const detailClickDelayMs = 500;
   let cardClickTimer = null;
   const openDetails = () => openCardDetails(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
   card.querySelector(".btn-card-open-details")?.addEventListener("click", openDetails);
   card.addEventListener("click", (event) => {
     if (isDragActive() || isNestedControl(event.target)) return;
-    if (event.target.closest(".editable-text")) {
+    if (event.target.closest(".editable-text") && event.pointerType !== "touch") {
       if (cardClickTimer) clearTimeout(cardClickTimer);
       cardClickTimer = setTimeout(() => {
         cardClickTimer = null;
         openDetails();
-      }, 220);
+      }, detailClickDelayMs);
       return;
     }
     openDetails();
@@ -304,39 +341,54 @@ function bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isD
     if (!cardClickTimer) return;
     clearTimeout(cardClickTimer);
     cardClickTimer = null;
-  });
+  }, true);
 }
 
 function renderEmptyState(containerEl, context) {
   const hasProcesses = (context.totalCount ?? 0) > 0;
+  const hasCustomView = Boolean(context.hasCustomView) && hasProcesses;
   const statusCopy = Object.hasOwn(EMPTY_STATUS_COPY, context.filter)
     ? EMPTY_STATUS_COPY[context.filter]
     : null;
   const statusTabIsEmpty = Boolean(statusCopy && context.statusCount === 0 && hasProcesses);
-  const title = statusTabIsEmpty
-    ? statusCopy.title
-    : hasProcesses
-      ? "No selection processes match your current search or filters"
-      : "No selection processes found";
-  const description = statusTabIsEmpty
-    ? statusCopy.description
-    : hasProcesses
-      ? "Try adjusting or clearing your search and filters."
-      : "Track your interviews, recruiters, salary negotiations, and interview questions in one place.";
+  const copy = resolveEmptyStateCopy(hasProcesses, hasCustomView, statusTabIsEmpty, statusCopy);
   const empty = document.createElement("div");
   empty.className = "empty-state";
   empty.innerHTML = `
     <div class="empty-icon">${icon("briefcase", 36)}</div>
-    <h3 style="margin-bottom: 8px;">${title}</h3>
-    <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 16px;">${description}</p>
-    <button class="btn-primary btn-create-first-process" type="button">
-      <span class="inline-icon-text">${icon("plus", 14)} ${hasProcesses ? "Create Selection Process" : "Create First Selection Process"}</span>
-    </button>
+    <h3 style="margin-bottom: 8px;">${copy.title}</h3>
+    <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 16px;">${copy.description}</p>
+    ${hasCustomView
+      ? '<button class="btn-secondary btn-reset-process-view" type="button">Reset search and filters</button>'
+      : `<button class="btn-primary btn-create-first-process" type="button">
+          <span class="inline-icon-text">${icon("plus", 14)} ${hasProcesses ? "Create Selection Process" : "Create First Selection Process"}</span>
+        </button>`}
   `;
   empty.querySelector(".btn-create-first-process")?.addEventListener("click", () => {
     document.getElementById("btn-new-process")?.click();
   });
+  empty.querySelector(".btn-reset-process-view")?.addEventListener("click", () => context.onResetView?.());
   containerEl.appendChild(empty);
+}
+
+function resolveEmptyStateCopy(hasProcesses, hasCustomView, statusTabIsEmpty, statusCopy) {
+  if (hasCustomView) {
+    return {
+      title: "No selection processes match this view",
+      description: "Try different criteria, or reset your search, period, and filters to see all processes.",
+    };
+  }
+  if (statusTabIsEmpty) return statusCopy;
+  if (hasProcesses) {
+    return {
+      title: "No selection processes match your current search or filters",
+      description: "Try adjusting or clearing your search and filters.",
+    };
+  }
+  return {
+    title: "No selection processes found",
+    description: "Track your interviews, recruiters, salary negotiations, and interview questions in one place.",
+  };
 }
 
 /**
@@ -348,7 +400,7 @@ function renderEmptyState(containerEl, context) {
  * @param {HTMLElement} backdropEl - The modal backdrop element.
  * @param {Function} onGlobalRefresh - Global refresh callback.
  * @param {string} [sortMode='manual'] - Recent ordering or the user's saved manual order.
- * @param {{filter?: string, totalCount?: number, statusCount?: number}} [emptyStateContext] - Counts and active tab for an empty grid.
+ * @param {{filter?: string, totalCount?: number, statusCount?: number, hasCustomView?: boolean, onResetView?: () => void}} [emptyStateContext] - Counts and active tab for an empty grid.
  */
 export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropEl = null, onGlobalRefresh = null, sortMode = "manual", emptyStateContext = {}) {
   containerEl.innerHTML = "";
@@ -360,12 +412,15 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
 
   // 1. Render all active selection cards
   jobs.forEach((job) => {
-    const card = createCardElement(job);
+    const card = createCardElement(job, sortMode);
     bindCardInlineEditors(card, job, onGlobalRefresh);
     bindCardDeletion(card, job, onGlobalRefresh);
     const isDragActive = sortMode === "manual"
       ? enableHoldToDrag(card, containerEl, (newOrder) => Promise.resolve(api.reorderJobs(newOrder))
-        .then(() => onGlobalRefresh?.())
+        .then(async () => {
+          await onGlobalRefresh?.();
+          announceCardReorder(job, newOrder);
+        })
         .catch(() => showToast("Could not save card order", "error")))
       : () => false;
     bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
@@ -373,8 +428,10 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
   });
 
   // 2. Add the "+ Add Selection Process" quick action card in the preview grid
-  const addCard = document.createElement("div");
+  const addCard = document.createElement("button");
   addCard.className = "quick-add-card";
+  addCard.type = "button";
+  addCard.setAttribute("aria-label", "Add selection process");
   addCard.innerHTML = `
     <div class="quick-add-icon">${icon("plus", 22)}</div>
     <div class="quick-add-title">Add Selection Process</div>
@@ -386,6 +443,15 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
   containerEl.appendChild(addCard);
 }
 
+/** Announces a saved card position change to assistive technology. */
+function announceCardReorder(job, newOrder) {
+  const announcer = document.querySelector("#card-reorder-announcer");
+  const position = newOrder.indexOf(String(job.id));
+  if (!announcer || position < 0) return;
+  const company = isUnknownCompany(job.company_name) ? "undisclosed company" : job.company_name;
+  announcer.textContent = `${job.position_title} at ${company} moved to position ${position + 1} of ${newOrder.length}.`;
+}
+
 /**
  * Enables hold-to-drag reordering on a process card.
  *
@@ -395,7 +461,8 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
  * @returns {Function} Function returning true if drag or suppression is currently active.
  */
 function enableHoldToDrag(card, containerEl, onReorderFinished) {
-  card.style.touchAction = "none";
+  const dragHandle = card.querySelector(".btn-card-drag");
+  if (dragHandle) dragHandle.style.touchAction = "none";
   const MOUSE_HOLD_DELAY_MS = 180;
   const TOUCH_HOLD_DELAY_MS = 500;
   const HOLD_MOVE_THRESHOLD_PX = 32;
@@ -437,7 +504,8 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   function onPointerDown(e) {
     if (e.button !== 0) return;
     if (e.pointerType === "touch") return;
-    if (e.target.closest("button, a, input, textarea, .btn-card-delete")) return;
+    const isDragHandle = e.target.closest(".btn-card-drag");
+    if (e.target.closest("button, a, input, textarea, .btn-card-delete") && !isDragHandle) return;
 
     activePointerType = e.pointerType;
     beginHold(e, MOUSE_HOLD_DELAY_MS);
@@ -448,7 +516,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   function onTouchStart(e) {
-    if (e.touches.length !== 1 || e.target.closest("button, a, input, textarea, .btn-card-delete")) return;
+    if (e.touches.length !== 1 || !e.target.closest(".btn-card-drag")) return;
 
     const touch = e.touches[0];
     activePointerType = "touch";
@@ -654,6 +722,26 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
   card.addEventListener("pointerdown", onPointerDown);
   card.addEventListener("touchstart", onTouchStart, { passive: true });
+  dragHandle?.addEventListener("keydown", (event) => {
+    const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+    if (!direction) return;
+    const cards = Array.from(containerEl.querySelectorAll(".process-card"));
+    const currentIndex = cards.indexOf(card);
+    const nextCard = cards[currentIndex + direction];
+    if (!nextCard) return;
+    event.preventDefault();
+    if (direction < 0) containerEl.insertBefore(card, nextCard);
+    else containerEl.insertBefore(card, nextCard.nextSibling);
+    const newOrder = Array.from(containerEl.querySelectorAll(".process-card"))
+      .map((item) => item.getAttribute("data-id"))
+      .filter(Boolean);
+    Promise.resolve(onReorderFinished?.(newOrder)).finally(() => {
+      const refreshedHandle = Array.from(containerEl.querySelectorAll(".process-card"))
+        .find((item) => item.getAttribute("data-id") === card.getAttribute("data-id"))
+        ?.querySelector(".btn-card-drag");
+      refreshedHandle?.focus();
+    });
+  });
   card.addEventListener("contextmenu", (event) => {
     if (holdTimer !== null || isDragging) event.preventDefault();
   });

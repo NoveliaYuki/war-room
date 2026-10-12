@@ -257,8 +257,7 @@ func TestCreateJobDefaultsToWaitingAndUsesLatestCV(t *testing.T) {
 	if err := repo.InsertCVVersion(newer); err != nil {
 		t.Fatal(err)
 	}
-	noDefaults := false
-	created, err := jobs.CreateJob(models.CreateJobInput{PositionTitle: "Waiting default", CreateDefaultStages: &noDefaults})
+	created, err := jobs.CreateJob(models.CreateJobInput{PositionTitle: "Waiting default"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,6 +269,9 @@ func TestCreateJobDefaultsToWaitingAndUsesLatestCV(t *testing.T) {
 	}
 	if created.SelectedCVVersion == nil || created.SelectedCVVersion.ID != newer.ID {
 		t.Fatalf("selected CV=%+v, want latest %q", created.SelectedCVVersion, newer.ID)
+	}
+	if len(created.Stages) != 0 {
+		t.Fatalf("new job stages=%d, want no unverified default stages", len(created.Stages))
 	}
 }
 
@@ -992,7 +994,7 @@ func TestServiceDefaultsAndFailureBranches(t *testing.T) {
 func assertDefaultJobAndCreateSecond(t *testing.T, jobs *service.JobService) *models.Job {
 	t.Helper()
 	max := int64(120)
-	defaultJob, err := jobs.CreateJob(models.CreateJobInput{PositionTitle: "Default role", SalaryMax: &max})
+	defaultJob, err := jobs.CreateJob(models.CreateJobInput{PositionTitle: "Default role", SalaryMax: &max, CreateDefaultStages: ptr(true)})
 	if err != nil {
 		t.Fatal(err)
 	}

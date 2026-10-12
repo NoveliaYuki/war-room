@@ -8,6 +8,26 @@
   padding: 0 28px 60px;
 }
 
+#main-content { container-type: inline-size; }
+
+.app-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--status-rejected) 32%, var(--border-subtle));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--status-rejected) 6%, var(--bg-surface));
+}
+
+.app-load-error[hidden] { display: none; }
+.app-load-error-copy { display: grid; gap: 3px; min-width: 0; }
+.app-load-error-copy strong { color: var(--text-primary); font-size: 13px; }
+.app-load-error-copy span { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.app-load-error-retry { flex: 0 0 auto; min-height: 40px; }
+
 /* Header & Controls */
 .app-header {
   position: sticky;
@@ -263,12 +283,16 @@
 }
 
 .search-input {
+  box-sizing: border-box;
+  min-width: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   height: 42px;
   padding: 8px 36px 8px 36px;
   font-size: 13px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   width: 100%;
   transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
@@ -399,8 +423,12 @@
 
 /* Empty State */
 .empty-state {
+  grid-column: 1 / -1;
+  width: min(100%, 720px);
+  box-sizing: border-box;
+  justify-self: center;
   text-align: center;
-  padding: 80px 20px;
+  padding: 56px 20px;
   border: 1px dashed var(--border-subtle);
   border-radius: var(--radius-xl);
   background: var(--bg-drag-placeholder);
@@ -418,6 +446,15 @@
   width: fit-content;
   justify-content: center;
   margin-inline: auto;
+}
+
+.empty-state .btn-primary,
+.empty-state .btn-secondary { min-height: 40px; }
+
+.btn-reset-process-view {
+  width: fit-content;
+  justify-content: center;
+  margin: 0 auto;
 }
 
 .empty-title {
@@ -479,12 +516,19 @@
 
   .header-search-actions #btn-new-process,
   .header-search-actions .theme-toggle { flex: 0 0 auto; }
+
+  .header-search-actions #btn-new-process { margin-left: auto; }
 }
 
 @media (max-width: 1000px) {
   .app-container {
     padding: 0 14px 32px;
   }
+
+  .app-load-error { align-items: stretch; flex-direction: column; gap: 10px; padding: 12px; }
+  .app-load-error-retry { width: 100%; min-height: 44px; }
+  .empty-state .btn-primary,
+  .empty-state .btn-secondary { min-height: 44px; }
 
   .app-header {
     padding: 10px 14px;
@@ -498,9 +542,11 @@
   }
 
   .brand-section { align-self: center; }
-  .menu-toggle { display: inline-flex; grid-column: 1; grid-row: 1; }
+  .menu-toggle { display: inline-flex; grid-column: 1; grid-row: 1; width: 44px; height: 44px; }
   .brand-section { grid-column: 2; grid-row: 1; }
-  .theme-toggle { grid-column: 3; grid-row: 1; }
+  .theme-toggle { grid-column: 3; grid-row: 1; flex-basis: 44px; width: 44px; height: 44px; }
+  .filter-current { height: 44px; min-height: 44px; }
+  .filter-tab { min-height: 44px; }
   #btn-new-process { display: none; }
   #btn-new-process-mobile {
     display: inline-flex;
@@ -509,10 +555,10 @@
     justify-self: end;
     align-self: center;
     justify-content: center;
-    width: 42px;
-    min-width: 42px;
-    height: 42px;
-    min-height: 42px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
     padding: 0;
   }
   .header-controls { display: contents; }
@@ -526,9 +572,10 @@
   }
   .header-search-actions { display: contents; }
   .filter-tabs { width: fit-content; max-width: 100%; }
-  .schedule-trigger { min-height: 42px; }
+  .schedule-trigger { min-height: 44px; }
+  #btn-data-management { min-height: 44px; }
   .filter-menu { width: min(260px, calc(100vw - 28px)); }
-  .search-input { width: 100%; font-size: 16px; }
+  .search-input { width: 100%; font-size: 13px; }
   .search-input:focus { width: 100%; }
   #btn-new-process-mobile .new-process-label { display: none; }
 }
@@ -563,6 +610,7 @@
   }
   .header-controls:not(.is-open) .view-controls { display: flex; }
   .header-controls:not(.is-open) .header-search-actions > #btn-new-process { display: inline-flex; }
+  .header-search-actions #btn-new-process { margin-left: auto; }
 }
 
 @media (min-width: 801px) and (max-width: 1360px) {
