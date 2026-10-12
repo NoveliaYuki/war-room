@@ -366,7 +366,7 @@
   gap: 4px 10px;
   margin: 10px 0 12px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -666,21 +666,21 @@
 .card-summary-label {
   margin-bottom: 2px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .keyword-note {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 34px;
+  min-height: 41px;
   font-family: var(--font-sans);
 }
 
@@ -730,8 +730,8 @@
   border-radius: var(--radius-full);
   background: var(--bg-surface);
   color: var(--text-primary);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
@@ -741,8 +741,8 @@
   border: 1px dashed var(--border-medium);
   border-radius: var(--radius-full);
   color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.4;
   white-space: nowrap;
 }
 
@@ -750,7 +750,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
