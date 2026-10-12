@@ -271,7 +271,7 @@
 .search-period-actions { flex: 0 0 auto; }
 
 @container (max-width: 693px) {
-  .process-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 8px; }
+  .process-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; }
   .toolbar-search-filter { display: contents; }
   .process-search { grid-column: 1 / -1; grid-row: 1; justify-self: start; flex: 0 0 342px; width: 342px; min-width: 0; max-width: min(342px, 100%); }
   .process-filter-control { grid-column: 1; grid-row: 2; justify-self: start; width: max-content; }
@@ -324,7 +324,7 @@
 }
 
 @media (max-width: 360px) {
-  .process-toolbar { grid-template-columns: auto minmax(0, 1fr); }
+  .process-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
   .toolbar-view-controls { grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; width: auto; }
   .process-toolbar-active-state { grid-row: 3; }
   .process-filter-summary { grid-row: 4; }

@@ -246,6 +246,7 @@ type toolbarLayout struct {
 	Filter               layoutBox `json:"filter"`
 	ViewControls         layoutBox `json:"viewControls"`
 	Sort                 layoutBox `json:"sort"`
+	SortTrigger          layoutBox `json:"sortTrigger"`
 	Toolbar              layoutBox `json:"toolbar"`
 	Header               layoutBox `json:"header"`
 	Theme                layoutBox `json:"theme"`
@@ -926,6 +927,7 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    filter: box(".process-filter-control"),
 	    viewControls: box(".toolbar-view-controls"),
 	    sort: box(".process-sort-control"),
+	    sortTrigger: box(".process-sort-trigger"),
 	    toolbar: box(".process-toolbar"),
 	    header: box(".header-inner"),
 	    theme: box("#btn-theme-toggle"),
@@ -1025,6 +1027,9 @@ func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
 	assertSearchWidthUsesAvailableSpace(t, width, layout)
 	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
 		t.Errorf("%dpx sort control should remain aligned to the toolbar's right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
+	}
+	if layout.SortTrigger.X < layout.Toolbar.X-1 || layout.SortTrigger.Right > layout.Toolbar.Right+1 {
+		t.Errorf("%dpx sort button should stay fully inside the toolbar (button %.1f–%.1fpx, toolbar %.1f–%.1fpx)", width, layout.SortTrigger.X, layout.SortTrigger.Right, layout.Toolbar.X, layout.Toolbar.Right)
 	}
 }
 
