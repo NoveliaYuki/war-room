@@ -261,7 +261,7 @@ function renderJobDescription(job) {
     <div class="section-title">
       <span class="inline-icon-text">${icon("clipboard", 13)} Original Reachout / Description</span>
       ${job.description ? '<button class="btn-secondary btn-toggle-reachout" style="padding: 2px 8px; font-size: 11px;">Toggle</button>' : ''}
-      <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="description" style="padding: 2px 8px; font-size: 11px;">Edit</button>
+      <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="description">Edit</button>
     </div>
     <div id="reachout-text-container" class="editable-description markdown-preview" data-raw-value="${escapeAttr(job.description || '')}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); max-height: 260px; overflow-y: auto; display: none;">${renderMarkdownField(job.description, 'Add the original job posting or recruiter message.')}</div>
   </div>`;

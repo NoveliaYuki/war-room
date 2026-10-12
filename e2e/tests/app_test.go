@@ -288,6 +288,63 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	}
 }
 
+func TestJobDetailActionsRemainReadable(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	if err := page.Locator(".process-card").First().Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open demo job details: %v", err)
+	}
+	if err := page.Locator("#detail-modal .job-cv-row").WaitFor(); err != nil {
+		t.Fatalf("wait for CV controls: %v", err)
+	}
+	if _, err := page.Evaluate("() => document.getAnimations().forEach(animation => animation.finish())", nil); err != nil {
+		t.Fatalf("finish detail modal animation: %v", err)
+	}
+	assertJobDetailActionsReadable(t, readJobDetailActionMetrics(t, page))
+}
+
+type jobDetailActionMetric struct {
+	FontSize float64 `json:"fontSize"`
+	Height   float64 `json:"height"`
+}
+
+func readJobDetailActionMetrics(t *testing.T, page playwright.Page) []jobDetailActionMetric {
+	t.Helper()
+	metrics, err := page.Evaluate(`() => {
+	  const controls = [
+	    ...document.querySelectorAll("#detail-modal .job-cv-row button, #detail-modal .markdown-field-edit"),
+	  ].filter(button => button.getClientRects().length > 0);
+	  return controls.map(button => ({
+	    fontSize: Number.parseFloat(getComputedStyle(button).fontSize),
+	    height: button.getBoundingClientRect().height,
+	  }));
+	}`, nil)
+	if err != nil || metrics == nil {
+		t.Fatalf("read job-detail action metrics: %v", err)
+	}
+	encoded, err := json.Marshal(metrics)
+	if err != nil {
+		t.Fatalf("encode job-detail action metrics: %v", err)
+	}
+	var controls []jobDetailActionMetric
+	if err := json.Unmarshal(encoded, &controls); err != nil {
+		t.Fatalf("decode job-detail action metrics: %v", err)
+	}
+	return controls
+}
+
+func assertJobDetailActionsReadable(t *testing.T, controls []jobDetailActionMetric) {
+	t.Helper()
+	if len(controls) == 0 {
+		t.Fatal("expected visible job-detail actions")
+	}
+	for _, control := range controls {
+		if control.FontSize < 12 || control.Height < 34 {
+			t.Errorf("job-detail CV and edit actions should have readable labels and usable click targets (font %.1fpx, height %.1fpx)", control.FontSize, control.Height)
+		}
+	}
+}
+
 func TestQuestionEditorInputsAreMobileFriendly(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
