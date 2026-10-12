@@ -1482,20 +1482,26 @@ func TestDemoStageTabsExposeHorizontalOverflow(t *testing.T) {
 	}
 	if _, err := page.WaitForFunction(`() => {
 		const tabs = document.querySelector("#detail-modal .stages-tab-bar");
-		const next = document.querySelector("#detail-modal .stage-tabs-scroll-button.is-next");
-		return tabs && tabs.scrollWidth > tabs.clientWidth && next && !next.hidden;
+		const lastTab = tabs?.querySelector(".stage-tab-item:last-child");
+		return tabs && lastTab && tabs.scrollWidth > tabs.clientWidth;
 	}`, nil); err != nil {
-		t.Fatalf("overflowing interview stages should expose a scroll control: %v", err)
+		t.Fatalf("interview stages should overflow horizontally: %v", err)
 	}
-	if err := page.Locator("#detail-modal .stage-tabs-scroll-button.is-next").Click(); err != nil {
-		t.Fatalf("scroll to additional interview stages: %v", err)
+	if _, err := page.Evaluate(`() => {
+		const tabs = document.querySelector("#detail-modal .stages-tab-bar");
+		tabs.scrollLeft = tabs.scrollWidth;
+	}`, nil); err != nil {
+		t.Fatalf("scroll to the final interview stage: %v", err)
 	}
 	if _, err := page.WaitForFunction(`() => {
 		const tabs = document.querySelector("#detail-modal .stages-tab-bar");
-		const previous = document.querySelector("#detail-modal .stage-tabs-scroll-button.is-prev");
-		return tabs && tabs.scrollLeft > 0 && previous && !previous.hidden;
+		const lastTab = tabs?.querySelector(".stage-tab-item:last-child");
+		const tabsRect = tabs?.getBoundingClientRect();
+		const lastRect = lastTab?.getBoundingClientRect();
+		const next = document.querySelector("#detail-modal .stage-tabs-scroll-button.is-next");
+		return tabs && lastTab && tabs.scrollLeft > 0 && lastRect.left >= tabsRect.left && lastRect.right <= tabsRect.right && !next;
 	}`, nil); err != nil {
-		t.Fatalf("scrolling stages should expose the control to return left: %v", err)
+		t.Fatalf("the final stage should be visible at the end of the scroll range without a right arrow: %v", err)
 	}
 	setPageViewport(t, page, 390, 844)
 	if err := page.Locator(`[data-mobile-pane="stages"]`).Click(); err != nil {

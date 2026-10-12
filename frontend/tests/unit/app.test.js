@@ -42,7 +42,18 @@ describe('application entry point', () => {
       <span id="count-all"></span><span id="count-waiting"></span><span id="count-ongoing"></span><span id="count-accepted"></span><span id="count-rejected"></span></div>
       `;
     mocks.api.getJobCounts.mockResolvedValue({ all: 1, waiting: 0, ongoing: 1, accepted: 0, rejected: 0 });
-    mocks.api.getMeetings.mockResolvedValue([]);
+    const today = new Date();
+    const dateAtOffset = (offset) => {
+      const date = new Date(today);
+      date.setDate(date.getDate() + offset);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+    mocks.api.getMeetings.mockResolvedValue([
+      { meeting_date: dateAtOffset(-1) },
+      { meeting_date: dateAtOffset(0) },
+      { meeting_date: dateAtOffset(1) },
+      { meeting_date: null },
+    ]);
     mocks.api.getTechnologies.mockResolvedValue([{ id: 'tech-react', name: 'React' }, { id: 'tech-go', name: 'Go' }]);
     mocks.api.getSearchPeriods.mockResolvedValue([]);
     let resolveInitialJobs;
@@ -64,6 +75,7 @@ describe('application entry point', () => {
     resolveInitialJobs([]);
     await appImport;
     expect(document.querySelector('#app-load-error').hidden).toBe(true);
+    expect(document.querySelector('#count-meetings').textContent).toBe('3');
     expect(document.querySelector('#cards-grid').getAttribute('aria-busy')).toBe('false');
     expect(document.querySelector('.board-loading-state')).toBeNull();
     const matchingJob = {
@@ -80,11 +92,17 @@ describe('application entry point', () => {
     };
     mocks.api.getJobs.mockResolvedValue([matchingJob, otherJob]);
     mocks.api.getJobCounts.mockResolvedValueOnce({ all: 2, ongoing: 1, accepted: 0, rejected: 0 });
+    document.querySelector('#process-filter-trigger').click();
     document.querySelector('input[name="process-status-filter"][value="waiting"]').click();
     await flush();
+    expect(document.querySelector('#process-filter-panel').hidden).toBe(false);
     expect(mocks.renderCardGrid.mock.calls.at(-1)[6].statusCount).toBe(2);
     document.querySelector('input[name="process-status-filter"][value="ongoing"]').click();
     await flush();
+    expect(document.querySelector('#process-filter-panel').hidden).toBe(false);
+    expect(document.querySelector('input[name="process-status-filter"][value="ongoing"]').checked).toBe(true);
+    document.querySelector('input[name="process-status-filter"][value="invalid"]').click();
+    expect(document.querySelector('input[name="process-status-filter"][value="ongoing"]').checked).toBe(true);
     localStorageGet.mockRestore();
     const originalGetComputedStyle = window.getComputedStyle.bind(window);
     await flush();

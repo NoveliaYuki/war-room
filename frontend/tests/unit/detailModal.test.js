@@ -374,7 +374,7 @@ describe('detail modal', () => {
     expect(api.createQuestion).toHaveBeenCalledWith({ stage_id: 's1', question: 'Ask about on-call', answer_notes: '' });
   });
 
-  it('shows directional controls and scrolls overflowing interview stages', async () => {
+  it('keeps the left control and allows manual scrolling across interview stages', async () => {
     const stages = ["HR", "Technical", "Cultural", "Offer"].map((stage_type, index) => ({
       id: `s${index + 1}`, stage_type, status: index === 0 ? 'current' : 'pending', questions: [],
     }));
@@ -383,7 +383,6 @@ describe('detail modal', () => {
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
     const tabs = modal.querySelector('.stages-tab-bar');
     const previous = modal.querySelector('.stage-tabs-scroll-button.is-prev');
-    const next = modal.querySelector('.stage-tabs-scroll-button.is-next');
     Object.defineProperties(tabs, {
       scrollWidth: { configurable: true, value: 700 },
       clientWidth: { configurable: true, value: 400 },
@@ -396,19 +395,16 @@ describe('detail modal', () => {
 
     tabs.dispatchEvent(new Event('scroll'));
     expect(previous.hidden).toBe(true);
-    expect(next.hidden).toBe(false);
-    next.click();
-    expect(tabs.scrollBy).toHaveBeenCalledWith({ left: 300, behavior: 'smooth' });
-    expect(previous.hidden).toBe(false);
+    expect(modal.querySelector('.stage-tabs-scroll-button.is-next')).toBeNull();
     tabs.scrollLeft = 300;
     tabs.dispatchEvent(new Event('scroll'));
-    expect(next.hidden).toBe(true);
+    expect(previous.hidden).toBe(false);
     previous.click();
     expect(tabs.scrollBy).toHaveBeenLastCalledWith({ left: -300, behavior: 'smooth' });
     expect(previous.hidden).toBe(true);
   });
 
-  it('navigates interview stage tabs with the keyboard and restores focus', async () => {
+  it('navigates interview stage tabs with the keyboard without wrapping at either end', async () => {
     const stages = ['Recruiter', 'Technical', 'Leadership'].map((custom_title, index) => ({
       id: `s${index + 1}`, stage_type: 'Other', custom_title,
       status: index === 0 ? 'current' : 'pending', questions: [],
@@ -419,22 +415,29 @@ describe('detail modal', () => {
 
     const firstTab = modal.querySelector('#stage-tab-0');
     firstTab.focus();
-    const previous = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
-    firstTab.dispatchEvent(previous);
-    expect(previous.defaultPrevented).toBe(true);
-    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Leadership');
-    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-2'));
-
-    modal.querySelector('#stage-tab-2').dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+    const previousAtStart = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
+    firstTab.dispatchEvent(previousAtStart);
+    expect(previousAtStart.defaultPrevented).toBe(false);
     expect(modal.querySelector('.stage-hero-title').textContent).toBe('Recruiter');
-    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-0'));
+
+    const next = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    firstTab.dispatchEvent(next);
+    expect(next.defaultPrevented).toBe(true);
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Technical');
+    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-1'));
+    modal.querySelector('#stage-tab-1').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Recruiter');
 
     modal.querySelector('#stage-tab-0').dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
     expect(modal.querySelector('.stage-hero-title').textContent).toBe('Leadership');
     expect(document.activeElement).toBe(modal.querySelector('#stage-tab-2'));
+    const nextAtEnd = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    modal.querySelector('#stage-tab-2').dispatchEvent(nextAtEnd);
+    expect(nextAtEnd.defaultPrevented).toBe(false);
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Leadership');
   });
 
-  it('keeps the active stage clear of scroll controls on phones', async () => {
+  it('keeps the selected stage visible without snapping it to the left edge', async () => {
     const stages = [
       { id: 's1', stage_type: 'HR', status: 'completed', questions: [] },
       { id: 's2', stage_type: 'Technical', status: 'current', questions: [] },
@@ -454,18 +457,28 @@ describe('detail modal', () => {
         return { left: 10, right: 300, width: 290, top: 0, bottom: 40, height: 40 };
       }
       if (this.classList?.contains('stage-tab-item') && this.classList.contains('active')) {
-        return { left: 150, right: 390, width: 240, top: 0, bottom: 36, height: 36 };
+        const scrollLeft = this.closest('.stages-tab-bar')?.scrollLeft || 0;
+        return { left: 150 - scrollLeft, right: 390 - scrollLeft, width: 240, top: 0, bottom: 36, height: 36 };
       }
       return originalRect.call(this);
     });
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
+    const resizeCallbacks = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) { resizeCallbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
     const modal = document.querySelector('#detail-modal');
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
-    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(115);
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(90);
 
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
     modal.querySelector('.stage-tab-item.active').click();
-    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(140);
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(90);
+    modal.querySelector('.stages-tab-bar').scrollLeft = 210;
+    resizeCallbacks.forEach((callback) => callback());
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(115);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });

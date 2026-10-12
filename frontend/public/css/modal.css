@@ -1146,7 +1146,7 @@ body.is-resizing-split * {
 
 /* Stage Tab Bar at Top of Right Pane */
 .stage-navigation { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-.stage-tabs-scroll { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: stretch; flex: 1 1 auto; min-width: 0; }
+.stage-tabs-scroll { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch; flex: 1 1 auto; min-width: 0; }
 .stages-tab-bar {
   grid-column: 2;
   width: 100%;
@@ -1182,9 +1182,7 @@ body.is-resizing-split * {
 }
 
 .stage-tabs-scroll-button.is-prev { grid-column: 1; }
-.stage-tabs-scroll-button.is-next { grid-column: 3; }
 .stage-tabs-scroll-button.is-prev { left: 0; background: var(--bg-surface-elevated); border-left: 0; }
-.stage-tabs-scroll-button.is-next { right: 0; background: linear-gradient(270deg, var(--bg-surface-elevated) 72%, transparent); border-right: 0; }
 .stage-tabs-scroll-button[hidden] { display: none; }
 .stage-tabs-scroll-button:hover { color: var(--accent-blue); }
 .stage-tabs-scroll-button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
@@ -1707,7 +1705,6 @@ body.is-resizing-split * {
   }
   #detail-modal .stage-tabs-scroll-button { position: static; grid-row: 1; width: 44px; height: 44px; min-height: 44px; padding: 0; }
   #detail-modal .stage-tabs-scroll-button.is-prev { grid-column: 1; }
-  #detail-modal .stage-tabs-scroll-button.is-next { grid-column: 3; }
   #detail-modal .stages-tab-bar { grid-column: 2; width: 100%; min-width: 0; box-sizing: border-box; }
   #detail-modal .stage-tab-item { min-height: 44px; box-sizing: border-box; }
 }

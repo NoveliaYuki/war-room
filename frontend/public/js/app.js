@@ -195,7 +195,10 @@ async function refreshBoardCounts() {
   const allPeriodCounts = await api.getJobCounts();
   const meetings = await api.getMeetings();
   const countMeetingsEl = document.querySelector("#count-meetings");
-  if (countMeetingsEl) countMeetingsEl.textContent = meetings.length;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const ongoingMeetings = meetings.filter((meeting) => !meeting.meeting_date || meeting.meeting_date >= todayKey);
+  if (countMeetingsEl) countMeetingsEl.textContent = ongoingMeetings.length;
   updateFilterSummary();
   updateSortControl();
   await loadAvailableTechnologies();
@@ -1348,16 +1351,6 @@ processFilterPanel?.addEventListener("keydown", (event) => {
   event.stopPropagation();
   closeProcessFilterPanel(true);
 });
-processFilterPanel?.addEventListener("focusout", (event) => {
-  if (event.relatedTarget instanceof Node && processFilterPanel.contains(event.relatedTarget)) return;
-  if (event.relatedTarget instanceof Element && (event.relatedTarget.closest(".process-toolbar-active-state") || event.relatedTarget === processFilterTrigger)) return;
-  setTimeout(() => {
-    if (!processFilterPanel.contains(document.activeElement)
-      && !document.activeElement?.closest?.(".process-toolbar-active-state")
-      && document.activeElement !== processFilterTrigger) closeProcessFilterPanel();
-  }, 0);
-});
-
 function openProcessFilterPanel() {
   if (!processFilterPanel) return;
   processFilterPanel.hidden = false;

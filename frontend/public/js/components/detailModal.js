@@ -649,7 +649,6 @@ function renderStageTabs(view) {
                 )
                 .join('')}
             </div>
-            <button class="stage-tabs-scroll-button is-next" type="button" aria-label="Scroll interview stages right" title="Scroll interview stages right" hidden>${icon("chevronRight", 14)}</button>
           </div>
           ${stages.length ? `<button class="btn-tab-add-stage inline-icon-text" id="btn-add-stage-tab" type="button" aria-label="Add interview stage" title="Add interview stage">${icon("plus", 11)} Add Stage</button>` : ""}
         </div>
@@ -663,16 +662,13 @@ function bindStageTabScrollControls(modalEl) {
   stageTabResizeObservers.get(modalEl)?.disconnect();
   const tabs = modalEl.querySelector(".stages-tab-bar");
   const previous = modalEl.querySelector(".stage-tabs-scroll-button.is-prev");
-  const next = modalEl.querySelector(".stage-tabs-scroll-button.is-next");
-  if (!tabs || !previous || !next) return;
+  if (!tabs || !previous) return;
 
   const updateControls = () => {
     const maxScroll = tabs.scrollWidth - tabs.clientWidth;
     previous.hidden = tabs.scrollLeft <= 1;
-    next.hidden = maxScroll <= 1 || tabs.scrollLeft >= maxScroll - 1;
   };
   previous.addEventListener("click", () => tabs.scrollBy({ left: -Math.max(180, tabs.clientWidth * 0.75), behavior: "smooth" }));
-  next.addEventListener("click", () => tabs.scrollBy({ left: Math.max(180, tabs.clientWidth * 0.75), behavior: "smooth" }));
   tabs.addEventListener("scroll", updateControls, { passive: true });
   if (typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {
@@ -1537,8 +1533,8 @@ function bindAttachmentAndStageNavigation(context) {
     });
     tab.addEventListener("keydown", (event) => {
       const currentIndex = Number(tab.dataset.idx);
-      const targetIndex = event.key === "ArrowRight" ? (currentIndex + 1) % stages.length
-        : event.key === "ArrowLeft" ? (currentIndex - 1 + stages.length) % stages.length
+      const targetIndex = event.key === "ArrowRight" ? Math.min(currentIndex + 1, stages.length - 1)
+        : event.key === "ArrowLeft" ? Math.max(currentIndex - 1, 0)
           : event.key === "Home" ? 0 : event.key === "End" ? stages.length - 1 : -1;
       if (targetIndex < 0 || targetIndex === currentIndex) return;
       event.preventDefault();
@@ -1799,15 +1795,9 @@ function positionActiveStageTab(modalEl) {
   const activeRect = activeTab.getBoundingClientRect();
   const maxScroll = Math.max(0, tabs.scrollWidth - tabs.clientWidth);
   const currentScroll = tabs.scrollLeft;
-  const isMobile = window.matchMedia("(max-width: 780px)").matches;
-  const scrollButtonInset = isMobile ? 0 : 25;
-  if (isMobile && maxScroll > 1) {
-    const targetScroll = currentScroll + activeRect.left - tabsRect.left - scrollButtonInset;
-    tabs.scrollLeft = Math.max(0, Math.min(maxScroll, targetScroll));
-    return;
-  }
+  const scrollButtonInset = 25;
   const visibleLeft = tabsRect.left + (currentScroll > 1 ? scrollButtonInset : 0);
-  const visibleRight = tabsRect.right - (currentScroll < maxScroll - 1 ? scrollButtonInset : 0);
+  const visibleRight = tabsRect.right;
   let targetScroll = currentScroll;
   if (activeRect.left < visibleLeft) targetScroll += activeRect.left - visibleLeft;
   if (activeRect.right > visibleRight) targetScroll += activeRect.right - visibleRight;

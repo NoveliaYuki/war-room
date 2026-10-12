@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.3 — 2026-10-13
+
+## Highlights
+- Make meeting counts and interview stage navigation match the current process state.
+
+## What changed
+- Count ongoing and upcoming meetings in the Schedule badge instead of past meetings.
+- Keep the final interview stage reachable by scrolling without wrapping stage navigation or showing a right arrow.
+- Make the desktop filters panel wider and more compact, preserve space beside its scrollbar, and keep it open while selecting statuses.
+
 ## 1.8.0 — 2026-10-12
 
 ## Highlights
