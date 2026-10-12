@@ -293,7 +293,7 @@
   #search-period-control .search-period-trigger { min-height: 44px; }
   .search-period-menu button { min-height: 44px; }
   .search-period-menu-options { max-height: min(170px, 24vh); }
-  .process-filter-panel { width: min(360px, calc(100vw - 28px)); overflow-x: hidden; }
+  .process-filter-panel { width: min(360px, calc(100vw - 28px)); max-height: max(220px, calc(100dvh - 280px)); overflow-x: hidden; }
   .process-filter-panel input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
   .process-filter-panel select { box-sizing: border-box; min-height: 44px; font-size: 16px; }
   .process-filter-arrangements { grid-template-columns: repeat(3, minmax(0, 1fr)); }

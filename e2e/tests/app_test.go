@@ -1330,6 +1330,26 @@ func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
 	}
 }
 
+func TestPhoneFilterPopoverStaysWithinViewport(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	for _, viewport := range []struct{ width, height int }{{390, 844}, {320, 720}} {
+		setPageViewport(t, page, viewport.width, viewport.height)
+		clickLocator(t, page.Locator("#process-filter-trigger"), "open phone filters")
+		assertVisible(t, page.Locator("#process-filter-panel"))
+		withinViewport, err := page.Evaluate(`() => {
+		  const panel = document.querySelector("#process-filter-panel");
+		  const rect = panel.getBoundingClientRect();
+		  return rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight;
+		}`, nil)
+		if err != nil || withinViewport != true {
+			metrics, _ := page.Evaluate(`() => JSON.stringify({viewport: [innerWidth, innerHeight], panel: document.querySelector("#process-filter-panel").getBoundingClientRect().toJSON()})`, nil)
+			t.Fatalf("phone filter panel extends beyond the viewport at %dpx (metrics=%v, err=%v)", viewport.width, metrics, err)
+		}
+		clickLocator(t, page.Locator("#process-filter-trigger"), "close phone filters")
+	}
+}
+
 func TestMobileCardSurfaceAllowsPageScrolling(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
