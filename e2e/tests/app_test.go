@@ -303,6 +303,84 @@ func TestJobDetailActionsRemainReadable(t *testing.T) {
 	assertJobDetailActionsReadable(t, readJobDetailActionMetrics(t, page))
 }
 
+func TestProcessTimelineIsReadableOnDesktopAndMobile(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 1440, 900)
+	if err := page.Locator(".process-card").First().Locator(".btn-card-open-details").Click(); err != nil {
+		t.Fatalf("open demo job details: %v", err)
+	}
+	if err := page.Locator("#detail-modal .process-timeline-section").WaitFor(); err != nil {
+		t.Fatalf("wait for process timeline: %v", err)
+	}
+	if _, err := page.Evaluate("() => document.getAnimations().forEach(animation => animation.finish())", nil); err != nil {
+		t.Fatalf("finish detail modal animation: %v", err)
+	}
+	assertProcessTimelineReadable(t, readProcessTimelineMetrics(t, page), false)
+
+	setPageViewport(t, page, 390, 844)
+	if err := page.Locator(`#detail-modal [data-mobile-pane="overview"]`).Click(); err != nil {
+		t.Fatalf("open the job overview pane on mobile: %v", err)
+	}
+	if err := page.Locator("#detail-modal .process-timeline-section").WaitFor(); err != nil {
+		t.Fatalf("wait for the mobile process timeline: %v", err)
+	}
+	assertProcessTimelineReadable(t, readProcessTimelineMetrics(t, page), true)
+}
+
+type processTimelineMetrics struct {
+	LabelFontSize float64 `json:"labelFontSize"`
+	DateFontSize  float64 `json:"dateFontSize"`
+	DateHeight    float64 `json:"dateHeight"`
+	DateCSSHeight string  `json:"dateCSSHeight"`
+	HintFontSize  float64 `json:"hintFontSize"`
+	DateFitsRow   bool    `json:"dateFitsRow"`
+}
+
+func readProcessTimelineMetrics(t *testing.T, page playwright.Page) processTimelineMetrics {
+	t.Helper()
+	state, err := page.Evaluate(`() => {
+	  const section = document.querySelector("#detail-modal .process-timeline-section");
+	  const item = section.querySelector('label[for="application-sent-date"]');
+	  const input = item.querySelector('input[type="date"]');
+	  const inputBounds = input.getBoundingClientRect();
+	  const itemBounds = item.getBoundingClientRect();
+	  return {
+	    labelFontSize: Number.parseFloat(getComputedStyle(item).fontSize),
+	    dateFontSize: Number.parseFloat(getComputedStyle(input).fontSize),
+	    dateHeight: inputBounds.height,
+	    dateCSSHeight: getComputedStyle(input).height,
+	    hintFontSize: Number.parseFloat(getComputedStyle(section.querySelector(".process-timeline-hint")).fontSize),
+	    dateFitsRow: inputBounds.right <= itemBounds.right + 1,
+	  };
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read process-timeline styles: %v", err)
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("encode process-timeline styles: %v", err)
+	}
+	var metrics processTimelineMetrics
+	if err := json.Unmarshal(encoded, &metrics); err != nil {
+		t.Fatalf("decode process-timeline styles: %v", err)
+	}
+	return metrics
+}
+
+func assertProcessTimelineReadable(t *testing.T, metrics processTimelineMetrics, mobile bool) {
+	t.Helper()
+	if metrics.LabelFontSize < 13 || metrics.HintFontSize < 12 || metrics.DateFontSize < 13 {
+		t.Errorf("process timeline text should be readable (labels %.0fpx, date %.0fpx, hint %.0fpx)", metrics.LabelFontSize, metrics.DateFontSize, metrics.HintFontSize)
+	}
+	if mobile && (metrics.DateFontSize < 16 || metrics.DateHeight < 44 || !metrics.DateFitsRow) {
+		t.Errorf("mobile date control should remain readable, tappable, and within its row (font %.0fpx, height %.0fpx, fits row %t)", metrics.DateFontSize, metrics.DateHeight, metrics.DateFitsRow)
+	}
+	if !mobile && metrics.DateHeight < 36 {
+		t.Errorf("desktop date control should have a usable 36px target (box %.0fpx, computed CSS height %s)", metrics.DateHeight, metrics.DateCSSHeight)
+	}
+}
+
 func TestNewProcessOverviewTabsAreEasyToTap(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
