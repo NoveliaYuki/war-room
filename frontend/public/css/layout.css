@@ -5,7 +5,7 @@
 .app-container {
   max-width: 1360px;
   margin: 0 auto;
-  padding: 0 28px 60px;
+  padding: 0 clamp(14px, 4vw, 28px) 60px;
 }
 
 #main-content { container-type: inline-size; }
@@ -38,7 +38,7 @@
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-header);
-  padding: 16px 28px;
+  padding: 15px clamp(14px, 4vw, 28px);
   width: 100vw;
   margin: 0 0 32px;
   margin-left: calc(50% - 50vw);
@@ -481,59 +481,11 @@
 
 #btn-new-process .new-process-label { display: none; }
 
-@media (min-width: 801px) {
-  .header-inner {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: 20px;
-    align-items: center;
-    max-width: 1304px;
-    margin: 0 auto;
-  }
-
-  .brand-section {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: center;
-  }
-
-  .header-controls {
-    display: flex;
-    grid-column: 2;
-    grid-row: 1;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: 6px;
-    width: 100%;
-    min-width: 0;
-    flex: none;
-  }
-
-  .header-search-actions { display: contents; }
-
-  .view-controls { flex: 0 0 auto; }
-  .filter-tabs { flex: 0 0 auto; width: auto; }
-
-  .header-search-actions #btn-new-process,
-  .header-search-actions .theme-toggle { flex: 0 0 auto; }
-
-  .header-search-actions #btn-new-process { margin-left: auto; }
-}
-
 @media (max-width: 1000px) {
-  .app-container {
-    padding: 0 14px 32px;
-  }
-
   .app-load-error { align-items: stretch; flex-direction: column; gap: 10px; padding: 12px; }
   .app-load-error-retry { width: 100%; min-height: 44px; }
   .empty-state .btn-primary,
   .empty-state .btn-secondary { min-height: 44px; }
-
-  .app-header {
-    padding: 10px 14px;
-    margin-bottom: 18px;
-  }
 
   .header-inner {
     display: grid;
@@ -580,10 +532,14 @@
   #btn-new-process-mobile .new-process-label { display: none; }
 }
 
-@media (min-width: 801px) and (max-width: 1000px) {
-  .app-container { padding-left: 28px; padding-right: 28px; }
-  .app-header { padding: 16px 28px; margin-bottom: 32px; }
+@media (min-width: 801px) and (max-width: 1360px) {
+  .header-controls { gap: 6px; }
+  .view-controls { gap: 6px; }
+  .filter-tabs { flex: 0 0 auto; min-width: 0; max-width: none; }
+  .search-input { padding-right: 36px; }
+}
 
+@media (min-width: 641px) {
   .header-inner {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -609,15 +565,27 @@
     flex: none;
   }
   .header-controls:not(.is-open) .view-controls { display: flex; }
-  .header-controls:not(.is-open) .header-search-actions > #btn-new-process { display: inline-flex; }
-  .header-search-actions #btn-new-process { margin-left: auto; }
+  .header-search-actions { display: contents; }
+  .view-controls,
+  .filter-tabs,
+  .header-search-actions #btn-new-process,
+  .header-search-actions .theme-toggle { flex: 0 0 auto; }
+  .filter-tabs { width: auto; }
+  .header-search-actions .theme-toggle { order: 1; margin-left: auto; }
+  .header-search-actions #btn-new-process { order: 2; margin-left: 0; }
 }
 
-@media (min-width: 801px) and (max-width: 1360px) {
-  .header-controls { gap: 6px; }
-  .view-controls { gap: 6px; }
-  .filter-tabs { flex: 0 0 auto; min-width: 0; max-width: none; }
-  .search-input { padding-right: 36px; }
+/* Keep the header and its controls at one height across responsive layouts. */
+#filter-current-action,
+#filter-menu-trigger { height: 42px; min-height: 42px; }
+.schedule-trigger,
+.theme-toggle,
+.menu-toggle,
+#btn-new-process,
+#btn-new-process-mobile {
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
 }
 
 /* Toast Notification System */

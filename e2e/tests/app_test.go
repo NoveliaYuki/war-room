@@ -250,6 +250,7 @@ type toolbarLayout struct {
 	Toolbar              layoutBox `json:"toolbar"`
 	Header               layoutBox `json:"header"`
 	Theme                layoutBox `json:"theme"`
+	Add                  layoutBox `json:"add"`
 	FilterHeight         float64   `json:"filterHeight"`
 	SortHeight           float64   `json:"sortHeight"`
 	PeriodInToolbar      bool      `json:"periodInToolbar"`
@@ -259,7 +260,7 @@ type toolbarLayout struct {
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	page := newPage(t)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1024, 900}, {1000, 900}, {900, 900}, {801, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {390, 844}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1024, 900}, {1000, 900}, {900, 900}, {801, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {650, 900}, {641, 900}, {640, 900}, {390, 844}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -272,7 +273,7 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 		}
 	}
 	openDemoPage(t, page)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1116, 900}, {1115, 900}, {1100, 900}, {1024, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1116, 900}, {1115, 900}, {1100, 900}, {1024, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {650, 900}, {641, 900}, {640, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -690,7 +691,7 @@ func TestFilterPopoverStaysWithinNarrowViewports(t *testing.T) {
 	page := newPage(t)
 	openDemoPage(t, page)
 	trigger := page.Locator("#process-filter-trigger")
-	for _, width := range []int{1000, 900, 801, 760, 722, 721, 390, 320} {
+	for _, width := range []int{1000, 900, 801, 760, 722, 721, 650, 641, 640, 390, 320} {
 		setPageViewport(t, page, width, 844)
 		bounds := readFilterPopoverBounds(t, trigger, page.Locator("#process-filter-panel"), width)
 		if bounds.Left < 0 || bounds.Right > bounds.ViewportWidth {
@@ -931,6 +932,7 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    toolbar: box(".process-toolbar"),
 	    header: box(".header-inner"),
 	    theme: box("#btn-theme-toggle"),
+	    add: box("#btn-new-process"),
 	    filterHeight: box("#process-filter-trigger").height,
 		sortHeight: box("#process-sort-trigger").height,
 	    periodInToolbar: document.querySelector("#search-period-trigger").closest("#process-toolbar") !== null,
@@ -964,7 +966,7 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	if !layout.PeriodInFilters || layout.PeriodInViewControls {
 		t.Errorf("%dpx period selector should live inside Filters", width)
 	}
-	if layout.CardColumns > 1 {
+	if width > 640 {
 		assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
 		assertWideToolbar(t, width, layout)
 	} else if width > 420 {
@@ -978,10 +980,11 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
 	assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
-	if abs(layout.SearchFilterWidth.Width-421) > 2 {
-		t.Errorf("%dpx search and filters should keep their preferred 421px width (got %.1fpx)", width, layout.SearchFilterWidth.Width)
+	expectedGroupWidth := min(421.0, max(0, layout.Toolbar.Width-layout.Sort.Width-40))
+	if abs(layout.SearchFilterWidth.Width-expectedGroupWidth) > 2 {
+		t.Errorf("%dpx search and filters should use the available width up to 421px (got %.1fpx, expected %.1fpx)", width, layout.SearchFilterWidth.Width, expectedGroupWidth)
 	}
-	expectedSearchWidth := 342.0
+	expectedSearchWidth := min(342.0, max(0, layout.SearchFilterWidth.Width-layout.Filter.Width-8))
 	if abs(layout.Search.Width-expectedSearchWidth) > 2 {
 		t.Errorf("%dpx toolbar search should use the available width before Filters (got %.0fpx, expected %.0fpx)", width, layout.Search.Width, expectedSearchWidth)
 	}
@@ -1002,7 +1005,7 @@ func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	available := layout.Toolbar.Width - layout.Filter.Width - layout.Sort.Width - 16
+	available := layout.SearchFilterWidth.Width - layout.Filter.Width - 8
 	expected := min(342.0, max(0, available))
 	if abs(layout.Search.Width-expected) > 2 {
 		t.Errorf("%dpx viewport should keep search at its preferred 342px width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
@@ -1036,15 +1039,15 @@ func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertHeaderActionAlignment(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	if width > 1000 && abs(layout.Header.Right-layout.Theme.Right) > 2 {
-		t.Errorf("desktop actions should align to the header's right inset (header %.1fpx, theme %.1fpx)", layout.Header.Right, layout.Theme.Right)
+	if width > 1000 && abs(layout.Header.Right-layout.Add.Right) > 2 {
+		t.Errorf("desktop Add action should align to the header's right inset (header %.1fpx, Add %.1fpx)", layout.Header.Right, layout.Add.Right)
 	}
 }
 
 func assertToolbarRow(t *testing.T, width int, boxes ...layoutBox) {
 	t.Helper()
 	for _, box := range boxes[1:] {
-		if abs((box.Y+box.Height/2)-(boxes[0].Y+boxes[0].Height/2)) > 1 {
+		if abs(box.Y-boxes[0].Y) > 1 {
 			t.Errorf("%dpx viewport should keep controls on one row", width)
 			return
 		}
@@ -1424,7 +1427,7 @@ func waitForCardCount(t *testing.T, page playwright.Page, count int) {
 
 func TestNarrowViewportNavigation(t *testing.T) {
 	page := newPage(t)
-	if err := page.SetViewportSize(760, 850); err != nil {
+	if err := page.SetViewportSize(640, 850); err != nil {
 		t.Fatalf("set narrow viewport: %v", err)
 	}
 	assertVisible(t, page.Locator("#btn-menu-toggle"))
@@ -1541,7 +1544,7 @@ func assertPhoneOverviewTapTargets(t *testing.T, page playwright.Page) {
 
 func TestIntermediateViewportUsesOpenSearchMenu(t *testing.T) {
 	page := newPage(t)
-	if err := page.SetViewportSize(780, 850); err != nil {
+	if err := page.SetViewportSize(640, 850); err != nil {
 		t.Fatalf("set intermediate viewport: %v", err)
 	}
 	menu := page.Locator("#btn-menu-toggle")
@@ -1572,7 +1575,7 @@ func TestIntermediateViewportUsesOpenSearchMenu(t *testing.T) {
 
 func TestCompactDesktopKeepsDailyScheduleTabVisible(t *testing.T) {
 	page := newPage(t)
-	for _, width := range []int{1001, 1024, 1080, 1136, 1150, 1151, 1280, 1360, 1361} {
+	for _, width := range []int{641, 721, 1001, 1024, 1080, 1136, 1150, 1151, 1280, 1360, 1361} {
 		if err := page.SetViewportSize(width, 850); err != nil {
 			t.Fatalf("set %dpx desktop viewport: %v", width, err)
 		}
@@ -1587,8 +1590,8 @@ func TestCompactDesktopKeepsDailyScheduleTabVisible(t *testing.T) {
 				getComputedStyle(document.querySelector("#btn-menu-toggle")).display === "none",
 				tabs.scrollWidth <= tabs.clientWidth, bounds.right <= window.innerWidth,
 				bounds.left >= tabs.getBoundingClientRect().left,
-				views.getBoundingClientRect().right <= create.getBoundingClientRect().left,
-				create.getBoundingClientRect().right <= theme.getBoundingClientRect().left,
+				views.getBoundingClientRect().right <= theme.getBoundingClientRect().left,
+				theme.getBoundingClientRect().right <= create.getBoundingClientRect().left,
 				theme.getBoundingClientRect().right <= window.innerWidth,
 				document.querySelector("#btn-data-management") !== null,
 				document.querySelector(".filter-current-group").innerText.includes(document.querySelector("#filter-current-label").innerText),
