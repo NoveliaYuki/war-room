@@ -239,6 +239,7 @@ type toolbarLayout struct {
 	DocumentWidth        float64   `json:"documentWidth"`
 	CardColumns          int       `json:"cardColumns"`
 	Search               layoutBox `json:"search"`
+	SearchField          layoutBox `json:"searchField"`
 	SearchFontSize       float64   `json:"searchFontSize"`
 	SearchFilterWidth    layoutBox `json:"searchFilterWidth"`
 	FirstCard            layoutBox `json:"firstCard"`
@@ -598,6 +599,54 @@ func TestPeriodSelectionIsCountedAndClearedWithFilters(t *testing.T) {
 	assertPeriodFilterCleared(t, page)
 }
 
+func TestDeletingSearchPeriodExplainsWhatHappensToJobCards(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	openSearchPeriodManager(t, page)
+	createTemporarySearchPeriod(t, page)
+	deleteButton := page.Locator("[data-delete-period]").First()
+	waitForLocator(t, deleteButton, "temporary search period")
+	clickLocator(t, deleteButton, "request temporary search period deletion")
+	dialog := page.Locator("dialog.app-confirm-dialog")
+	waitForLocator(t, dialog, "delete confirmation")
+	message, err := dialog.Locator(".app-confirm-message").TextContent()
+	if err != nil || !strings.Contains(message, "saved without a search period") {
+		t.Fatalf("delete confirmation should explain that job cards stay saved, got %q (err=%v)", message, err)
+	}
+	clickLocator(t, dialog.Locator(".btn-danger"), "confirm temporary search period deletion")
+	if _, err := page.WaitForFunction(`() => document.querySelector("#toast-container")?.textContent.includes("job cards remain saved without a period")`, nil); err != nil {
+		t.Fatalf("wait for the search period deletion message: %v", err)
+	}
+}
+
+func openSearchPeriodManager(t *testing.T, page playwright.Page) {
+	t.Helper()
+	for _, selector := range []string{"#process-filter-trigger", "#search-period-trigger", "[data-manage-search-periods]"} {
+		clickLocator(t, page.Locator(selector), "open search period manager")
+	}
+}
+
+func createTemporarySearchPeriod(t *testing.T, page playwright.Page) {
+	t.Helper()
+	fill(t, page.Locator(`#search-period-form [name="name"]`), "Temporary period")
+	fill(t, page.Locator(`#search-period-form [name="start_date"]`), "2026-03-01")
+	clickLocator(t, page.Locator(`#search-period-form [type="submit"]`), "create temporary search period")
+}
+
+func waitForLocator(t *testing.T, locator playwright.Locator, description string) {
+	t.Helper()
+	if err := locator.WaitFor(); err != nil {
+		t.Fatalf("wait for %s: %v", description, err)
+	}
+}
+
+func clickLocator(t *testing.T, locator playwright.Locator, description string) {
+	t.Helper()
+	if err := locator.Click(); err != nil {
+		t.Fatalf("%s: %v", description, err)
+	}
+}
+
 func assertPeriodFilterCounted(t *testing.T, page playwright.Page) {
 	t.Helper()
 	assertVisible(t, page.Locator("#process-filter-count"))
@@ -862,6 +911,7 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    documentWidth: document.documentElement.scrollWidth,
 	    cardColumns: getComputedStyle(document.querySelector(".cards-grid")).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
 	    search: box(".process-search"),
+	    searchField: box("#search-input"),
 	    searchFontSize: Number.parseFloat(getComputedStyle(document.querySelector("#search-input")).fontSize),
 		searchFilterWidth: (() => {
 		  const group = document.querySelector(".toolbar-search-filter").getBoundingClientRect();
@@ -953,6 +1003,9 @@ func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbar
 	expected := min(342.0, layout.Toolbar.Width)
 	if abs(layout.Search.Width-expected) > 2 {
 		t.Errorf("%dpx viewport should keep search at its preferred 342px width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
+	}
+	if abs(layout.SearchField.Width-layout.Search.Width) > 1 {
+		t.Errorf("%dpx viewport search field should fit its fixed-width wrapper (field %.1fpx, wrapper %.1fpx)", width, layout.SearchField.Width, layout.Search.Width)
 	}
 }
 

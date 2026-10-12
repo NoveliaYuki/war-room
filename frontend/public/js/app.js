@@ -843,7 +843,7 @@ async function openSearchPeriodsModal() {
         .findIndex((button) => button.dataset.deletePeriod === period.id);
       const confirmed = await confirmAction({
         title: "Delete search period?",
-        message: `Its ${period.job_count} job${period.job_count === 1 ? "" : "s"} will become unassigned.`,
+        message: `Deleting this period leaves its ${period.job_count} job card${period.job_count === 1 ? "" : "s"} saved without a search period.`,
         confirmLabel: "Delete period",
         danger: true,
       });
@@ -857,7 +857,7 @@ async function openSearchPeriodsModal() {
         await reload();
         focusPeriodAfterDelete(period.id, fallbackIndex);
         await refreshApp();
-        showToast("Search period deleted; its jobs are unassigned", "success");
+        showToast("Search period deleted; its job cards remain saved without a period", "success");
       } catch (error) { showToast(error.message, "error"); }
     }
   });

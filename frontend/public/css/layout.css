@@ -283,6 +283,8 @@
 }
 
 .search-input {
+  box-sizing: border-box;
+  min-width: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
