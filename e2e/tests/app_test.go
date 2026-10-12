@@ -261,6 +261,7 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
+		assertSearchWidthUsesAvailableSpace(t, viewport.width, layout)
 		if layout.SearchFontSize != 13 {
 			t.Errorf("normal view at %dpx should preserve search text size at 13px, got %.1fpx", viewport.width, layout.SearchFontSize)
 		}

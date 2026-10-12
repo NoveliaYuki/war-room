@@ -53,7 +53,7 @@
 .toolbar-search-filter {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 342px) auto;
   grid-column: 1;
   grid-row: 1;
   align-items: center;
@@ -63,7 +63,7 @@
   min-width: 0;
 }
 
-.process-search { box-sizing: border-box; flex: 0 0 342px; width: 342px; min-width: 0; max-width: min(342px, 100%); justify-self: start; }
+.process-search { box-sizing: border-box; flex: 0 0 342px; width: min(342px, 100%); min-width: 0; max-width: 342px; justify-self: start; }
 .process-search .search-input { height: 38px; font-family: var(--font-sans); font-size: 13px; font-weight: 400; -webkit-text-size-adjust: none; text-size-adjust: none; }
 
 .process-filter-control { position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; }
@@ -273,7 +273,7 @@
 @container (max-width: 693px) {
   .process-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 8px; }
   .toolbar-search-filter { display: contents; }
-  .process-search { grid-column: 1 / -1; grid-row: 1; justify-self: start; flex: 0 0 342px; width: 342px; min-width: 0; max-width: min(342px, 100%); }
+  .process-search { grid-column: 1 / -1; grid-row: 1; justify-self: start; flex: 0 0 342px; width: min(342px, 100%); min-width: 0; max-width: 342px; }
   .process-filter-control { grid-column: 1; grid-row: 2; justify-self: start; width: max-content; }
   .toolbar-view-controls { display: flex; grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
   .process-sort-control { min-height: 42px; margin: 0; }
