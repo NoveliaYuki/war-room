@@ -219,7 +219,7 @@
   .toolbar-view-controls { display: contents; }
   .process-sort-control { grid-column: 3; grid-row: 1; justify-self: end; }
 }
-.process-manage-technologies { min-height: 30px; padding: 5px 8px; font-size: 10px; }
+.process-manage-technologies { min-height: 30px; padding: 5px 8px; font-size: 12px; }
 .settings-data-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 14px 0 4px; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); }
 .settings-data-footer > div { display: grid; gap: 3px; }
 .settings-data-footer strong { color: var(--text-primary); font-size: 12px; }
