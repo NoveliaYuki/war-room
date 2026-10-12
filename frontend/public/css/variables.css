@@ -51,7 +51,7 @@
   --status-waiting-bg: rgba(167, 139, 250, 0.12);
   --status-accepted: #10b981;
   --status-accepted-bg: rgba(16, 185, 129, 0.12);
-  --status-rejected: #f43f5e;
+  --status-rejected: #fb7185;
   --status-rejected-bg: rgba(244, 63, 94, 0.12);
 
   /* Stage Type Badges */
@@ -123,13 +123,13 @@
     --text-danger-soft: #be123c;
     --accent-blue: #2563eb;
     --accent-blue-subtle: rgba(37, 99, 235, 0.12);
-    --status-ongoing: #087eaf;
+    --status-ongoing: #0369a1;
     --status-ongoing-bg: rgba(8, 126, 175, 0.1);
     --status-waiting: #7654c8;
     --status-waiting-bg: rgba(118, 84, 200, 0.1);
     --status-accepted: #087c59;
     --status-accepted-bg: rgba(8, 124, 89, 0.1);
-    --status-rejected: #d22f50;
+    --status-rejected: #be123c;
     --status-rejected-bg: rgba(210, 47, 80, 0.1);
     --shadow-sm: 0 1px 2px rgba(30, 64, 110, 0.07);
     --shadow-md: 0 4px 12px rgba(30, 64, 110, 0.09);
@@ -171,13 +171,13 @@
   --text-danger-soft: #be123c;
   --accent-blue: #2563eb;
   --accent-blue-subtle: rgba(37, 99, 235, 0.12);
-  --status-ongoing: #087eaf;
+  --status-ongoing: #0369a1;
   --status-ongoing-bg: rgba(8, 126, 175, 0.1);
   --status-waiting: #7654c8;
   --status-waiting-bg: rgba(118, 84, 200, 0.1);
   --status-accepted: #087c59;
   --status-accepted-bg: rgba(8, 124, 89, 0.1);
-  --status-rejected: #d22f50;
+  --status-rejected: #be123c;
   --status-rejected-bg: rgba(210, 47, 80, 0.1);
   --shadow-sm: 0 1px 2px rgba(30, 64, 110, 0.07);
   --shadow-md: 0 4px 12px rgba(30, 64, 110, 0.09);
