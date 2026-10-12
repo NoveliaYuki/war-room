@@ -282,6 +282,21 @@
   overflow-y: auto;
 }
 
+.process-form-defaults {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 22%, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-blue) 5%, var(--bg-surface));
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.process-form-defaults-status { flex: 0 0 auto; margin-top: 1px; }
+
 .process-form select {
   min-height: 42px;
   padding-right: 36px !important;
@@ -360,6 +375,7 @@
 
 @media (max-width: 520px) {
   .process-form { padding: 16px; gap: 14px; }
+  .process-form-defaults { align-items: flex-start; gap: 8px; padding: 9px 10px; font-size: 12px; }
   #new-process-form input:not([type="checkbox"]),
   #new-process-form select { box-sizing: border-box; min-height: 44px; font-size: 16px; }
   #new-process-form textarea { box-sizing: border-box; min-height: 96px; font-size: 16px; }

@@ -1086,6 +1086,10 @@ function openNewProcessModal() {
       <button class="modal-close-btn" type="button" aria-label="Close dialog">${icon("close", 14)}</button>
     </div>
     <form id="new-process-form" class="process-form">
+      <div class="process-form-defaults" role="note">
+        <span class="process-form-defaults-status status-pill waiting">Waiting</span>
+        <span>New cards start in this status. Without a referral, today is recorded as the CV sent date and your latest uploaded CV is linked when available.</span>
+      </div>
       <div class="form-grid form-grid-two">
         <div>
           <label class="meta-label" for="create-position-title">Position Title *</label>
