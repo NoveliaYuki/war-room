@@ -158,7 +158,7 @@
 .markdown-preview a { color: var(--accent-blue); overflow-wrap: anywhere; }
 .markdown-field-editor { display: grid; gap: 10px; }
 .markdown-editor-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-subtle); }
-.markdown-editor-tab { padding: 7px 11px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 12px; }
+.markdown-editor-tab { min-height: 44px; padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 13px; }
 .markdown-editor-tab.is-active { border-bottom-color: var(--accent-blue); color: var(--text-primary); font-weight: 600; }
 .markdown-field-input, .markdown-field-preview { box-sizing: border-box; width: 100%; min-height: 220px; max-height: 52vh; overflow: auto; padding: 11px 12px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); font: 12px/1.55 var(--font-mono); resize: vertical; }
 .markdown-field-preview { font-family: var(--font-sans); }

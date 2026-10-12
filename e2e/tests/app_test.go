@@ -303,6 +303,36 @@ func TestJobDetailActionsRemainReadable(t *testing.T) {
 	assertJobDetailActionsReadable(t, readJobDetailActionMetrics(t, page))
 }
 
+func TestNewProcessOverviewTabsAreEasyToTap(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 390, 844)
+	if err := page.Locator("#btn-new-process-mobile").Click(); err != nil {
+		t.Fatalf("open the new-process form: %v", err)
+	}
+	sourceTab := page.Locator("#create-overview-tab-source")
+	previewTab := page.Locator("#create-overview-tab-preview")
+	if err := sourceTab.WaitFor(); err != nil {
+		t.Fatalf("wait for overview editor tabs: %v", err)
+	}
+	for _, tab := range []playwright.Locator{sourceTab, previewTab} {
+		bounds, err := tab.BoundingBox()
+		if err != nil || bounds == nil {
+			t.Fatalf("read overview tab touch target: bounds=%v, err=%v", bounds, err)
+		}
+		if bounds.Height < 44 {
+			t.Errorf("overview editor tabs should provide at least 44px touch targets, got %.1fpx", bounds.Height)
+		}
+	}
+	if err := previewTab.Click(); err != nil {
+		t.Fatalf("open the overview preview on mobile: %v", err)
+	}
+	selected, err := previewTab.GetAttribute("aria-selected")
+	if err != nil || selected != "true" {
+		t.Fatalf("preview tab should become selected after tapping it (selected=%q, err=%v)", selected, err)
+	}
+}
+
 type jobDetailActionMetric struct {
 	FontSize float64 `json:"fontSize"`
 	Height   float64 `json:"height"`
