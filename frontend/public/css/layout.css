@@ -498,6 +498,8 @@
   .brand-section { grid-column: 2; grid-row: 1; }
   .theme-toggle { grid-column: 3; grid-row: 1; flex-basis: 44px; width: 44px; height: 44px; }
   .filter-current { height: 44px; min-height: 44px; }
+  #filter-current-action,
+  #filter-menu-trigger { height: 44px; min-height: 44px; }
   .filter-tab { min-height: 44px; }
   #btn-new-process { display: none; }
   #btn-new-process-mobile {

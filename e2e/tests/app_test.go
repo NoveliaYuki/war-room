@@ -182,18 +182,21 @@ func selectFilter(t *testing.T, page playwright.Page, filter string) {
 		}
 		return
 	}
-	menu := page.Locator("#filter-menu")
-	visible, err := menu.IsVisible()
+	panel := page.Locator("#process-filter-panel")
+	visible, err := panel.IsVisible()
 	if err != nil {
-		t.Fatalf("check process view menu visibility: %v", err)
+		t.Fatalf("check Filters panel visibility: %v", err)
 	}
 	if !visible {
-		if err := page.Locator("#filter-menu-trigger").Click(); err != nil {
-			t.Fatalf("open process view menu: %v", err)
+		if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+			t.Fatalf("open Filters panel: %v", err)
 		}
 	}
-	if err := page.Locator(`[data-filter="` + filter + `"]`).Click(); err != nil {
+	if err := page.Locator("label.status-filter-option:has(input[value=\"" + filter + "\"])").Click(); err != nil {
 		t.Fatalf("select %s filter: %v", filter, err)
+	}
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatalf("close Filters after selecting %s: %v", filter, err)
 	}
 }
 
@@ -206,18 +209,19 @@ func TestApplicationShellAndFilters(t *testing.T) {
 	if !strings.Contains(strings.ToLower(title), "war room") && !strings.Contains(strings.ToLower(title), "ongoing") {
 		t.Fatalf("unexpected page title %q", title)
 	}
-	for _, selector := range []string{".brand-title", "#search-input", "#filter-current-action", "#filter-menu-trigger", "#tab-schedule"} {
+	for _, selector := range []string{".brand-title", "#search-input", "#process-filter-trigger", "#tab-board", "#tab-schedule"} {
 		assertVisible(t, page.Locator(selector))
 	}
-	if err := page.Locator("#filter-menu-trigger").Click(); err != nil {
-		t.Fatalf("open process view menu: %v", err)
+	if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+		t.Fatalf("open Filters panel: %v", err)
 	}
-	for _, filter := range []string{"ongoing", "accepted", "rejected", "all"} {
-		assertVisible(t, page.Locator(`[data-filter="`+filter+`"]`))
+	for _, filter := range []string{"waiting", "ongoing", "accepted", "rejected", "all"} {
+		selector := "label.status-filter-option:has(input[value=\"" + filter + "\"])"
+		assertVisible(t, page.Locator(selector))
 	}
 	assertVisible(t, page.Locator("#tab-schedule"))
 	if err := page.Keyboard().Press("Escape"); err != nil {
-		t.Fatalf("close process view menu: %v", err)
+		t.Fatalf("close Filters panel: %v", err)
 	}
 	assertVisible(t, page.Locator("#btn-new-process"))
 	mobileActionVisible, err := page.Locator("#btn-new-process-mobile").IsVisible()
@@ -654,8 +658,8 @@ func assertPeriodFilterCounted(t *testing.T, page playwright.Page) {
 	assertVisible(t, page.Locator("#process-filter-count"))
 	assertVisible(t, page.Locator("#process-filter-clear"))
 	count, err := page.Locator("#process-filter-count").TextContent()
-	if err != nil || strings.TrimSpace(count) != "1" {
-		t.Errorf("selecting one period should show one active filter, got %q (err=%v)", count, err)
+	if err != nil || strings.TrimSpace(count) != "2" {
+		t.Errorf("ongoing status plus one selected period should show two active filters, got %q (err=%v)", count, err)
 	}
 	chips, err := page.Locator("#process-filter-chips [data-remove-filter]").Count()
 	if err != nil || chips != 0 {
@@ -895,7 +899,7 @@ func assertToolbarWithActiveFilter(t *testing.T, page playwright.Page) {
 		t.Fatalf("select hybrid filter: %v", err)
 	}
 	layout := readToolbarLayout(t, page, 390)
-	assertCompactControlRows(t, 390, layout)
+	assertToolbarRow(t, 390, layout.Filter, layout.Sort)
 }
 
 func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLayout {
@@ -995,7 +999,6 @@ func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	assertCompactControlRows(t, width, layout)
 	assertToolbarRow(t, width, layout.Filter, layout.Sort)
 	assertSearchWidthUsesAvailableSpace(t, width, layout)
 	if layout.FilterHeight < 40 || layout.SortHeight < 40 {
@@ -1013,14 +1016,6 @@ func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbar
 	if abs(layout.SearchField.Width-layout.Search.Width) > 1 {
 		t.Errorf("%dpx viewport search field should fit its fixed-width wrapper (field %.1fpx, wrapper %.1fpx)", width, layout.SearchField.Width, layout.Search.Width)
 	}
-}
-
-func assertCompactControlRows(t *testing.T, width int, layout toolbarLayout) {
-	t.Helper()
-	if width <= 420 {
-		return
-	}
-	assertToolbarRow(t, width, layout.Filter, layout.ViewControls)
 }
 
 func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
@@ -1236,10 +1231,10 @@ func assertSearchAccessibleName(t *testing.T, page playwright.Page) {
 
 func assertFilterPressedStates(t *testing.T, page playwright.Page, activeFilter string) {
 	t.Helper()
-	for _, filter := range []string{"ongoing", "accepted", "rejected", "all"} {
-		pressed, err := page.Locator(fmt.Sprintf(`[data-filter="%s"]`, filter)).GetAttribute("aria-checked")
-		if err != nil || pressed != fmt.Sprint(filter == activeFilter) {
-			t.Fatalf("initial %s filter pressed state=%q, err=%v", filter, pressed, err)
+	for _, filter := range []string{"waiting", "ongoing", "accepted", "rejected", "all"} {
+		checked, err := page.Locator(fmt.Sprintf(`input[name="process-status-filter"][value="%s"]`, filter)).IsChecked()
+		if err != nil || checked != (filter == activeFilter) {
+			t.Fatalf("%s status filter checked=%t, err=%v", filter, checked, err)
 		}
 	}
 }
@@ -1580,32 +1575,30 @@ func TestCompactDesktopKeepsDailyScheduleTabVisible(t *testing.T) {
 			t.Fatalf("set %dpx desktop viewport: %v", width, err)
 		}
 		visibleTab, err := page.Evaluate(`() => {
-			const tabs = document.querySelector(".filter-tabs");
-			const views = document.querySelector(".view-controls");
-			const trigger = document.querySelector("#filter-menu-trigger");
+			const views = document.querySelector(".board-view-switch");
+			const board = document.querySelector("#tab-board");
+			const schedule = document.querySelector("#tab-schedule");
+			const searchFilter = document.querySelector(".toolbar-search-filter");
+			const sort = document.querySelector(".process-sort-control");
+			const toolbar = document.querySelector("#process-toolbar");
 			const create = document.querySelector("#btn-new-process");
 			const theme = document.querySelector("#btn-theme-toggle");
-			const bounds = trigger.getBoundingClientRect();
+			const searchBounds = searchFilter.getBoundingClientRect();
+			const sortBounds = sort.getBoundingClientRect();
 			return [
 				getComputedStyle(document.querySelector("#btn-menu-toggle")).display === "none",
-				tabs.scrollWidth <= tabs.clientWidth, bounds.right <= window.innerWidth,
-				bounds.left >= tabs.getBoundingClientRect().left,
-				views.getBoundingClientRect().right <= theme.getBoundingClientRect().left,
+				views.getBoundingClientRect().right <= window.innerWidth,
+				board.getBoundingClientRect().right <= views.getBoundingClientRect().right,
+				schedule.getBoundingClientRect().right <= views.getBoundingClientRect().right,
+				toolbar.getBoundingClientRect().right <= window.innerWidth,
+				Math.abs(searchBounds.top - sortBounds.top) < 1,
+				sortBounds.left >= searchBounds.right,
 				theme.getBoundingClientRect().right <= create.getBoundingClientRect().left,
 				theme.getBoundingClientRect().right <= window.innerWidth,
-				document.querySelector("#btn-data-management") !== null,
-				document.querySelector(".filter-current-group").innerText.includes(document.querySelector("#filter-current-label").innerText),
 			].map(Boolean).join(",");
 		}`, nil)
 		if err != nil || visibleTab != "true,true,true,true,true,true,true,true,true" {
-			t.Fatalf("compact desktop controls overlap or clip the process view selector at %dpx (visible=%v, err=%v)", width, visibleTab, err)
-		}
-		if err := page.Locator("#filter-menu-trigger").Click(); err != nil {
-			t.Fatalf("open process view menu at %dpx: %v", width, err)
-		}
-		assertVisible(t, page.Locator("#tab-schedule"))
-		if err := page.Keyboard().Press("Escape"); err != nil {
-			t.Fatalf("close process view menu at %dpx: %v", width, err)
+			t.Fatalf("compact desktop tabs or one-row toolbar overlap or clip at %dpx (layout=%v, err=%v)", width, visibleTab, err)
 		}
 	}
 }
@@ -1643,9 +1636,9 @@ func TestKeyboardSearchAndFilterShortcuts(t *testing.T) {
 		if err := page.Keyboard().Press(key); err != nil {
 			t.Fatalf("press filter shortcut %s: %v", key, err)
 		}
-		className, err := page.Locator(fmt.Sprintf(`.filter-tab[data-filter="%s"]`, filter)).GetAttribute("class")
-		if err != nil || !strings.Contains(className, "active") {
-			t.Fatalf("shortcut %s did not activate %s filter (class=%q, err=%v)", key, filter, className, err)
+		checked, err := page.Locator(fmt.Sprintf(`input[name="process-status-filter"][value="%s"]`, filter)).IsChecked()
+		if err != nil || !checked {
+			t.Fatalf("shortcut %s did not select %s status filter (checked=%t, err=%v)", key, filter, checked, err)
 		}
 	}
 }

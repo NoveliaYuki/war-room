@@ -35,6 +35,7 @@ function handleAvatarImageError(event) {
 document.addEventListener("error", handleAvatarImageError, true);
 
 const FILTER_STORAGE_KEY = "war-room.active-filter";
+const STATUS_FILTER_STORAGE_KEY = "war-room.status-filter";
 const PROCESS_FILTER_STORAGE_KEY = "war-room.process.filters.v1";
 const THEME_STORAGE_KEY = "war-room.theme";
 const validFilters = new Set(["waiting", "ongoing", "accepted", "rejected", "all", "schedule"]);
@@ -49,8 +50,20 @@ function getSavedFilter() {
   }
 }
 
+function getSavedStatusFilter() {
+  try {
+    const saved = window.localStorage.getItem(STATUS_FILTER_STORAGE_KEY);
+    return ["waiting", "ongoing", "accepted", "rejected", "all"].includes(saved) ? saved : "ongoing";
+  } catch {
+    return "ongoing";
+  }
+}
+
 let currentFilter = getSavedFilter();
-let currentStatusFilter = currentFilter === "schedule" ? "ongoing" : currentFilter;
+let currentStatusFilter = currentFilter === "schedule" ? getSavedStatusFilter() : currentFilter;
+if (currentFilter !== "schedule") {
+  try { window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, currentStatusFilter); } catch { /* Keep the restored status filter for this page. */ }
+}
 let currentSearch = "";
 let searchDebounceTimer = null;
 let processFilters = loadProcessFilters();
@@ -75,11 +88,9 @@ const modalEl = document.querySelector("#detail-modal");
 const backdropEl = document.querySelector("#modal-backdrop");
 const searchInput = document.querySelector("#search-input");
 const searchFocusButton = document.querySelector(".search-focus");
-const filterTabs = document.querySelectorAll(".filter-tab");
+const statusFilterControls = document.querySelectorAll('input[name="process-status-filter"]');
+const boardButton = document.querySelector("#tab-board");
 const scheduleButton = document.querySelector("#tab-schedule");
-const filterMenu = document.querySelector("#filter-menu");
-const filterMenuTrigger = document.querySelector("#filter-menu-trigger");
-const filterCurrentAction = document.querySelector("#filter-current-action");
 const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
@@ -157,24 +168,13 @@ function closeMobileMenu() {
   headerControls.classList.remove("is-open");
 }
 
-/** Closes the process view menu and restores focus when a choice hides. */
-function closeFilterMenu(restoreFocus = false) {
-  if (!filterMenu || filterMenu.hidden) return;
-  filterMenu.hidden = true;
-  filterMenuTrigger?.setAttribute("aria-expanded", "false");
-  if (restoreFocus) filterMenuTrigger?.focus();
-}
-
-/** Updates the compact view control with the active view and its current count. */
+/** Updates the selected status filter and top-level board view. */
 function updateFilterSummary() {
-  const active = [...filterTabs].find((tab) => tab.getAttribute("data-filter") === currentStatusFilter);
-  const label = active?.querySelector(".filter-label")?.textContent?.trim();
-  const count = active?.querySelector(".tab-count")?.textContent?.trim();
-  const labelTarget = document.querySelector("#filter-current-label");
-  const countTarget = document.querySelector("#filter-current-count");
-  if (labelTarget && label) labelTarget.textContent = label;
-  if (countTarget && count !== undefined) countTarget.textContent = count;
-  if (filterCurrentAction && label) filterCurrentAction.setAttribute("aria-label", `Show ${label.toLowerCase()} processes`);
+  statusFilterControls.forEach((control) => { control.checked = control.value === currentStatusFilter; });
+  boardButton?.classList.toggle("active", currentFilter !== "schedule");
+  boardButton?.setAttribute("aria-pressed", String(currentFilter !== "schedule"));
+  scheduleButton?.classList.toggle("active", currentFilter === "schedule");
+  scheduleButton?.setAttribute("aria-pressed", String(currentFilter === "schedule"));
 }
 
 /**
@@ -252,12 +252,23 @@ async function renderProcessCards(allPeriodCounts, scopedCounts) {
   });
 }
 
+function hasActiveProcessFilters() {
+  return [
+    processFilters.searchPeriod !== "all",
+    processFilters.arrangements.length > 0,
+    Boolean(processFilters.expectedSalaryQuery),
+    processFilters.postedSalaryMin !== null,
+    processFilters.postedSalaryMax !== null,
+    Boolean(processFilters.currency),
+    Boolean(processFilters.referral),
+    processFilters.technologies.length > 0,
+  ].some(Boolean);
+}
+
 function hasActiveCustomView() {
-  return Boolean(currentSearch.trim()) || processFilters.searchPeriod !== "all"
-    || processFilters.arrangements.length > 0 || Boolean(processFilters.expectedSalaryQuery)
-    || processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null
-    || Boolean(processFilters.currency) || Boolean(processFilters.referral)
-    || processFilters.technologies.length > 0;
+  return Boolean(currentSearch.trim())
+    || (currentFilter !== "all" && currentFilter !== "schedule")
+    || hasActiveProcessFilters();
 }
 
 function clearAppLoadError() {
@@ -443,7 +454,8 @@ function renderProcessFilterChip({ category, label, value = "" }) {
 }
 
 function getActiveProcessFilterCount() {
-  return Number(processFilters.searchPeriod !== "all")
+  return Number(currentFilter !== "all" && currentFilter !== "schedule")
+    + Number(processFilters.searchPeriod !== "all")
     + Number(processFilters.arrangements.length > 0)
     + Number(Boolean(processFilters.expectedSalaryQuery))
     + Number(processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null)
@@ -658,26 +670,21 @@ async function submitNewJobForm(event, form, closeForm) {
 }
 
 /**
- * Sets active filter tab.
+ * Sets the active status filter or top-level view.
  */
 function setFilter(filter) {
   if (!validFilters.has(filter)) return;
   currentFilter = filter;
-  if (filter !== "schedule") currentStatusFilter = filter;
+  if (filter !== "schedule") {
+    currentStatusFilter = filter;
+    try { window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, filter); } catch { /* Keep the status filter active for this page. */ }
+  }
   try {
     window.localStorage.setItem(FILTER_STORAGE_KEY, filter);
   } catch {
     // Keep navigation working when browser storage is unavailable.
   }
-  filterTabs.forEach((tab) => {
-    const isActive = tab.getAttribute("data-filter") === currentStatusFilter;
-    tab.classList.toggle("active", isActive);
-    tab.setAttribute("aria-checked", String(isActive));
-  });
-  scheduleButton?.classList.toggle("active", filter === "schedule");
-  scheduleButton?.setAttribute("aria-pressed", String(filter === "schedule"));
   updateFilterSummary();
-  closeFilterMenu(true);
   refreshApp();
 }
 
@@ -1053,10 +1060,6 @@ function handleEscape(event) {
     else closeModal();
     return true;
   }
-  if (filterMenu && !filterMenu.hidden) {
-    closeFilterMenu(true);
-    return true;
-  }
   if (menuToggle?.getAttribute("aria-expanded") === "true") {
     closeMobileMenu();
     menuToggle.focus();
@@ -1316,23 +1319,13 @@ function openNewProcessModal() {
   form.addEventListener("submit", (event) => submitNewJobForm(event, form, closeForm));
 }
 
-filterTabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    setFilter(tab.getAttribute("data-filter"));
-    closeMobileMenu();
-    if (window.matchMedia("(max-width: 800px)").matches) menuToggle?.focus();
-  });
-});
+statusFilterControls.forEach((control) => control.addEventListener("change", () => {
+  if (validFilters.has(control.value)) setFilter(control.value);
+  else updateFilterSummary();
+}));
+boardButton?.addEventListener("click", () => setFilter(currentStatusFilter));
 scheduleButton?.addEventListener("click", () => {
   setFilter("schedule");
-  closeMobileMenu();
-  if (window.matchMedia("(max-width: 800px)").matches) menuToggle?.focus();
-});
-
-filterCurrentAction?.addEventListener("click", () => {
-  setFilter(currentStatusFilter);
-  closeMobileMenu();
-  if (window.matchMedia("(max-width: 800px)").matches) menuToggle?.focus();
 });
 
 processFilterTrigger?.addEventListener("click", () => {
@@ -1517,6 +1510,13 @@ function clearPostingSalaryFilter() {
 }
 
 processFilterClear?.addEventListener("click", (event) => {
+  currentFilter = "all";
+  currentStatusFilter = "all";
+  try {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, "all");
+    window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, "all");
+  } catch { /* Keep the reset status active for this page. */ }
+  updateFilterSummary();
   if (searchPeriodFilter) searchPeriodFilter.value = "all";
   processFilters.searchPeriod = "all";
   renderSearchPeriodOptions();
@@ -1537,6 +1537,13 @@ function resetSearchAndFilters() {
   clearTimeout(searchDebounceTimer);
   currentSearch = "";
   if (searchInput) searchInput.value = "";
+  currentFilter = "all";
+  currentStatusFilter = "all";
+  try {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, "all");
+    window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, "all");
+  } catch { /* Keep the reset view active for this page. */ }
+  updateFilterSummary();
   processFilters = {
     arrangements: [], searchPeriod: "all", expectedSalaryQuery: "",
     postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [],
@@ -1555,46 +1562,8 @@ document.addEventListener("click", (event) => {
   searchPeriodTrigger?.setAttribute("aria-expanded", "false");
 });
 
-filterMenuTrigger?.addEventListener("click", () => {
-  const willOpen = filterMenu?.hidden;
-  if (!filterMenu) return;
-  filterMenu.hidden = !willOpen;
-  filterMenuTrigger.setAttribute("aria-expanded", String(willOpen));
-});
-
-filterMenuTrigger?.addEventListener("keydown", (event) => {
-  if (!filterMenu || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
-  event.preventDefault();
-  filterMenu.hidden = false;
-  filterMenuTrigger.setAttribute("aria-expanded", "true");
-  const options = [...filterTabs];
-  (event.key === "ArrowDown" ? options[0] : options.at(-1))?.focus();
-});
-
-filterMenu?.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    event.stopPropagation();
-    closeFilterMenu(true);
-    return;
-  }
-  const options = [...filterTabs];
-  const index = options.indexOf(document.activeElement);
-  if (index < 0) return;
-  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    const direction = event.key === "ArrowDown" ? 1 : -1;
-    options[(index + direction + options.length) % options.length]?.focus();
-  }
-});
-filterMenu?.addEventListener("focusout", (event) => {
-  if (event.relatedTarget instanceof Element && event.relatedTarget.closest(".filter-tabs")) return;
-  closeFilterMenu();
-});
-
 document.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
-  if (!event.target.closest(".filter-tabs")) closeFilterMenu();
   if (!event.target.closest(".process-filter-control, .process-toolbar-active-state, .process-filter-panel") && processFilterPanel && !processFilterPanel.hidden) {
     closeProcessFilterPanel();
   }
@@ -1636,15 +1605,7 @@ backdropEl.addEventListener("click", (e) => {
 
 window.addEventListener("keydown", handleGlobalKeydown);
 
-filterTabs.forEach((tab) => {
-  const isActive = tab.getAttribute("data-filter") === currentStatusFilter;
-  tab.classList.toggle("active", isActive);
-  tab.setAttribute("aria-checked", String(isActive));
-});
-
 initializeProcessFilterControls();
-scheduleButton?.classList.toggle("active", currentFilter === "schedule");
-scheduleButton?.setAttribute("aria-pressed", String(currentFilter === "schedule"));
 updateFilterSummary();
 
 await refreshApp();
