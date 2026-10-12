@@ -257,7 +257,7 @@ type toolbarLayout struct {
 
 func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 	page := newPage(t)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1000, 900}, {900, 900}, {801, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {390, 844}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1100, 900}, {1024, 900}, {1000, 900}, {900, 900}, {801, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {390, 844}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
@@ -270,7 +270,7 @@ func TestToolbarResponsiveLayoutAndSalaryFilterStyle(t *testing.T) {
 		}
 	}
 	openDemoPage(t, page)
-	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1116, 900}, {1115, 900}, {1100, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
+	for _, viewport := range []struct{ width, height int }{{2048, 1200}, {1440, 900}, {1360, 900}, {1200, 900}, {1116, 900}, {1115, 900}, {1100, 900}, {1024, 900}, {1000, 900}, {900, 900}, {850, 900}, {801, 900}, {800, 900}, {780, 900}, {760, 900}, {728, 900}, {727, 900}, {722, 900}, {721, 900}, {650, 900}, {500, 900}, {420, 900}, {390, 844}, {360, 800}, {320, 720}} {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		layout := readToolbarLayout(t, page, viewport.width)
 		assertToolbarHasNoOverflow(t, viewport.width, layout)
