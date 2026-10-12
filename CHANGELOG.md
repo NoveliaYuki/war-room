@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.0 — 2026-10-12
+
+## Highlights
+- Keep process controls clear and usable across desktop, narrow windows, and mobile screens.
+
+## What changed
+- Keep status and Daily Schedule controls visible while reserving the hamburger menu for future options.
+- Align toolbar controls and active filter chips across viewport widths, with removable filters that stay open while editing.
+- Show filters in a full-screen mobile sheet with independently scrolling fields and pinned actions on phone-sized viewports.
+- Improve responsive process cards and keep control sizes consistent as the window narrows.
+- Default newly created processes to Waiting.
+
 ## 1.7.0 — 2026-10-09
 
 ## Highlights

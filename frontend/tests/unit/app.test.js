@@ -31,7 +31,7 @@ describe('application entry point', () => {
       <button id="btn-theme-toggle"></button>
       <div id="process-toolbar">
         <div class="toolbar-search-filter"><div class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"><span>Filters</span><span id="process-filter-count" hidden></span></button>
-          <div id="process-filter-panel" hidden><fieldset class="process-filter-period"><legend>Search period</legend><div id="search-period-control" class="search-period-control search-period-select-wrap"><input id="search-period-filter" type="hidden" value="all"><button id="search-period-trigger" aria-expanded="false"><span id="search-period-current"></span></button><div id="search-period-menu" role="menu" hidden></div></div></fieldset><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select></div></div>
+          <div id="process-filter-panel" hidden><div class="process-filter-panel-header"><strong>Filters</strong><button class="process-filter-close" type="button"></button></div><section class="process-filter-active" hidden><div class="process-filter-chips" data-mobile-filter-chips></div></section><fieldset class="process-filter-period"><legend>Search period</legend><div id="search-period-control" class="search-period-control search-period-select-wrap"><input id="search-period-filter" type="hidden" value="all"><button id="search-period-trigger" aria-expanded="false"><span id="search-period-current"></span></button><div id="search-period-menu" role="menu" hidden></div></div></fieldset><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select><button class="process-filter-done" type="button">Done</button></div></div>
         </div>
         <div id="process-filter-chips"></div><div id="process-filter-panel-footer" hidden><button id="process-filter-clear"></button></div><span id="process-filter-summary"></span><div class="toolbar-view-controls"><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
       </div>
@@ -217,7 +217,7 @@ describe('application entry point', () => {
     await flush();
     expect(periodFilter.value).toBe('period-1');
     expect(document.querySelector('#search-period-menu').hidden).toBe(true);
-    expect(document.querySelectorAll('.process-filter-chip')).toHaveLength(0);
+    expect(document.querySelectorAll('#process-filter-chips .process-filter-chip')).toHaveLength(0);
     expect(document.querySelector('#process-filter-count').textContent).toBe('1');
     expect(document.querySelector('#process-filter-panel-footer').hidden).toBe(false);
     expect(document.querySelector('#search-period-current').textContent).toBe(periodName);
@@ -234,7 +234,7 @@ describe('application entry point', () => {
     remoteFilter.dispatchEvent(new Event('change'));
     await flush();
     expect(document.querySelector('#process-filter-count').textContent).toBe('1');
-    const remoteChip = document.querySelector('[data-remove-filter="arrangement"]');
+    const remoteChip = document.querySelector('#process-filter-chips [data-remove-filter="arrangement"]');
     remoteChip.click();
     await flush();
     expect(remoteFilter.checked).toBe(false);
@@ -388,7 +388,7 @@ describe('application entry point', () => {
     arrangementFilter.dispatchEvent(new Event('change'));
     await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.at(-1)[1]).toEqual([matchingJob, otherJob]));
     expect(document.querySelector('#process-filter-count').textContent).toBe('1');
-    expect([...document.querySelectorAll('.process-filter-chip')].map((chip) => chip.textContent.trim())).toEqual(['Remote', 'Hybrid']);
+    expect([...document.querySelectorAll('#process-filter-chips .process-filter-chip')].map((chip) => chip.textContent.trim())).toEqual(['Remote', 'Hybrid']);
     expect(document.querySelector('#process-filter-technology-options').innerHTML).toContain('React');
     const technologyOptions = document.querySelector('#process-filter-technology-options');
     const reactTechnology = technologyOptions.querySelector('[value="tech-react"]');
@@ -416,16 +416,16 @@ describe('application entry point', () => {
     document.querySelector('#process-filter-no-referral').checked = true;
     document.querySelector('#process-filter-no-referral').dispatchEvent(new Event('change'));
     await flush();
-    const noReferralChip = [...document.querySelectorAll('.process-filter-chip')].find((chip) => chip.textContent.includes('No referral'));
+    const noReferralChip = [...document.querySelectorAll('#process-filter-chips .process-filter-chip')].find((chip) => chip.textContent.includes('No referral'));
     expect(noReferralChip).toBeTruthy();
     noReferralChip.click();
     await flush();
     expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).referral).toBe('');
     expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).arrangements).toEqual(['remote', 'hybrid']);
-    document.querySelector('[data-remove-filter="expectedSalary"]').click();
+    document.querySelector('#process-filter-chips [data-remove-filter="expectedSalary"]').click();
     await flush();
     expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1')).expectedSalaryQuery).toBe('');
-    document.querySelector('[data-remove-filter="postingSalary"]').click();
+    document.querySelector('#process-filter-chips [data-remove-filter="postingSalary"]').click();
     await flush();
     expect(JSON.parse(window.localStorage.getItem('war-room.process.filters.v1'))).toMatchObject({ postedSalaryMin: null, postedSalaryMax: null, currency: '' });
     document.querySelector('[data-remove-filter="technology"]').click();
@@ -501,6 +501,31 @@ describe('application entry point', () => {
     document.querySelector('#process-filter-trigger').click();
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(document.querySelector('#process-filter-panel').hidden).toBe(true);
+    window.matchMedia = vi.fn((query) => ({ matches: query === '(max-width: 640px)', addEventListener: vi.fn() }));
+    const mobileRemoteFilter = document.querySelector('[name="process-filter-arrangement"][value="remote"]');
+    mobileRemoteFilter.checked = true;
+    mobileRemoteFilter.dispatchEvent(new Event('change'));
+    await flush();
+    document.querySelector('#process-filter-trigger').click();
+    const filterPanel = document.querySelector('#process-filter-panel');
+    expect(filterPanel.getAttribute('role')).toBe('dialog');
+    expect(filterPanel.getAttribute('aria-modal')).toBe('true');
+    expect(document.body.classList.contains('process-filter-open')).toBe(true);
+    expect(document.querySelector('[data-mobile-filter-chips] [data-remove-filter="arrangement"]')).not.toBeNull();
+    document.querySelector('[data-mobile-filter-chips] [data-remove-filter="arrangement"]').click();
+    await flush();
+    expect(mobileRemoteFilter.checked).toBe(false);
+    expect(filterPanel.hidden).toBe(false);
+    document.querySelector('.process-filter-close').click();
+    expect(filterPanel.hidden).toBe(true);
+    expect(document.body.classList.contains('process-filter-open')).toBe(false);
+    expect(document.activeElement).toBe(document.querySelector('#process-filter-trigger'));
+    document.querySelector('#process-filter-trigger').click();
+    document.querySelector('.process-filter-done').click();
+    expect(filterPanel.hidden).toBe(true);
+    document.querySelector('#process-filter-trigger').click();
+    document.querySelector('#process-filter-trigger').click();
+    expect(filterPanel.hidden).toBe(true);
     document.querySelector('#search-period-trigger').click();
     expect(document.querySelector('#search-period-menu').hidden).toBe(false);
     document.dispatchEvent(new Event('click'));
@@ -575,6 +600,8 @@ describe('application entry point', () => {
     menuToggle.click();
     expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
     menuToggle.click();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(menuToggle.getAttribute('aria-expanded')).toBe('false');
 
     dataButton.click();
     expect(document.querySelector('#btn-open-cv-library')).toBeNull();

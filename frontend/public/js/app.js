@@ -106,6 +106,7 @@ const processFilterTechnologyOptions = document.querySelector("#process-filter-t
 const processFilterClear = document.querySelector("#process-filter-clear");
 const processFilterPanelFooter = document.querySelector("#process-filter-panel-footer");
 const processFilterChips = document.querySelector("#process-filter-chips");
+const mobileProcessFilterChips = document.querySelector("[data-mobile-filter-chips]");
 const processToolbarActiveState = document.querySelector("#process-toolbar-active-state");
 const processSortTrigger = document.querySelector("#process-sort-trigger");
 const processSortCurrent = document.querySelector("#process-sort-current");
@@ -414,8 +415,12 @@ function updateProcessFilterSummary() {
   updateProcessFilterTriggerLabel(count);
   const chips = getProcessFilterChips();
   if (processFilterChips) processFilterChips.innerHTML = chips.map(renderProcessFilterChip).join("");
+  if (mobileProcessFilterChips) mobileProcessFilterChips.innerHTML = chips.map(renderProcessFilterChip).join("");
+  const mobileActiveFilters = document.querySelector(".process-filter-active");
+  if (mobileActiveFilters) mobileActiveFilters.hidden = chips.length === 0;
   if (processToolbarActiveState) processToolbarActiveState.hidden = chips.length === 0;
-  if (processFilterPanelFooter) processFilterPanelFooter.hidden = count === 0;
+  if (processFilterClear) processFilterClear.hidden = count === 0;
+  if (processFilterPanelFooter) processFilterPanelFooter.hidden = count === 0 && !window.matchMedia("(max-width: 640px)").matches;
   if (summary) summary.textContent = "";
 }
 
@@ -968,8 +973,7 @@ function openCvLibraryModal(event) {
 /** Opens the shared technology catalog from the filter panel or a job detail. */
 function openTechnologyLibraryModal(event) {
   managementReturnJobId = event?.detail?.jobId || "";
-  if (processFilterPanel) processFilterPanel.hidden = true;
-  processFilterTrigger?.setAttribute("aria-expanded", "false");
+  closeProcessFilterPanel();
   closeMobileMenu();
   cancelPendingFlipClose(true);
   resetModalAnimation();
@@ -1323,15 +1327,18 @@ filterCurrentAction?.addEventListener("click", () => {
 processFilterTrigger?.addEventListener("click", () => {
   if (!processFilterPanel) return;
   const willOpen = processFilterPanel.hidden;
-  processFilterPanel.hidden = !willOpen;
-  processFilterTrigger.setAttribute("aria-expanded", String(willOpen));
+  if (willOpen) openProcessFilterPanel();
+  else closeProcessFilterPanel();
 });
+document.querySelector(".process-filter-close")?.addEventListener("click", () => closeProcessFilterPanel(true));
+document.querySelector(".process-filter-done")?.addEventListener("click", () => closeProcessFilterPanel(true));
 processFilterTrigger?.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || !processFilterPanel || processFilterPanel.hidden) return;
   event.preventDefault();
   closeProcessFilterPanel(true);
 });
 processFilterPanel?.addEventListener("keydown", (event) => {
+  if (processFilterPanel.getAttribute("role") === "dialog" && trapModalTab(event, processFilterPanel)) return;
   if (event.key !== "Escape") return;
   event.preventDefault();
   event.stopPropagation();
@@ -1339,14 +1346,35 @@ processFilterPanel?.addEventListener("keydown", (event) => {
 });
 processFilterPanel?.addEventListener("focusout", (event) => {
   if (event.relatedTarget instanceof Node && processFilterPanel.contains(event.relatedTarget)) return;
+  if (event.relatedTarget instanceof Element && (event.relatedTarget.closest(".process-toolbar-active-state") || event.relatedTarget === processFilterTrigger)) return;
   setTimeout(() => {
-    if (!processFilterPanel.contains(document.activeElement)) closeProcessFilterPanel();
+    if (!processFilterPanel.contains(document.activeElement)
+      && !document.activeElement?.closest?.(".process-toolbar-active-state")
+      && document.activeElement !== processFilterTrigger) closeProcessFilterPanel();
   }, 0);
 });
+
+function openProcessFilterPanel() {
+  if (!processFilterPanel) return;
+  processFilterPanel.hidden = false;
+  processFilterTrigger?.setAttribute("aria-expanded", "true");
+  const isMobile = window.matchMedia("(max-width: 640px)").matches;
+  if (processFilterPanelFooter) processFilterPanelFooter.hidden = !isMobile && getActiveProcessFilterCount() === 0;
+  processFilterPanel.setAttribute("role", isMobile ? "dialog" : "region");
+  if (isMobile) {
+    processFilterPanel.setAttribute("aria-modal", "true");
+    document.body.classList.add("process-filter-open");
+    document.querySelector(".process-filter-close")?.focus();
+  } else {
+    processFilterPanel.removeAttribute("aria-modal");
+  }
+}
 
 function closeProcessFilterPanel(restoreFocus = false) {
   if (!processFilterPanel) return;
   processFilterPanel.hidden = true;
+  processFilterPanel.removeAttribute("aria-modal");
+  document.body.classList.remove("process-filter-open");
   processFilterTrigger?.setAttribute("aria-expanded", "false");
   if (restoreFocus) processFilterTrigger?.focus();
 }
@@ -1418,17 +1446,21 @@ searchPeriodSelectWrap?.addEventListener("focusout", (event) => {
   }, 0);
 });
 
-processFilterChips?.addEventListener("click", (event) => {
+function handleProcessFilterChipClick(event, chipContainer) {
   const chip = event.target.closest("[data-remove-filter]");
   if (!chip) return;
+  event.stopPropagation();
   const keyboardActivated = event.detail === 0;
-  const chipIndex = [...processFilterChips.querySelectorAll("[data-remove-filter]")].indexOf(chip);
+  const chipIndex = [...chipContainer.querySelectorAll("[data-remove-filter]")].indexOf(chip);
   clearProcessFilterCategory(chip.dataset.removeFilter, chip.dataset.filterValue);
   if (!keyboardActivated) return;
-  const remainingChips = [...processFilterChips.querySelectorAll("[data-remove-filter]")];
+  const remainingChips = [...chipContainer.querySelectorAll("[data-remove-filter]")];
   const nextChip = remainingChips[Math.min(chipIndex, remainingChips.length - 1)];
-  (nextChip || (processFilterPanelFooter && !processFilterPanelFooter.hidden ? processFilterClear : processFilterTrigger))?.focus();
-});
+  (nextChip || (chipContainer === mobileProcessFilterChips ? document.querySelector(".process-filter-done") : processFilterTrigger))?.focus();
+}
+
+processFilterChips?.addEventListener("click", (event) => handleProcessFilterChipClick(event, processFilterChips));
+mobileProcessFilterChips?.addEventListener("click", (event) => handleProcessFilterChipClick(event, mobileProcessFilterChips));
 
 function clearProcessFilterCategory(category, value = "") {
   switch (category) {
@@ -1552,9 +1584,8 @@ filterMenu?.addEventListener("focusout", (event) => {
 document.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
   if (!event.target.closest(".filter-tabs")) closeFilterMenu();
-  if (!event.target.closest(".process-filter-control") && processFilterPanel && !processFilterPanel.hidden) {
-    processFilterPanel.hidden = true;
-    processFilterTrigger?.setAttribute("aria-expanded", "false");
+  if (!event.target.closest(".process-filter-control, .process-toolbar-active-state, .process-filter-panel") && processFilterPanel && !processFilterPanel.hidden) {
+    closeProcessFilterPanel();
   }
   if (!event.target.closest(".process-sort-control")) closeSortMenu();
 });

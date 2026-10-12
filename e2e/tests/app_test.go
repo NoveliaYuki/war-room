@@ -717,7 +717,7 @@ func readFilterPopoverBounds(t *testing.T, trigger, panel playwright.Locator, wi
 		t.Fatalf("read Filters state at %dpx: %v", width, err)
 	}
 	if expanded == "true" {
-		if err := trigger.Click(); err != nil {
+		if err := panel.DispatchEvent("keydown", map[string]any{"key": "Escape"}); err != nil {
 			t.Fatalf("close Filters before checking %dpx: %v", width, err)
 		}
 	}
@@ -1002,7 +1002,8 @@ func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	expected := min(342.0, layout.Toolbar.Width)
+	available := layout.Toolbar.Width - layout.Filter.Width - layout.Sort.Width - 16
+	expected := min(342.0, max(0, available))
 	if abs(layout.Search.Width-expected) > 2 {
 		t.Errorf("%dpx viewport should keep search at its preferred 342px width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
 	}
@@ -1337,6 +1338,11 @@ func TestPhoneFilterPopoverStaysWithinViewport(t *testing.T) {
 		setPageViewport(t, page, viewport.width, viewport.height)
 		clickLocator(t, page.Locator("#process-filter-trigger"), "open phone filters")
 		assertVisible(t, page.Locator("#process-filter-panel"))
+		assertVisible(t, page.Locator(".process-filter-close"))
+		role, err := page.Locator("#process-filter-panel").GetAttribute("role")
+		if err != nil || role != "dialog" {
+			t.Fatalf("phone filters should open as a dialog (role=%q, err=%v)", role, err)
+		}
 		withinViewport, err := page.Evaluate(`() => {
 		  const panel = document.querySelector("#process-filter-panel");
 		  const rect = panel.getBoundingClientRect();
@@ -1346,7 +1352,7 @@ func TestPhoneFilterPopoverStaysWithinViewport(t *testing.T) {
 			metrics, _ := page.Evaluate(`() => JSON.stringify({viewport: [innerWidth, innerHeight], panel: document.querySelector("#process-filter-panel").getBoundingClientRect().toJSON()})`, nil)
 			t.Fatalf("phone filter panel extends beyond the viewport at %dpx (metrics=%v, err=%v)", viewport.width, metrics, err)
 		}
-		clickLocator(t, page.Locator("#process-filter-trigger"), "close phone filters")
+		clickLocator(t, page.Locator(".process-filter-close"), "close phone filters")
 	}
 }
 

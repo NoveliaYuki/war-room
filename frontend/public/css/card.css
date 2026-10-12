@@ -144,7 +144,7 @@
   position: absolute;
   z-index: 20;
   top: calc(100% + 7px);
-  left: 0;
+  right: 0;
   display: grid;
   gap: 12px;
   width: min(350px, calc(100vw - 32px));
@@ -160,6 +160,11 @@
 }
 .process-filter-panel[hidden] { display: none; }
 .process-filter-panel-header { display: flex; align-items: center; justify-content: space-between; color: var(--text-primary); font-size: 14px; }
+.process-filter-close { display: none; }
+.process-filter-panel-content { display: grid; gap: 12px; min-width: 0; }
+.process-filter-active { display: grid; gap: 7px; min-width: 0; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
+.process-filter-active[hidden] { display: none; }
+.process-filter-active h3 { margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
 .process-filter-arrangements,
 .process-filter-referral,
 .process-filter-period,
@@ -249,6 +254,62 @@
 .process-filter-salary legend { grid-column: 1 / -1; margin-bottom: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
 .process-filter-currency { grid-column: 1 / -1; }
 .process-filter-note { margin: -4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.process-filter-panel-footer { justify-content: space-between; }
+.process-filter-done { display: none; min-height: 36px; padding: 6px 14px; border: 0; border-radius: var(--radius-xs); background: var(--accent-blue); color: white; font: 600 13px var(--font-sans); cursor: pointer; }
+.process-filter-done:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  body.process-filter-open { overflow: hidden; }
+  .process-filter-panel {
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .process-filter-panel[hidden] { display: none; }
+  .process-filter-panel-header {
+    flex: 0 0 auto;
+    min-height: 58px;
+    padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-surface-elevated);
+    font-size: 16px;
+  }
+  .process-filter-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .process-filter-panel-content { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 16px; }
+  .process-filter-panel-footer {
+    position: static;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 10px 16px max(10px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border-subtle);
+  }
+  .process-filter-done { display: inline-flex; align-items: center; justify-content: center; }
+  .process-filter-panel-footer[hidden] { display: none; }
+}
 
 .process-toolbar[hidden] { display: none; }
 
@@ -278,14 +339,14 @@
 .search-period-actions { flex: 0 0 auto; }
 
 @container (max-width: 693px) {
-  .process-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; }
+  .process-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 8px; }
   .toolbar-search-filter { display: contents; }
-  .process-search { grid-column: 1 / -1; grid-row: 1; justify-self: start; align-self: start; inline-size: min(342px, 100%); max-inline-size: 342px; }
-  .process-filter-control { grid-column: 1; grid-row: 2; justify-self: start; width: max-content; }
-  .toolbar-view-controls { display: flex; grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
+  .process-search { grid-column: 1; grid-row: 1; justify-self: stretch; align-self: start; inline-size: min(342px, 100%); max-inline-size: 342px; }
+  .process-filter-control { grid-column: 2; grid-row: 1; justify-self: start; width: max-content; }
+  .toolbar-view-controls { display: flex; grid-column: 3; grid-row: 1; justify-self: end; justify-content: flex-end; gap: 6px; width: auto; max-width: 100%; }
   .process-sort-control { min-height: 42px; margin: 0; }
-  .process-toolbar-active-state { grid-column: 1 / -1; grid-row: 3; }
-  .process-filter-summary { grid-column: 1; grid-row: 4; justify-self: end; }
+  .process-toolbar-active-state { grid-column: 1 / -1; grid-row: 2; }
+  .process-filter-summary { grid-column: 1; grid-row: 3; justify-self: end; }
   .process-filter-trigger { min-height: 44px; padding-inline: 8px; }
   .process-sort-trigger { min-height: 42px; padding-inline: 6px; }
   .process-filter-chip,
@@ -322,12 +383,6 @@
   .search-period-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
   .search-period-actions { flex-wrap: nowrap; }
   .search-period-actions > button { min-width: 60px; padding-inline: 10px; }
-}
-
-@media (max-width: 1000px) {
-  @container (min-width: 694px) {
-    .process-filter-panel { right: auto; left: 0; }
-  }
 }
 
 @media (max-width: 360px) {
@@ -1023,4 +1078,41 @@ html.is-reordering-cards body {
 
 @media (max-width: 760px) {
   .keyword-note { min-height: 0; }
+}
+
+@media (max-width: 640px) {
+  .process-toolbar {
+    box-sizing: border-box;
+    width: calc(100vw - 28px);
+    max-width: calc(100vw - 28px);
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto 92px;
+    gap: 6px 8px;
+  }
+  .toolbar-search-filter { display: contents; }
+  .process-search {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: stretch;
+    width: 100%;
+    inline-size: 100%;
+    max-width: none;
+    max-inline-size: none;
+  }
+  .process-filter-control { grid-column: 2; grid-row: 1; justify-self: start; }
+  .toolbar-view-controls { grid-column: 3; grid-row: 1; min-width: 0; }
+  .process-sort-control { width: 92px; min-width: 0; max-width: 100%; }
+  .process-sort-trigger { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; gap: 3px; padding-inline: 0; white-space: nowrap; }
+  #process-sort-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .process-toolbar-active-state { grid-column: 1 / -1; grid-row: 2; }
+  .process-filter-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-height: none;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
 }
