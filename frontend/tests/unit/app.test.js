@@ -59,13 +59,17 @@ describe('application entry point', () => {
     mocks.api.getCvVersions.mockResolvedValue([]);
     mocks.renderScheduleView.mockResolvedValue(undefined);
     window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn() }));
+    const getSearchPeriods = mocks.api.getSearchPeriods;
+    delete mocks.api.getSearchPeriods;
     const appImport = import('../../public/js/app.js');
     await vi.waitFor(() => expect(mocks.api.getJobs).toHaveBeenCalledTimes(1));
+    mocks.api.getSearchPeriods = getSearchPeriods;
     expect(document.body.dataset.appReady).toBeUndefined();
     expect(document.querySelector('#cards-grid').getAttribute('aria-busy')).toBe('true');
     expect(document.querySelector('.board-loading-state')).not.toBeNull();
     resolveInitialJobs([]);
     await appImport;
+    expect(document.querySelector('#app-load-error').hidden).toBe(true);
     expect(document.querySelector('#cards-grid').getAttribute('aria-busy')).toBe('false');
     expect(document.querySelector('.board-loading-state')).toBeNull();
     const matchingJob = {

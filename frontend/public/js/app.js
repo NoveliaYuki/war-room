@@ -199,13 +199,24 @@ async function refreshBoardCounts() {
   updateFilterSummary();
   updateSortControl();
   await loadAvailableTechnologies();
-  searchPeriods = await api.getSearchPeriods();
+  searchPeriods = await loadSearchPeriods();
   renderSearchPeriodOptions();
   const scopedCounts = await getCountsForSelectedPeriod(allPeriodCounts);
   updateBoardCountLabels(scopedCounts);
   updateFilterSummary();
   updateProcessFilterSummary();
   return { allPeriodCounts, scopedCounts };
+}
+
+/** Loads optional search period data without blocking the main process board. */
+async function loadSearchPeriods() {
+  try {
+    const getSearchPeriods = api.getSearchPeriods;
+    return typeof getSearchPeriods === "function" ? await getSearchPeriods() : [];
+  } catch (error) {
+    console.warn("Search periods are unavailable:", error);
+    return [];
+  }
 }
 
 function updateBoardCountLabels(counts) {
