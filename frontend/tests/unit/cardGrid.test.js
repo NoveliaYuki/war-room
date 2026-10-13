@@ -115,6 +115,15 @@ describe('cardGrid', () => {
     expect(card.querySelector('.card-tech-count').textContent).toBe('3');
   });
 
+  it('explains automatic inactivity rejection in the demo card', () => {
+    const { card } = setup([makeJob({
+      status: 'rejected',
+      automatic_rejection_reason: 'Automatically rejected after 30 days without saved activity.',
+    })]);
+    expect(card.querySelector('.card-automatic-rejection').textContent)
+      .toContain('Demo: Automatically rejected after 30 days');
+  });
+
   it('omits the technology preview when no technologies are recorded', () => {
     const { card } = setup([makeJob({ technologies: [] })]);
 

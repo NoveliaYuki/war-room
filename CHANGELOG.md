@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.0 — 2026-10-13
+
+## Highlights
+- Automatically move Waiting job cards to Rejected after 30 elapsed days without saved activity, with activity tracking for card edits and related interview data.
+- Make the automatic inactivity rule clear in demo mode, including a sample card already rejected after 30 inactive days.
+
+## What changed
+- Track job activity in SQLite and run the inactivity sweep when the backend starts and every 24 hours while it runs. Existing cards receive a 30-day grace period after upgrade.
+- Apply the same 30-day rule in browser-only demo mode, explain the rule on the demo board, and ensure demo Waiting cards have recent activity.
+- Include the 1.8.x and earlier unreleased improvements since the last published release: responsive board and filter updates, Search Periods, dark theme refinements, improved status and meeting navigation, Markdown notes, and security and CI checks.
+- Keep technology aliases, named interview stages, and job creation defaults consistent with their role and posting details.
+
 ## 1.8.3 — 2026-10-13
 
 ## Highlights

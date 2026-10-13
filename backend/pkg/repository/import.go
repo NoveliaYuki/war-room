@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"war-room/backend/pkg/models"
 )
@@ -164,8 +165,8 @@ func prepareImportStatements(tx *sql.Tx) (*importStatements, error) {
 		interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
 		work_arrangement, employment_type, is_referral, order_index, status_changed_at,
-		application_sent_date, recruiter_first_contact_date, created_at, updated_at, cv_version_id, search_period_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		application_sent_date, recruiter_first_contact_date, created_at, updated_at, last_activity_at, cv_version_id, search_period_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +222,7 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 	if statusChangedAt == 0 {
 		statusChangedAt = job.CreatedAt
 	}
+	lastActivityAt := importedJobActivityTimestamp(job)
 	var cvVersionID any
 	if job.SelectedCVVersion != nil {
 		cvVersionID = job.SelectedCVVersion.ID
@@ -230,7 +232,7 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 		interviewers, job.JobPostURL, job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary, defaultValue(string(job.WorkArrangement), "unknown"),
 		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, statusChangedAt,
-		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, cvVersionID, job.SearchPeriodID); err != nil {
+		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, lastActivityAt, cvVersionID, job.SearchPeriodID); err != nil {
 		return err
 	}
 	for _, technology := range job.Technologies {
@@ -250,6 +252,17 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 		}
 	}
 	return nil
+}
+
+func importedJobActivityTimestamp(job models.Job) int64 {
+	if job.LastActivityAt != 0 {
+		return job.LastActivityAt
+	}
+	lastActivityAt := max(job.UpdatedAt, job.CreatedAt, job.StatusChangedAt)
+	if lastActivityAt != 0 {
+		return lastActivityAt
+	}
+	return time.Now().Unix()
 }
 
 func insertImportedStage(statements *importStatements, stage models.Stage, jobID string) error {

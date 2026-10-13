@@ -106,7 +106,7 @@ func buildJobsQuery(status, search string) (string, []interface{}) {
 			jobs.description, jobs.company_overview, jobs.company_domain, jobs.interview_notes,
 			jobs.reasons_to_change, jobs.experience_notes, jobs.expected_salary, jobs.work_arrangement,
 			jobs.employment_type, jobs.is_referral, jobs.order_index, jobs.status_changed_at,
-			jobs.application_sent_date, jobs.recruiter_first_contact_date, jobs.created_at, jobs.updated_at, jobs.cv_version_id, jobs.search_period_id,
+			jobs.application_sent_date, jobs.recruiter_first_contact_date, jobs.created_at, jobs.updated_at, jobs.last_activity_at, jobs.cv_version_id, jobs.search_period_id,
 			(SELECT COALESCE(custom_title, stage_type) FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_title,
 			(SELECT order_index + 1 FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_index,
 			(SELECT COUNT(*) FROM stages WHERE job_id = jobs.id) as total_stages_count
@@ -145,7 +145,7 @@ func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {
 			&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 			&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 			&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID, &searchPeriodID,
+			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &j.LastActivityAt, &cvVersionID, &searchPeriodID,
 			&j.CurrentStageTitle, &j.CurrentStageIndex, &j.TotalStagesCount,
 		)
 		if err != nil {
@@ -187,7 +187,7 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
 			employment_type, is_referral, order_index, status_changed_at, application_sent_date,
-			recruiter_first_contact_date, created_at, updated_at, cv_version_id, search_period_id
+			recruiter_first_contact_date, created_at, updated_at, last_activity_at, cv_version_id, search_period_id
 		FROM jobs WHERE id = ?
 	`, id)
 
@@ -202,7 +202,7 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 		&ijJSON, &j.JobPostURL, &j.AvatarSeed, &j.KeywordNote,
 		&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 		&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
-		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &cvVersionID, &searchPeriodID,
+		&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &j.LastActivityAt, &cvVersionID, &searchPeriodID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -424,6 +424,7 @@ func (r *Repository) InsertJob(job *models.Job) error {
 	job.CreatedAt = now
 	job.StatusChangedAt = now
 	job.UpdatedAt = now
+	job.LastActivityAt = now
 
 	ijBytes, _ := json.Marshal(job.Interviewers)
 	job.InterviewersJSON = string(ijBytes)
@@ -435,8 +436,8 @@ func (r *Repository) InsertJob(job *models.Job) error {
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 			company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary, work_arrangement,
 		employment_type, is_referral, order_index, status_changed_at, application_sent_date,
-		recruiter_first_contact_date, created_at, updated_at, cv_version_id, search_period_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			recruiter_first_contact_date, created_at, updated_at, last_activity_at, cv_version_id, search_period_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		job.ID, job.CompanyName, job.PositionTitle, job.Status, job.SalaryType,
 		job.SalaryMin, job.SalaryMax, job.SalaryCurrency, job.RecruiterType,
@@ -445,9 +446,20 @@ func (r *Repository) InsertJob(job *models.Job) error {
 		job.Description, job.CompanyOverview, job.CompanyDomain, job.InterviewNotes,
 		job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
 		job.WorkArrangement, job.EmploymentType, job.IsReferral, job.OrderIndex, job.StatusChangedAt,
-		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job.SelectedCVVersion), job.SearchPeriodID,
+		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, job.LastActivityAt, selectedCVVersionID(job.SelectedCVVersion), job.SearchPeriodID,
 	)
 	return err
+}
+
+// RejectInactiveWaitingJobs moves waiting jobs with no saved activity for 30 days to rejected.
+func (r *Repository) RejectInactiveWaitingJobs(now time.Time) (int64, error) {
+	cutoff := now.Add(-30 * 24 * time.Hour).Unix()
+	result, err := r.db.Exec(`UPDATE jobs SET status = 'rejected', updated_at = ?
+		WHERE status = 'waiting' AND last_activity_at <= ?`, now.Unix(), cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func selectedCVVersionID(version *models.CVVersion) interface{} {
@@ -486,7 +498,7 @@ func (r *Repository) UpdateJob(id string, fields map[string]interface{}) error {
 		return nil
 	}
 
-	clauses = append(clauses, "updated_at = unixepoch()")
+	clauses = append(clauses, "updated_at = unixepoch()", "last_activity_at = unixepoch()")
 	// Column names are allowlisted above; values remain parameterized.
 	query := fmt.Sprintf("UPDATE jobs SET %s WHERE id = ?", strings.Join(clauses, ", ")) // #nosec G201 // nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	args = append(args, id)

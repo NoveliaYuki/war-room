@@ -9,6 +9,10 @@
   gap: clamp(14px, 2vw, 20px);
 }
 
+.demo-inactivity-note { display: none; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-left: 3px solid var(--accent-blue); border-radius: var(--radius-sm); color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+body[data-demo="true"] .demo-inactivity-note { display: block; }
+body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary); }
+
 .board-loading-state { grid-column: 1 / -1; min-width: 0; }
 .board-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(300px, calc(50vw - 44px), 340px)), 1fr)); gap: clamp(14px, 2vw, 20px); }
 .board-skeleton-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px 12px; min-height: 380px; padding: 20px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-card); }
@@ -459,6 +463,13 @@
 }
 
 .card-process-dates strong { color: var(--text-secondary); font-weight: 600; }
+
+.card-automatic-rejection {
+  margin: -4px 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
 
 /* Reserve the footer's space while keeping card content at the top. */
 .card-content {
