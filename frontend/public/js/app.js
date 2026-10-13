@@ -170,7 +170,13 @@ function closeMobileMenu() {
 
 /** Updates the selected status filter and top-level board view. */
 function updateFilterSummary() {
-  statusFilterControls.forEach((control) => { control.checked = control.value === currentStatusFilter; });
+  statusFilterControls.forEach((control) => {
+    control.checked = control.value === "all"
+      ? !processFilters.statuses.length && currentFilter === "all"
+      : processFilters.statuses.length
+        ? processFilters.statuses.includes(control.value)
+        : control.value === currentStatusFilter;
+  });
   boardButton?.classList.toggle("active", currentFilter !== "schedule");
   boardButton?.setAttribute("aria-pressed", String(currentFilter !== "schedule"));
   scheduleButton?.classList.toggle("active", currentFilter === "schedule");
@@ -243,10 +249,10 @@ async function renderSelectedBoardView({ allPeriodCounts, scopedCounts }) {
 }
 
 async function renderProcessCards(allPeriodCounts, scopedCounts) {
-  const jobs = await api.getJobs(currentFilter, currentSearch);
+  const jobs = await api.getJobs(processFilters.statuses.length ? "all" : currentFilter, currentSearch);
   const filteredJobs = filterJobs(jobs, processFilters);
   const sortMode = currentFilter === "all" ? "manual" : readSavedSortMode(window.localStorage, currentFilter);
-  renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode, {
+  renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode, processFilters.statuses), modalEl, backdropEl, refreshApp, sortMode, {
     filter: currentFilter,
     totalCount: allPeriodCounts.all,
     statusCount: scopedCounts[currentFilter] ?? scopedCounts.all,
@@ -257,6 +263,7 @@ async function renderProcessCards(allPeriodCounts, scopedCounts) {
 
 function hasActiveProcessFilters() {
   return [
+    processFilters.statuses.length > 0,
     processFilters.searchPeriod !== "all",
     processFilters.arrangements.length > 0,
     Boolean(processFilters.expectedSalaryQuery),
@@ -315,6 +322,7 @@ function loadProcessFilters() {
     const saved = JSON.parse(window.localStorage.getItem(PROCESS_FILTER_STORAGE_KEY) || "{}");
     return {
       arrangements: readSavedArrangements(saved),
+      statuses: readSavedStatuses(saved.statuses),
       searchPeriod: typeof saved.searchPeriod === "string" ? saved.searchPeriod : "all",
       expectedSalaryQuery: typeof saved.expectedSalaryQuery === "string" ? saved.expectedSalaryQuery : "",
       postedSalaryMin: parseFilterNumber(saved.postedSalaryMin ?? saved.salaryMin),
@@ -324,8 +332,13 @@ function loadProcessFilters() {
       technologies: readSavedTechnologies(saved.technologies),
     };
   } catch {
-    return { arrangements: [], searchPeriod: "all", expectedSalaryQuery: "", postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [] };
+    return { arrangements: [], statuses: [], searchPeriod: "all", expectedSalaryQuery: "", postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [] };
   }
+}
+
+function readSavedStatuses(statuses) {
+  const validStatuses = ["waiting", "ongoing", "accepted", "rejected"];
+  return Array.isArray(statuses) ? [...new Set(statuses.filter((status) => validStatuses.includes(status)))] : [];
 }
 
 function renderSearchPeriodOptions() {
@@ -458,6 +471,7 @@ function renderProcessFilterChip({ category, label, value = "" }) {
 
 function getActiveProcessFilterCount() {
   return Number(currentFilter !== "all" && currentFilter !== "schedule")
+    + Number(processFilters.statuses.length > 0)
     + Number(processFilters.searchPeriod !== "all")
     + Number(processFilters.arrangements.length > 0)
     + Number(Boolean(processFilters.expectedSalaryQuery))
@@ -476,6 +490,7 @@ function updateProcessFilterTriggerLabel(activeFilterCount) {
 
 function getProcessFilterChips() {
   return [
+    ...(processFilters.statuses.length ? [{ category: "statuses", label: `Status: ${processFilters.statuses.map((status) => status[0].toUpperCase() + status.slice(1)).join(", ")}` }] : []),
     ...processFilters.arrangements.map((value) => ({ category: "arrangement", value, label: ({ remote: "Remote", hybrid: "Hybrid", on_site: "On-site" })[value] || value })),
     ...getReferralFilterChips(),
     ...getSalaryFilterChips(),
@@ -525,6 +540,7 @@ function saveProcessFilters() {
   const visibleTechnologyIds = visibleTechnologyControls.map((control) => control.value);
   const hiddenSelectedTechnologies = processFilters.technologies.filter((id) => !visibleTechnologyIds.includes(id));
   processFilters = {
+    statuses: processFilters.statuses,
     arrangements: [...processFilterArrangements].filter((control) => control.checked).map((control) => control.value),
     searchPeriod: searchPeriodFilter?.value || "all",
     expectedSalaryQuery: processFilterExpectedSalary?.value.trim() || "",
@@ -675,13 +691,18 @@ async function submitNewJobForm(event, form, closeForm) {
 /**
  * Sets the active status filter or top-level view.
  */
-function setFilter(filter) {
+function setFilter(filter, { preserveStatusSelection = false } = {}) {
   if (!validFilters.has(filter)) return;
   currentFilter = filter;
+  if (filter !== "all" && !preserveStatusSelection) processFilters.statuses = [];
   if (filter !== "schedule") {
     currentStatusFilter = filter;
     try { window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, filter); } catch { /* Keep the status filter active for this page. */ }
   }
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(PROCESS_FILTER_STORAGE_KEY) || "{}");
+    window.localStorage.setItem(PROCESS_FILTER_STORAGE_KEY, JSON.stringify({ ...saved, statuses: processFilters.statuses }));
+  } catch { /* Keep the status selection active for this page. */ }
   try {
     window.localStorage.setItem(FILTER_STORAGE_KEY, filter);
   } catch {
@@ -1323,8 +1344,16 @@ function openNewProcessModal() {
 }
 
 statusFilterControls.forEach((control) => control.addEventListener("change", () => {
-  if (validFilters.has(control.value)) setFilter(control.value);
-  else updateFilterSummary();
+  if (control.value === "all") {
+    processFilters.statuses = [];
+    statusFilterControls.forEach((option) => { if (option.value !== "all") option.checked = false; });
+    setFilter("all");
+    return;
+  }
+  processFilters.statuses = [...statusFilterControls]
+    .filter((option) => option.value !== "all" && option.checked)
+    .map((option) => option.value);
+  setFilter(processFilters.statuses.length === 1 ? processFilters.statuses[0] : "all", { preserveStatusSelection: true });
 }));
 boardButton?.addEventListener("click", () => setFilter(currentStatusFilter));
 scheduleButton?.addEventListener("click", () => {
@@ -1462,6 +1491,7 @@ mobileProcessFilterChips?.addEventListener("click", (event) => handleProcessFilt
 function clearProcessFilterCategory(category, value = "") {
   switch (category) {
     case "arrangement": clearArrangementFilter(value); break;
+    case "statuses": processFilters.statuses = []; setFilter("all"); break;
     case "searchPeriod":
       processFilters.searchPeriod = "all";
       if (searchPeriodFilter) searchPeriodFilter.value = "all";
@@ -1512,6 +1542,7 @@ processFilterClear?.addEventListener("click", (event) => {
   updateFilterSummary();
   if (searchPeriodFilter) searchPeriodFilter.value = "all";
   processFilters.searchPeriod = "all";
+  processFilters.statuses = [];
   renderSearchPeriodOptions();
   processFilterArrangements.forEach((control) => { control.checked = false; });
   if (processFilterExpectedSalary) processFilterExpectedSalary.value = "";
@@ -1538,7 +1569,7 @@ function resetSearchAndFilters() {
   } catch { /* Keep the reset view active for this page. */ }
   updateFilterSummary();
   processFilters = {
-    arrangements: [], searchPeriod: "all", expectedSalaryQuery: "",
+    arrangements: [], statuses: [], searchPeriod: "all", expectedSalaryQuery: "",
     postedSalaryMin: null, postedSalaryMax: null, currency: "", referral: "", technologies: [],
   };
   if (searchPeriodFilter) searchPeriodFilter.value = "all";

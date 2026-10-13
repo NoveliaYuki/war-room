@@ -6,21 +6,21 @@
 :root {
   color-scheme: dark;
   /* Color Palette - Dark Elegance */
-  --bg-app: #0c0e14;
-  --bg-surface: #141721;
-  --bg-surface-elevated: #1b202e;
-  --bg-card: #181c28;
-  --bg-card-hover: #1f2434;
-  --bg-input: #10131c;
-  --bg-overlay: rgba(8, 10, 15, 0.76);
-  --bg-header: rgba(12, 14, 20, 0.82);
-  --bg-glass: rgba(20, 23, 33, 0.75);
-  --bg-subtle-hover: rgba(255, 255, 255, 0.04);
-  --bg-subtle: rgba(255, 255, 255, 0.06);
-  --bg-drag-placeholder: rgba(20, 23, 33, 0.4);
+  --bg-app: #171b26;
+  --bg-surface: #1e2431;
+  --bg-surface-elevated: #272f3e;
+  --bg-card: #222a38;
+  --bg-card-hover: #2c3647;
+  --bg-input: #1b2230;
+  --bg-overlay: rgba(13, 17, 25, 0.72);
+  --bg-header: rgba(23, 27, 38, 0.9);
+  --bg-glass: rgba(30, 36, 49, 0.9);
+  --bg-subtle-hover: rgba(255, 255, 255, 0.055);
+  --bg-subtle: rgba(255, 255, 255, 0.08);
+  --bg-drag-placeholder: rgba(39, 47, 62, 0.65);
   --text-on-accent: #ffffff;
   --text-accent-soft: #bfdbfe;
-  --text-info: #38bdf8;
+  --text-info: #7dd3fc;
   --text-teal: #5eead4;
   --text-success-soft: #a7f3d0;
   --text-warning: #fbbf24;
@@ -29,18 +29,18 @@
   --shadow-header: 0 1px 3px rgba(0, 0, 0, 0.4);
   --header-accent: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.55) 22%, rgba(139, 92, 246, 0.55) 78%, transparent);
 
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.14);
-  --border-bright: rgba(255, 255, 255, 0.25);
+  --border-subtle: rgba(207, 219, 239, 0.12);
+  --border-medium: rgba(207, 219, 239, 0.2);
+  --border-bright: rgba(207, 219, 239, 0.32);
 
   --text-primary: #f3f4f8;
-  --text-secondary: #9aa2b6;
-  --text-muted: #838da4;
+  --text-secondary: #c0c8d8;
+  --text-muted: #a2aec2;
   --text-inverse: #0c0e14;
 
   /* Accents */
-  --accent-blue: #3b82f6;
-  --accent-blue-subtle: rgba(59, 130, 246, 0.15);
+  --accent-blue: #5795ff;
+  --accent-blue-subtle: rgba(87, 149, 255, 0.18);
   --accent-indigo: #6366f1;
   --accent-purple: #8b5cf6;
 
@@ -57,8 +57,8 @@
   /* Stage Type Badges */
   --stage-hr: #f59e0b;
   --stage-hr-bg: rgba(245, 158, 11, 0.12);
-  --stage-tech: #3b82f6;
-  --stage-tech-bg: rgba(59, 130, 246, 0.12);
+  --stage-tech: #8ab8ff;
+  --stage-tech-bg: rgba(87, 149, 255, 0.16);
   --stage-cultural: #8b5cf6;
   --stage-cultural-bg: rgba(139, 92, 246, 0.12);
   --stage-offer: #10b981;

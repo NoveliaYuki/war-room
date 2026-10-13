@@ -15,6 +15,17 @@ describe('process ordering', () => {
     expect(readSavedSortMode(storage, 'waiting')).toBe('added-newest');
   });
 
+  it('groups multiple selected statuses in the requested display order', () => {
+    const jobs = [
+      { id: 'rejected', status: 'rejected', order_index: 1 },
+      { id: 'waiting', status: 'waiting', order_index: 2 },
+      { id: 'ongoing', status: 'ongoing', order_index: 3 },
+      { id: 'accepted', status: 'accepted', order_index: 4 },
+    ];
+    expect(sortJobsForDisplay(jobs, 'all', 'manual', ['accepted', 'ongoing', 'waiting', 'rejected'])
+      .map(({ id }) => id)).toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
+  });
+
   it('sorts each date, progress, and manual mode while keeping ties deterministic', () => {
     const jobs = [
       { id: 'old', order_index: 3, created_at: 1, status_changed_at: 2, current_stage_index: 1, total_stages_count: 4 },

@@ -31,7 +31,7 @@ describe('application entry point', () => {
       <button id="btn-theme-toggle"></button>
       <div id="process-toolbar">
         <div class="toolbar-search-filter"><div class="process-filter-control"><button id="process-filter-trigger" aria-expanded="false"><span>Filters</span><span id="process-filter-count" hidden></span></button>
-          <div id="process-filter-panel" hidden><div class="process-filter-panel-header"><strong>Filters</strong><button class="process-filter-close" type="button"></button></div><section class="process-filter-active" hidden><div class="process-filter-chips" data-mobile-filter-chips></div></section><fieldset class="process-filter-status"><legend>Status</legend><input type="radio" name="process-status-filter" value="waiting"><input type="radio" name="process-status-filter" value="ongoing"><input type="radio" name="process-status-filter" value="accepted"><input type="radio" name="process-status-filter" value="rejected"><input type="radio" name="process-status-filter" value="all"><input type="radio" name="process-status-filter" value="invalid"></fieldset><fieldset class="process-filter-period"><legend>Search period</legend><div id="search-period-control" class="search-period-control search-period-select-wrap"><input id="search-period-filter" type="hidden" value="all"><button id="search-period-trigger" aria-expanded="false"><span id="search-period-current"></span></button><div id="search-period-menu" role="menu" hidden></div></div></fieldset><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select><button class="process-filter-done" type="button">Done</button></div></div>
+          <div id="process-filter-panel" hidden><div class="process-filter-panel-header"><strong>Filters</strong><button class="process-filter-close" type="button"></button></div><section class="process-filter-active" hidden><div class="process-filter-chips" data-mobile-filter-chips></div></section><fieldset class="process-filter-status"><legend>Status</legend><input type="checkbox" name="process-status-filter" value="waiting"><input type="checkbox" name="process-status-filter" value="ongoing"><input type="checkbox" name="process-status-filter" value="accepted"><input type="checkbox" name="process-status-filter" value="rejected"><input type="checkbox" name="process-status-filter" value="all"><input type="checkbox" name="process-status-filter" value="invalid"></fieldset><fieldset class="process-filter-period"><legend>Search period</legend><div id="search-period-control" class="search-period-control search-period-select-wrap"><input id="search-period-filter" type="hidden" value="all"><button id="search-period-trigger" aria-expanded="false"><span id="search-period-current"></span></button><div id="search-period-menu" role="menu" hidden></div></div></fieldset><input type="checkbox" name="process-filter-arrangement" value="remote"><input type="checkbox" name="process-filter-arrangement" value="hybrid"><input type="checkbox" name="process-filter-arrangement" value="on_site"><input id="process-filter-any-referral" type="radio" name="process-filter-referral"><input id="process-filter-referral" type="radio" name="process-filter-referral"><input id="process-filter-no-referral" type="radio" name="process-filter-referral"><input id="process-filter-expected-salary"><input id="process-filter-salary-min"><input id="process-filter-salary-max"><input id="process-filter-posted-salary-min"><input id="process-filter-posted-salary-max"><input id="process-filter-technology-search"><div id="process-filter-technology-options"></div><select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option></select><button class="process-filter-done" type="button">Done</button></div></div>
         </div>
         <div id="process-filter-chips"></div><div id="process-filter-panel-footer" hidden><button id="process-filter-clear"></button></div><span id="process-filter-summary"></span><div class="toolbar-view-controls"><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
       </div>
@@ -79,13 +79,13 @@ describe('application entry point', () => {
     expect(document.querySelector('#cards-grid').getAttribute('aria-busy')).toBe('false');
     expect(document.querySelector('.board-loading-state')).toBeNull();
     const matchingJob = {
-      id: 'matching', work_arrangement: 'remote', is_referral: true, expected_salary: '€95k target',
+      id: 'matching', status: 'ongoing', work_arrangement: 'remote', is_referral: true, expected_salary: '€95k target',
       salary_min: 100000, salary_max: 120000, salary_currency: 'EUR',
       technologies: [{ id: 'tech-react' }, { id: 'tech-go' }], order_index: 1, status_changed_at: 1, created_at: 2,
       current_stage_index: 4, total_stages_count: 5,
     };
     const otherJob = {
-      id: 'other', work_arrangement: 'hybrid', is_referral: false, expected_salary: '€80k target',
+      id: 'other', status: 'waiting', work_arrangement: 'hybrid', is_referral: false, expected_salary: '€80k target',
       salary_min: 80000, salary_max: 90000, salary_currency: 'EUR',
       technologies: [{ id: 'tech-react' }], order_index: 2, status_changed_at: 2, created_at: 1,
       current_stage_index: 1, total_stages_count: 5,
@@ -97,12 +97,15 @@ describe('application entry point', () => {
     await flush();
     expect(document.querySelector('#process-filter-panel').hidden).toBe(false);
     expect(mocks.renderCardGrid.mock.calls.at(-1)[6].statusCount).toBe(2);
+    expect([...document.querySelectorAll('input[name="process-status-filter"]:checked')].map((control) => control.value))
+      .toEqual(['waiting', 'ongoing']);
     document.querySelector('input[name="process-status-filter"][value="ongoing"]').click();
     await flush();
     expect(document.querySelector('#process-filter-panel').hidden).toBe(false);
-    expect(document.querySelector('input[name="process-status-filter"][value="ongoing"]').checked).toBe(true);
+    expect(document.querySelector('input[name="process-status-filter"][value="ongoing"]').checked).toBe(false);
+    expect(document.querySelector('input[name="process-status-filter"][value="waiting"]').checked).toBe(true);
     document.querySelector('input[name="process-status-filter"][value="invalid"]').click();
-    expect(document.querySelector('input[name="process-status-filter"][value="ongoing"]').checked).toBe(true);
+    expect(document.querySelector('input[name="process-status-filter"][value="waiting"]').checked).toBe(true);
     localStorageGet.mockRestore();
     const originalGetComputedStyle = window.getComputedStyle.bind(window);
     await flush();
@@ -110,7 +113,7 @@ describe('application entry point', () => {
     searchInput.value = 'platform';
     searchInput.dispatchEvent(new Event('input'));
     await new Promise((resolve) => setTimeout(resolve, 225));
-    expect(mocks.api.getJobs).toHaveBeenLastCalledWith('ongoing', 'platform');
+    expect(mocks.api.getJobs).toHaveBeenLastCalledWith('all', 'platform');
     expect(document.body.dataset.appReady).toBe('true');
     expect(mocks.renderCardGrid).toHaveBeenCalled();
     expect(document.querySelector('#process-toolbar').style.getPropertyValue('--toolbar-search-filter-width')).toBe('');
@@ -242,7 +245,8 @@ describe('application entry point', () => {
     await flush();
     expect(periodFilter.value).toBe('period-1');
     expect(document.querySelector('#search-period-menu').hidden).toBe(true);
-    expect(document.querySelectorAll('#process-filter-chips .process-filter-chip')).toHaveLength(0);
+    expect([...document.querySelectorAll('#process-filter-chips .process-filter-chip')].map((chip) => chip.textContent.trim()))
+      .toEqual(['Status: Ongoing, Accepted']);
     expect(document.querySelector('#process-filter-count').textContent).toBe('2');
     expect(document.querySelector('#process-filter-panel-footer').hidden).toBe(false);
     expect(document.querySelector('#search-period-current').textContent).toBe(periodName);
@@ -468,6 +472,8 @@ describe('application entry point', () => {
     expect(document.querySelector('#process-filter-count').hidden).toBe(true);
     expect(document.querySelector('#process-filter-panel-footer').hidden).toBe(true);
 
+    otherJob.status = 'ongoing';
+    document.querySelector('input[name="process-status-filter"][value="all"]').click();
     document.querySelector('input[name="process-status-filter"][value="ongoing"]').click();
     await flush();
     document.querySelector('#process-sort-trigger').click();

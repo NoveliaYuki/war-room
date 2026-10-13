@@ -24,6 +24,8 @@ const MAX_ARCHIVE_ENTRIES = 10001;
 const CV_VERSIONS_KEY = "war-room-demo-cv-versions-v1";
 const NEXT_CV_VERSION_KEY = "war-room-demo-next-cv-version-v1";
 const SEARCH_PERIODS_KEY = "war-room-demo-search-periods-v1";
+const SEARCH_PERIOD_SEED_KEY = "war-room-demo-search-period-seed-v1";
+const SEARCH_PERIOD_SEED_VERSION = "3";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function readDemoCvVersions() {
@@ -129,6 +131,8 @@ function migrateDemoTimestamps(records, seededJobs) {
 
 let jobs = loadJobs();
 let searchPeriods = loadSearchPeriods();
+seedDemoSearchPeriods();
+refreshDemoSearchPeriodDates();
 
 function loadSearchPeriods() {
   try {
@@ -139,6 +143,97 @@ function loadSearchPeriods() {
 
 function saveSearchPeriods() {
   try { window.localStorage.setItem(SEARCH_PERIODS_KEY, JSON.stringify(searchPeriods)); } catch { /* Keep periods available for this tab. */ }
+}
+
+function seedDemoSearchPeriods() {
+  try {
+    if (window.localStorage.getItem(SEARCH_PERIOD_SEED_KEY) === SEARCH_PERIOD_SEED_VERSION) return;
+    const savedDemoSeed = new Set(jobs.map((job) => job.id));
+    if (!initialJobs.every((job) => savedDemoSeed.has(job.id))) {
+      window.localStorage.setItem(SEARCH_PERIOD_SEED_KEY, SEARCH_PERIOD_SEED_VERSION);
+      return;
+    }
+    if (searchPeriods.length === 0) {
+      const createdAt = Math.floor(Date.now() / 1000);
+      const currentPeriod = {
+        id: "demo-period-current",
+        name: "Current",
+        start_date: getCurrentSearchPeriodStart(),
+        end_date: "",
+        created_at: createdAt,
+        updated_at: createdAt,
+      };
+      const previousPeriod = {
+        id: "demo-period-june-2021",
+        name: "June 2021",
+        start_date: "2021-06-01",
+        end_date: "2021-06-30",
+        created_at: createdAt,
+        updated_at: createdAt,
+      };
+      searchPeriods = [currentPeriod, previousPeriod];
+    }
+    const currentPeriod = searchPeriods.find((period) => period.id === "demo-period-current");
+    const previousPeriod = searchPeriods.find((period) => period.id === "demo-period-june-2021");
+    if (currentPeriod && previousPeriod) {
+      const currentMonthStart = new Date();
+      currentMonthStart.setDate(1);
+      Object.assign(currentPeriod, { name: "Current", start_date: formatLocalDate(currentMonthStart), end_date: "" });
+      Object.assign(previousPeriod, { name: "June 2021", start_date: "2021-06-01", end_date: "2021-06-30" });
+      jobs = jobs.filter((job) => !job.id.startsWith("demo-period-june-2021-"));
+      jobs.push(...createHistoricalDemoJobs(previousPeriod));
+      jobs.forEach((job) => {
+        job.search_period_id = job.id.startsWith("demo-period-june-2021-") ? previousPeriod.id : currentPeriod.id;
+      });
+      saveSearchPeriods();
+      save();
+    }
+    window.localStorage.setItem(SEARCH_PERIOD_SEED_KEY, SEARCH_PERIOD_SEED_VERSION);
+  } catch { /* The demo remains usable if browser storage is unavailable. */ }
+}
+
+function getCurrentSearchPeriodStart(today = new Date()) {
+  const previousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const lastDayOfPreviousMonth = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0).getDate();
+  previousMonth.setDate(Math.min(today.getDate(), lastDayOfPreviousMonth));
+  return formatLocalDate(previousMonth);
+}
+
+function refreshDemoSearchPeriodDates() {
+  let jobsChanged = false;
+  const currentPeriod = searchPeriods.find((period) => period.id === "demo-period-current");
+  if (currentPeriod) {
+    currentPeriod.start_date = getCurrentSearchPeriodStart();
+    currentPeriod.end_date = "";
+  }
+  const periodsByID = new Map(searchPeriods.map((period) => [period.id, period]));
+  jobs.forEach((job) => {
+    const period = periodsByID.get(job.search_period_id);
+    if (!period) return;
+    if (job.application_sent_date) {
+      const validCVDate = clampDateToSearchPeriod(job.application_sent_date, period);
+      if (validCVDate !== job.application_sent_date) {
+        job.application_sent_date = validCVDate;
+        jobsChanged = true;
+      }
+    }
+    const changedDate = Number(job.status_changed_at) > 0
+      ? formatLocalDate(new Date(Number(job.status_changed_at) * 1000))
+      : period.start_date;
+    const validStatusDate = clampDateToSearchPeriod(changedDate, period);
+    if (validStatusDate !== changedDate) {
+      job.status_changed_at = Math.floor(new Date(`${validStatusDate}T12:00:00`).getTime() / 1000);
+      jobsChanged = true;
+    }
+  });
+  saveSearchPeriods();
+  if (jobsChanged) save();
+}
+
+function clampDateToSearchPeriod(date, period) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < period.start_date) return period.start_date;
+  if (period.end_date && date > period.end_date) return period.end_date;
+  return date;
 }
 
 function createDemoID() {
@@ -203,6 +298,58 @@ function save() {
   } catch {
     // The demo stays usable for the current tab when storage is unavailable.
   }
+}
+
+function createHistoricalDemoJobs(period) {
+  const historicalRecords = [
+    { company: "Morrow Design Co.", role: "UX Designer", status: "accepted", date: "2021-06-03", arrangement: "remote", salaryMin: 65000, salaryMax: 82000 },
+    { company: "Cinder Analytics", role: "Data Analyst", status: "rejected", date: "2021-06-07", arrangement: "hybrid", salaryMin: 58000, salaryMax: 74000 },
+    { company: "Saffron Labs", role: "Product Manager", status: "rejected", date: "2021-06-09", arrangement: "remote", salaryMin: 72000, salaryMax: 91000 },
+    { company: "Kestrel Mobility", role: "iOS Engineer", status: "rejected", date: "2021-06-11", arrangement: "hybrid", salaryMin: 78000, salaryMax: 98000 },
+    { company: "Lattice Grove", role: "Customer Success Engineer", status: "rejected", date: "2021-06-14", arrangement: "remote", salaryMin: 62000, salaryMax: 80000 },
+    { company: "Orbit Foundry", role: "QA Automation Engineer", status: "rejected", date: "2021-06-16", arrangement: "hybrid", salaryMin: 60000, salaryMax: 79000 },
+    { company: "Stonebridge Health", role: "Product Designer", status: "rejected", date: "2021-06-18", arrangement: "remote", salaryMin: 68000, salaryMax: 86000 },
+    { company: "Redfern Commerce", role: "Backend Engineer", status: "rejected", date: "2021-06-21", arrangement: "hybrid", salaryMin: 76000, salaryMax: 96000 },
+    { company: "Silverpath Energy", role: "Data Engineer", status: "rejected", date: "2021-06-24", arrangement: "remote", salaryMin: 74000, salaryMax: 94000 },
+    { company: "Atlas Harbor", role: "Technical Writer", status: "rejected", date: "2021-06-28", arrangement: "hybrid", salaryMin: 54000, salaryMax: 70000 },
+  ];
+  const firstOrderIndex = Math.max(-1, ...jobs.filter((job) => !job.id.startsWith("demo-period-june-2021-"))
+    .map((job) => Number(job.order_index) || 0)) + 1;
+  return historicalRecords.map((record, index) => {
+    const job = clone(initialJobs[index % initialJobs.length]);
+    const timestamp = Math.floor(Date.parse(`${record.date}T12:00:00Z`) / 1000);
+    Object.assign(job, {
+      id: `demo-period-june-2021-${index + 1}`,
+      company_name: record.company,
+      position_title: record.role,
+      status: record.status,
+      status_changed_at: timestamp,
+      created_at: timestamp,
+      updated_at: timestamp,
+      search_period_id: period.id,
+      order_index: firstOrderIndex + index,
+      avatar_seed: record.company,
+      job_post_url: `https://careers.${record.company.toLowerCase().replaceAll(" ", "-")}.example.test`,
+      company_domain: `${record.company.toLowerCase().replaceAll(" ", "-")}.example.test`,
+      description: `${record.role} at ${record.company}. Fictional sample opportunity from June 2021 for the War Room demo.`,
+      company_overview: `${record.company} is a fictional sample employer in the June 2021 demo search period.`,
+      keyword_note: `${record.role} • June 2021 sample role`,
+      expected_salary: `€${record.salaryMin.toLocaleString()}–€${record.salaryMax.toLocaleString()}`,
+      salary_min: record.salaryMin,
+      salary_max: record.salaryMax,
+      work_arrangement: record.arrangement,
+      is_referral: false,
+      application_sent_date: record.date,
+      stages: [],
+      interviewers: [],
+      technologies: [],
+      attachments: [],
+      total_stages_count: 0,
+    });
+    delete job.current_stage_title;
+    delete job.current_stage_index;
+    return job;
+  });
 }
 
 function validateBackup(value) {

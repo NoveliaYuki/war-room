@@ -1,5 +1,6 @@
 const SORT_MODE_STORAGE_PREFIX = "war-room.process.sort.";
 const VALID_SORT_MODES = ["added-newest", "added-oldest", "status-newest", "status-oldest", "advanced", "early", "manual"];
+const STATUS_DISPLAY_ORDER = ["accepted", "ongoing", "waiting", "rejected"];
 
 /** Returns a validated saved card ordering, including the earlier key names. */
 export function readSavedSortMode(storage, status) {
@@ -14,8 +15,13 @@ export function readSavedSortMode(storage, status) {
 }
 
 /** Sorts status tabs by creation date, status-change date, or interview progress. */
-export function sortJobsForDisplay(jobs, status, mode) {
-  if (status === "all" || mode === "manual") return [...jobs].sort((a, b) => a.order_index - b.order_index);
+export function sortJobsForDisplay(jobs, status, mode, selectedStatuses = []) {
+  if (status === "all" || selectedStatuses.length > 1) {
+    const priority = new Map(STATUS_DISPLAY_ORDER.map((value, index) => [value, index]));
+    return [...jobs].sort((a, b) => ((priority.get(a.status) ?? STATUS_DISPLAY_ORDER.length) - (priority.get(b.status) ?? STATUS_DISPLAY_ORDER.length))
+      || (a.order_index - b.order_index));
+  }
+  if (mode === "manual") return [...jobs].sort((a, b) => a.order_index - b.order_index);
   const progress = (job) => job.current_stage_index && job.total_stages_count
     ? job.current_stage_index / job.total_stages_count
     : 0;

@@ -192,11 +192,30 @@ func selectFilter(t *testing.T, page playwright.Page, filter string) {
 			t.Fatalf("open Filters panel: %v", err)
 		}
 	}
+	clearOtherStatusFilters(t, page, filter)
 	if err := page.Locator("label.status-filter-option:has(input[value=\"" + filter + "\"])").Click(); err != nil {
 		t.Fatalf("select %s filter: %v", filter, err)
 	}
 	if err := page.Keyboard().Press("Escape"); err != nil {
 		t.Fatalf("close Filters after selecting %s: %v", filter, err)
+	}
+}
+
+func clearOtherStatusFilters(t *testing.T, page playwright.Page, filter string) {
+	t.Helper()
+	for _, status := range []string{"waiting", "ongoing", "accepted", "rejected", "all"} {
+		if status == filter {
+			continue
+		}
+		selected, err := page.Locator(fmt.Sprintf(`input[name="process-status-filter"][value="%s"]`, status)).IsChecked()
+		if err != nil {
+			t.Fatalf("check %s filter: %v", status, err)
+		}
+		if selected {
+			if err := page.Locator(`label.status-filter-option:has(input[value="` + status + `"])`).Click(); err != nil {
+				t.Fatalf("clear %s filter: %v", status, err)
+			}
+		}
 	}
 }
 
@@ -1095,7 +1114,7 @@ func TestDemoSearchFiltersAndTodayMeeting(t *testing.T) {
 	for _, filter := range []struct {
 		name  string
 		count int
-	}{{"all", 12}, {"accepted", 1}, {"rejected", 2}, {"waiting", 3}, {"ongoing", 6}} {
+	}{{"all", 22}, {"accepted", 2}, {"rejected", 11}, {"waiting", 3}, {"ongoing", 6}} {
 		selectFilter(t, page, filter.name)
 		assertCardCount(t, page, filter.count)
 	}
@@ -1233,7 +1252,8 @@ func assertFilterPressedStates(t *testing.T, page playwright.Page, activeFilter 
 	t.Helper()
 	for _, filter := range []string{"waiting", "ongoing", "accepted", "rejected", "all"} {
 		checked, err := page.Locator(fmt.Sprintf(`input[name="process-status-filter"][value="%s"]`, filter)).IsChecked()
-		if err != nil || checked != (filter == activeFilter) {
+		wantChecked := filter == activeFilter || (activeFilter == "all" && filter == "all")
+		if err != nil || checked != wantChecked {
 			t.Fatalf("%s status filter checked=%t, err=%v", filter, checked, err)
 		}
 	}
