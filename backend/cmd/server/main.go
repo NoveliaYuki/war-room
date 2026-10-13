@@ -34,6 +34,9 @@ func main() {
 	defer func() { _ = db.Close() }()
 
 	repo := repository.New(db)
+	schedulerContext, stopScheduler := context.WithCancel(context.Background())
+	defer stopScheduler()
+	service.StartInactiveWaitingScheduler(schedulerContext, repo, 24*time.Hour)
 	jobSvc := service.NewJobService(repo, cfg)
 	if err := jobSvc.MigrateLegacyCVAttachments(); err != nil {
 		log.Fatalf("Fatal: Failed to migrate legacy CV attachments: %v", err)

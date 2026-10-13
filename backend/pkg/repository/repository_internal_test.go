@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 	"path/filepath"
@@ -15,6 +16,18 @@ import (
 type rowsResult struct {
 	rows int64
 	err  error
+}
+
+func TestImportedJobActivityTimestampUsesAvailableTimestamp(t *testing.T) {
+	if got := importedJobActivityTimestamp(models.Job{LastActivityAt: 10, UpdatedAt: 20}); got != 10 {
+		t.Fatalf("stored activity timestamp=%d, want 10", got)
+	}
+	if got := importedJobActivityTimestamp(models.Job{UpdatedAt: 20, CreatedAt: 30, StatusChangedAt: 25}); got != 30 {
+		t.Fatalf("legacy activity timestamp=%d, want 30", got)
+	}
+	if got := importedJobActivityTimestamp(models.Job{}); got < time.Now().Unix()-2 {
+		t.Fatalf("empty activity timestamp=%d, want current time", got)
+	}
 }
 
 func TestReplaceAllJobsWithCVRestoresGappedSequenceAndSelection(t *testing.T) {
@@ -43,6 +56,213 @@ func TestCVRepositoryVersionLifecycle(t *testing.T) {
 	version := &models.CVVersion{ID: "cv-1", OriginalName: "resume.pdf", StoredFilename: "hash", FileSize: 5, MimeType: "application/pdf", SHA256: "hash", UploadedAt: 42}
 	assertCVInsertAndRead(t, repo, version)
 	assertCVAssignmentAndDelete(t, repo, version.ID)
+}
+
+func TestRejectInactiveWaitingJobsUsesActivityTimestamp(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	old := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	now := old.Add(31 * 24 * time.Hour)
+	insertWaitingActivityJob(t, repo, "stale")
+	insertWaitingActivityJob(t, repo, "recent")
+	insertWaitingActivityJob(t, repo, "ongoing")
+	setJobActivity(t, repo, "stale", old.Unix())
+	setJobActivity(t, repo, "recent", now.Add(-29*24*time.Hour).Unix())
+	mustUpdateJobStatus(t, repo, "ongoing", models.StatusOngoing)
+	count, err := repo.RejectInactiveWaitingJobs(now)
+	if err != nil || count != 1 {
+		t.Fatalf("rejected=%d err=%v, want one stale waiting job", count, err)
+	}
+	assertJobStatus(t, repo, "stale", models.StatusRejected)
+	assertJobActivityEquals(t, repo, "stale", old.Unix())
+	assertJobStatus(t, repo, "recent", models.StatusWaiting)
+	assertJobStatus(t, repo, "ongoing", models.StatusOngoing)
+	mustUpdateJobStatus(t, repo, "recent", models.StatusRejected)
+	assertJobActivity(t, repo, "recent", now.Unix()-1)
+}
+
+func TestRejectInactiveWaitingJobsReturnsDatabaseError(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	if err := repo.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := repo.RejectInactiveWaitingJobs(time.Now()); err == nil || count != 0 {
+		t.Fatalf("rejected=%d err=%v, want database error", count, err)
+	}
+}
+
+func insertWaitingActivityJob(t *testing.T, repo *Repository, id string) {
+	t.Helper()
+	job := &models.Job{ID: id, CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setJobActivity(t *testing.T, repo *Repository, id string, timestamp int64) {
+	t.Helper()
+	if _, err := repo.db.Exec(`UPDATE jobs SET last_activity_at = ? WHERE id = ?`, timestamp, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustUpdateJobStatus(t *testing.T, repo *Repository, id string, status models.JobStatus) {
+	t.Helper()
+	if err := repo.UpdateJob(id, map[string]interface{}{"status": string(status)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertJobStatus(t *testing.T, repo *Repository, id string, status models.JobStatus) {
+	t.Helper()
+	job, err := repo.GetJobByID(id)
+	if err != nil || job.Status != status {
+		t.Fatalf("job %s status=%q err=%v, want %q", id, job.Status, err, status)
+	}
+}
+
+func assertJobActivity(t *testing.T, repo *Repository, id string, minimum int64) {
+	t.Helper()
+	job, err := repo.GetJobByID(id)
+	if err != nil || job.LastActivityAt <= minimum {
+		t.Fatalf("job %s activity=%d err=%v, want greater than %d", id, job.LastActivityAt, err, minimum)
+	}
+}
+
+func assertJobActivityEquals(t *testing.T, repo *Repository, id string, want int64) {
+	t.Helper()
+	job, err := repo.GetJobByID(id)
+	if err != nil || job.LastActivityAt != want {
+		t.Fatalf("job %s activity=%d err=%v, want %d", id, job.LastActivityAt, err, want)
+	}
+}
+
+func TestRelatedSavedChangesResetJobActivity(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := &models.Job{ID: "activity-job", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-31 * 24 * time.Hour).Unix()
+	setJobActivity(t, repo, job.ID, old)
+	stage := &models.Stage{ID: "activity-stage", JobID: job.ID, StageType: models.StageHR, Status: models.StageStatusPending,
+		MeetingType: "video", RecruiterType: models.RecruiterNone}
+	if err := repo.InsertStage(stage); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := repo.GetJobByID(job.ID)
+	if err != nil || stored.LastActivityAt <= old {
+		t.Fatalf("stage insert did not reset activity: timestamp=%d err=%v", stored.LastActivityAt, err)
+	}
+	if err := repo.UpdateStage(stage.ID, map[string]interface{}{"order_index": 1}); err != nil {
+		t.Fatal(err)
+	}
+	setJobActivity(t, repo, job.ID, old)
+	if err := repo.ReorderStages(job.ID, []string{stage.ID}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err = repo.GetJobByID(job.ID)
+	if err != nil || stored.LastActivityAt <= old {
+		t.Fatalf("stage reorder did not reset activity: timestamp=%d err=%v", stored.LastActivityAt, err)
+	}
+}
+
+func TestJobActivityTriggersCoverSavedCardAndRelatedChanges(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := &models.Job{ID: "activity-all", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}
+	other := &models.Job{ID: "activity-other", CompanyName: "Example", PositionTitle: "Designer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}
+	insertActivityJob(t, repo, job)
+	insertActivityJob(t, repo, other)
+	stageA := &models.Stage{ID: "activity-stage-a", JobID: job.ID, OrderIndex: 0, StageType: models.StageHR,
+		Status: models.StageStatusPending, MeetingType: "video", RecruiterType: models.RecruiterNone}
+	stageB := &models.Stage{ID: "activity-stage-b", JobID: job.ID, OrderIndex: 1, StageType: models.StageTechnical,
+		Status: models.StageStatusPending, MeetingType: "video", RecruiterType: models.RecruiterNone}
+	insertActivityStage(t, repo, stageA)
+	insertActivityStage(t, repo, stageB)
+	questionA := &models.Question{ID: "activity-question-a", StageID: stageA.ID, Question: "Question A"}
+	questionB := &models.Question{ID: "activity-question-b", StageID: stageA.ID, Question: "Question B"}
+	insertActivityQuestion(t, repo, questionA)
+	insertActivityQuestion(t, repo, questionB)
+	createActivityTechnology(t, repo)
+
+	actions := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "job edit", run: func() error { return repo.UpdateJob(job.ID, map[string]interface{}{"description": "Updated role"}) }},
+		{name: "job status", run: func() error {
+			return repo.UpdateJob(job.ID, map[string]interface{}{"status": string(models.StatusOngoing)})
+		}},
+		{name: "job reorder", run: func() error { return repo.ReorderJobs([]string{other.ID, job.ID}) }},
+		{name: "stage reorder", run: func() error { return repo.ReorderStages(job.ID, []string{stageB.ID, stageA.ID}) }},
+		{name: "stage edit", run: func() error {
+			return repo.UpdateStage(stageA.ID, map[string]interface{}{"description": "Updated stage"})
+		}},
+		{name: "question reorder", run: func() error { return repo.ReorderQuestions(stageA.ID, []string{questionB.ID, questionA.ID}) }},
+		{name: "question insert", run: func() error {
+			return repo.InsertQuestion(&models.Question{ID: "activity-question-c", StageID: stageA.ID, Question: "Question C"})
+		}},
+		{name: "question edit", run: func() error {
+			return repo.UpdateQuestion(questionA.ID, map[string]interface{}{"answer_notes": "Prepared"})
+		}},
+		{name: "technology assignment", run: func() error { return repo.SetJobTechnologies(job.ID, []string{"activity-tech"}) }},
+		{name: "attachment insert", run: func() error {
+			return repo.InsertAttachment(&models.Attachment{ID: "activity-attachment", JobID: job.ID,
+				OriginalName: "notes.txt", StoredFilename: "activity-attachment.txt", FileSize: 1, MimeType: "text/plain"})
+		}},
+		{name: "attachment edit", run: func() error {
+			_, err := repo.db.Exec(`UPDATE attachments SET original_name = 'updated.txt' WHERE id = 'activity-attachment'`)
+			return err
+		}},
+		{name: "attachment delete", run: func() error { return repo.DeleteAttachment("activity-attachment") }},
+		{name: "question delete", run: func() error { return repo.DeleteQuestion(questionA.ID) }},
+		{name: "stage delete", run: func() error { return repo.DeleteStage(stageB.ID) }},
+	}
+	for _, action := range actions {
+		t.Run(action.name, func(t *testing.T) {
+			assertActivityAction(t, repo, job.ID, action.run)
+		})
+	}
+}
+
+func insertActivityJob(t *testing.T, repo *Repository, job *models.Job) {
+	t.Helper()
+	if err := repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertActivityStage(t *testing.T, repo *Repository, stage *models.Stage) {
+	t.Helper()
+	if err := repo.InsertStage(stage); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertActivityQuestion(t *testing.T, repo *Repository, question *models.Question) {
+	t.Helper()
+	if err := repo.InsertQuestion(question); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func createActivityTechnology(t *testing.T, repo *Repository) {
+	t.Helper()
+	if err := repo.CreateTechnology(models.Technology{ID: "activity-tech", Name: "Go"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertActivityAction(t *testing.T, repo *Repository, jobID string, run func() error) {
+	t.Helper()
+	setJobActivity(t, repo, jobID, 1)
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	assertJobActivity(t, repo, jobID, 1)
 }
 
 func TestInsertFirstStageAndSetJobOngoing(t *testing.T) {
@@ -261,7 +481,7 @@ func TestTechnologyCatalogSurfacesMalformedStoredRows(t *testing.T) {
 	}{
 		{name: "catalog name", setup: `PRAGMA foreign_keys=OFF; DROP TABLE technologies; CREATE TABLE technologies (id TEXT, name TEXT, normalized_name TEXT); INSERT INTO technologies VALUES ('one', NULL, NULL);`},
 		{name: "alias", setup: `PRAGMA foreign_keys=OFF; DROP TABLE technology_aliases; CREATE TABLE technology_aliases (technology_id TEXT, alias TEXT, normalized_alias TEXT); INSERT INTO technology_aliases VALUES ('one', NULL, NULL);`},
-		{name: "assigned job", setup: `PRAGMA foreign_keys=OFF; DROP TABLE jobs; CREATE TABLE jobs (id TEXT, company_name TEXT, position_title TEXT); INSERT INTO jobs VALUES ('job', NULL, 'Engineer'); INSERT INTO job_technologies VALUES ('job', 'one');`},
+		{name: "assigned job", setup: `PRAGMA foreign_keys=OFF; DROP TABLE jobs; CREATE TABLE jobs (id TEXT, company_name TEXT, position_title TEXT, last_activity_at INTEGER); INSERT INTO jobs VALUES ('job', NULL, 'Engineer', 0); INSERT INTO job_technologies VALUES ('job', 'one');`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			repo := newImportRepositoryFixture(t)

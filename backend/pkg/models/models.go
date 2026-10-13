@@ -144,6 +144,7 @@ type Job struct {
 	RecruiterFirstContactDate *string         `json:"recruiter_first_contact_date"`
 	CreatedAt                 int64           `json:"created_at"`
 	UpdatedAt                 int64           `json:"updated_at"`
+	LastActivityAt            int64           `json:"last_activity_at"`
 	SearchPeriodID            *string         `json:"search_period_id"`
 
 	// Derived / populated fields

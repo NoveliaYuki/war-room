@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 	"war-room/backend/pkg/config"
@@ -930,6 +931,73 @@ func TestProcessDateMigrationsReturnInspectionAndAlterErrors(t *testing.T) {
 	}
 }
 
+func TestJobActivityMigrationBackfillsGraceAndTracksStages(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustExecMigrationTest(t, db, schemaSQL)
+	mustExecMigrationTest(t, db, `CREATE TABLE job_technologies (job_id TEXT, technology_id TEXT)`)
+	mustExecMigrationTest(t, db, `ALTER TABLE jobs DROP COLUMN last_activity_at`)
+	mustExecMigrationTest(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed')`)
+	if err := migrateJobActivity(db); err != nil {
+		t.Fatalf("migrate job activity: %v", err)
+	}
+	assertJobActivityTimestampAtLeast(t, db, "legacy-job", time.Now().Unix()-5)
+	mustExecMigrationTest(t, db, `UPDATE jobs SET last_activity_at = 1 WHERE id = 'legacy-job'`)
+	mustExecMigrationTest(t, db, `INSERT INTO stages (id, job_id, order_index, stage_type) VALUES ('stage', 'legacy-job', 0, 'HR')`)
+	assertJobActivityTimestamp(t, db, "legacy-job", 1)
+}
+
+func TestJobActivityMigrationReportsStepFailures(t *testing.T) {
+	steps := []struct {
+		name string
+		fake migrationTestExecutor
+	}{
+		{name: "inspect column", fake: migrationTestExecutor{failQuery: "pragma_table_info"}},
+		{name: "add column", fake: migrationTestExecutor{failExec: "ALTER TABLE jobs ADD COLUMN last_activity_at"}},
+		{name: "backfill activity", fake: migrationTestExecutor{failExec: "UPDATE jobs SET last_activity_at"}},
+		{name: "create index", fake: migrationTestExecutor{failExec: "idx_jobs_status_activity"}},
+		{name: "create triggers", fake: migrationTestExecutor{failExec: "touch_job_activity"}},
+		{name: "inspect technology table", fake: migrationTestExecutor{failQuery: "sqlite_master"}},
+		{name: "create technology triggers", fake: migrationTestExecutor{failExec: "touch_job_activity_on_technology_insert"}},
+	}
+	for _, step := range steps {
+		t.Run(step.name, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			if step.name != "inspect column" && step.name != "add column" {
+				mustExecMigrationTest(t, db, schemaSQL)
+				mustExecMigrationTest(t, db, `CREATE TABLE job_technologies (job_id TEXT, technology_id TEXT)`)
+				mustExecMigrationTest(t, db, `ALTER TABLE jobs DROP COLUMN last_activity_at`)
+			}
+			step.fake.db = db
+			if err := migrateJobActivity(step.fake); err == nil {
+				t.Fatal("expected activity migration failure")
+			}
+		})
+	}
+}
+
+func mustExecMigrationTest(t *testing.T, db *sql.DB, query string) {
+	t.Helper()
+	if _, err := db.Exec(query); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertJobActivityTimestamp(t *testing.T, db *sql.DB, jobID string, minimum int64) {
+	t.Helper()
+	var timestamp int64
+	if err := db.QueryRow(`SELECT last_activity_at FROM jobs WHERE id = ?`, jobID).Scan(&timestamp); err != nil || timestamp <= minimum {
+		t.Fatalf("activity timestamp=%d err=%v, want greater than %d", timestamp, err, minimum)
+	}
+}
+
+func assertJobActivityTimestampAtLeast(t *testing.T, db *sql.DB, jobID string, minimum int64) {
+	t.Helper()
+	var timestamp int64
+	if err := db.QueryRow(`SELECT last_activity_at FROM jobs WHERE id = ?`, jobID).Scan(&timestamp); err != nil || timestamp < minimum {
+		t.Fatalf("activity timestamp=%d err=%v, want at least %d", timestamp, err, minimum)
+	}
+}
+
 func TestLegacyColumnMigrationReportsMissingTable(t *testing.T) {
 	db := openMigrationTestDB(t)
 	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
@@ -1194,6 +1262,18 @@ func TestRestoreJobsDefaultsMissingStatusTimestampToCreationTime(t *testing.T) {
 	var statusChangedAt int64
 	if err := db.QueryRow("SELECT status_changed_at FROM jobs WHERE id = ?", job.ID).Scan(&statusChangedAt); err != nil || statusChangedAt != job.CreatedAt {
 		t.Fatalf("status_changed_at=%d err=%v, want created_at %d", statusChangedAt, err, job.CreatedAt)
+	}
+}
+
+func TestJobActivityTimestampUsesStoredThenLegacyTimestamps(t *testing.T) {
+	if got := jobActivityTimestamp(models.Job{LastActivityAt: 10, UpdatedAt: 20}); got != 10 {
+		t.Fatalf("stored activity timestamp=%d, want 10", got)
+	}
+	if got := jobActivityTimestamp(models.Job{UpdatedAt: 20, CreatedAt: 30, StatusChangedAt: 25}); got != 30 {
+		t.Fatalf("legacy activity timestamp=%d, want 30", got)
+	}
+	if got := jobActivityTimestamp(models.Job{}); got < time.Now().Unix()-2 {
+		t.Fatalf("empty activity timestamp=%d, want current time", got)
 	}
 }
 

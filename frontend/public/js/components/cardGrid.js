@@ -166,6 +166,9 @@ function createCardElement(job, sortMode) {
   card.addEventListener("mousemove", (event) => updateCardGlow(card, event));
   const avatarHtml = renderCompanyAvatar(job.company_name, job.avatar_seed, 64, job.company_domain, job.id);
   const stageIndicator = getStageIndicator(job);
+  const inactivityNote = job.automatic_rejection_reason
+    ? `<div class="card-automatic-rejection" role="note">Demo: ${escapeHtml(job.automatic_rejection_reason)}</div>`
+    : "";
   const salaryText = formatSalaryShort(job.salary_type, job.salary_min, job.salary_max, job.salary_currency);
   const companyClass = isUnknownCompany(job.company_name) ? "is-unknown" : "";
   const accessibleCompanyName = isUnknownCompany(job.company_name) ? "undisclosed company" : job.company_name;
@@ -183,6 +186,7 @@ function createCardElement(job, sortMode) {
     ${renderReferralTag(job)}${renderEmploymentTypeTag(job.employment_type)}${renderWorkArrangementTag(job.work_arrangement)}</div>
   ${renderCardRoleHighlights(job)}
   ${renderCardProcessDates(job)}
+  ${inactivityNote}
   ${renderCardTechnologyStack(job)}</div>
   <div class="card-footer">
     <div class="card-stage-indicator"><span class="card-stage-summary" title="${escapeAttr(stageIndicator.text)}">${stageIndicator.markup}</span>

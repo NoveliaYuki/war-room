@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 	"war-room/backend/pkg/config"
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     recruiter_first_contact_date TEXT NULL,
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    last_activity_at INTEGER NOT NULL DEFAULT (unixepoch()),
     CHECK (salary_min IS NULL OR salary_max IS NULL OR salary_min <= salary_max)
 );
 
@@ -263,7 +265,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 13
+const latestSchemaVersion = 14
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -405,10 +407,121 @@ func runFinalSchemaMigration(executor schemaExecutor, version int) error {
 		return migrateJobProcessDates(executor)
 	case 12:
 		return migrateSearchPeriods(executor)
+	case 14:
+		return migrateJobActivity(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
 }
+
+func migrateJobActivity(executor schemaExecutor) error {
+	exists, err := hasColumn(executor, "jobs", "last_activity_at")
+	if err != nil {
+		return fmt.Errorf("inspect jobs.last_activity_at: %w", err)
+	}
+	if !exists {
+		if err := executeMigrationSQL(executor, "ALTER TABLE jobs ADD COLUMN last_activity_at INTEGER NOT NULL DEFAULT 0", "add jobs.last_activity_at"); err != nil {
+			return err
+		}
+	}
+	if err := executeMigrationSQL(executor, "UPDATE jobs SET last_activity_at = unixepoch()", "give existing jobs inactivity grace period"); err != nil {
+		return err
+	}
+	if err := executeMigrationSQL(executor, "CREATE INDEX IF NOT EXISTS idx_jobs_status_activity ON jobs(status, last_activity_at)", "index jobs by status and activity"); err != nil {
+		return err
+	}
+	if err := executeMigrationSQL(executor, jobActivityTriggersSQL, "track job and related record activity"); err != nil {
+		return err
+	}
+	technologyTableExists, err := hasTable(executor, "job_technologies")
+	if err != nil {
+		return err
+	}
+	if technologyTableExists {
+		return executeMigrationSQL(executor, jobTechnologyActivityTriggersSQL, "track job technology changes")
+	}
+	return nil
+}
+
+func hasTable(executor schemaExecutor, table string) (bool, error) {
+	rows, err := executor.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	return rows.Next(), rows.Err()
+}
+
+const jobActivityTriggersSQL = `
+CREATE TRIGGER IF NOT EXISTS touch_job_activity
+AFTER UPDATE OF company_name, position_title, salary_type, salary_min, salary_max,
+    salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
+    interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
+    company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
+    work_arrangement, employment_type, is_referral, order_index, application_sent_date,
+    recruiter_first_contact_date, cv_version_id, search_period_id ON jobs
+WHEN NEW.company_name IS NOT OLD.company_name OR NEW.position_title IS NOT OLD.position_title
+  OR NEW.salary_type IS NOT OLD.salary_type
+  OR NEW.salary_min IS NOT OLD.salary_min OR NEW.salary_max IS NOT OLD.salary_max
+  OR NEW.salary_currency IS NOT OLD.salary_currency OR NEW.recruiter_type IS NOT OLD.recruiter_type
+  OR NEW.recruiter_name IS NOT OLD.recruiter_name OR NEW.recruiter_agency IS NOT OLD.recruiter_agency
+  OR NEW.recruiter_contact IS NOT OLD.recruiter_contact OR NEW.interviewers_json IS NOT OLD.interviewers_json
+  OR NEW.job_post_url IS NOT OLD.job_post_url OR NEW.avatar_seed IS NOT OLD.avatar_seed
+  OR NEW.keyword_note IS NOT OLD.keyword_note OR NEW.description IS NOT OLD.description
+  OR NEW.company_overview IS NOT OLD.company_overview OR NEW.company_domain IS NOT OLD.company_domain
+  OR NEW.interview_notes IS NOT OLD.interview_notes OR NEW.reasons_to_change IS NOT OLD.reasons_to_change
+  OR NEW.experience_notes IS NOT OLD.experience_notes OR NEW.expected_salary IS NOT OLD.expected_salary
+  OR NEW.work_arrangement IS NOT OLD.work_arrangement OR NEW.employment_type IS NOT OLD.employment_type
+  OR NEW.is_referral IS NOT OLD.is_referral OR NEW.order_index IS NOT OLD.order_index
+  OR NEW.application_sent_date IS NOT OLD.application_sent_date
+  OR NEW.recruiter_first_contact_date IS NOT OLD.recruiter_first_contact_date
+  OR NEW.cv_version_id IS NOT OLD.cv_version_id OR NEW.search_period_id IS NOT OLD.search_period_id
+BEGIN
+    UPDATE jobs SET last_activity_at = unixepoch() WHERE id = NEW.id;
+END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_stage_insert AFTER INSERT ON stages
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = NEW.job_id; END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_stage_update AFTER UPDATE ON stages
+WHEN NEW.job_id IS NOT OLD.job_id OR NEW.order_index IS NOT OLD.order_index OR NEW.stage_type IS NOT OLD.stage_type
+  OR NEW.custom_title IS NOT OLD.custom_title OR NEW.description IS NOT OLD.description OR NEW.status IS NOT OLD.status
+  OR NEW.scheduled_at IS NOT OLD.scheduled_at OR NEW.meeting_date IS NOT OLD.meeting_date
+  OR NEW.meeting_time IS NOT OLD.meeting_time OR NEW.meeting_url IS NOT OLD.meeting_url
+  OR NEW.meeting_type IS NOT OLD.meeting_type OR NEW.notes IS NOT OLD.notes
+  OR NEW.recruiter_name IS NOT OLD.recruiter_name OR NEW.recruiter_type IS NOT OLD.recruiter_type
+  OR NEW.recruiter_agency IS NOT OLD.recruiter_agency OR NEW.recruiter_contact IS NOT OLD.recruiter_contact
+  OR NEW.interviewers_json IS NOT OLD.interviewers_json
+BEGIN
+    UPDATE jobs SET last_activity_at = unixepoch() WHERE id IN (OLD.job_id, NEW.job_id);
+END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_stage_delete AFTER DELETE ON stages
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = OLD.job_id; END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_question_insert AFTER INSERT ON stage_questions
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = (SELECT job_id FROM stages WHERE id = NEW.stage_id); END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_question_update AFTER UPDATE ON stage_questions
+WHEN NEW.stage_id IS NOT OLD.stage_id OR NEW.order_index IS NOT OLD.order_index OR NEW.question IS NOT OLD.question
+  OR NEW.answer_notes IS NOT OLD.answer_notes OR NEW.is_asked IS NOT OLD.is_asked
+BEGIN
+    UPDATE jobs SET last_activity_at = unixepoch()
+    WHERE id IN (SELECT job_id FROM stages WHERE id IN (OLD.stage_id, NEW.stage_id));
+END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_question_delete AFTER DELETE ON stage_questions
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = (SELECT job_id FROM stages WHERE id = OLD.stage_id); END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_attachment_insert AFTER INSERT ON attachments
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = NEW.job_id; END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_attachment_update AFTER UPDATE ON attachments
+WHEN NEW.job_id IS NOT OLD.job_id OR NEW.stage_id IS NOT OLD.stage_id OR NEW.original_name IS NOT OLD.original_name
+  OR NEW.stored_filename IS NOT OLD.stored_filename OR NEW.file_size IS NOT OLD.file_size OR NEW.mime_type IS NOT OLD.mime_type
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id IN (OLD.job_id, NEW.job_id); END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_attachment_delete AFTER DELETE ON attachments
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = OLD.job_id; END;
+`
+
+const jobTechnologyActivityTriggersSQL = `
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_technology_insert AFTER INSERT ON job_technologies
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = NEW.job_id; END;
+CREATE TRIGGER IF NOT EXISTS touch_job_activity_on_technology_delete AFTER DELETE ON job_technologies
+BEGIN UPDATE jobs SET last_activity_at = unixepoch() WHERE id = OLD.job_id; END;
+`
 
 func migrateSearchPeriods(executor schemaExecutor) error {
 	statements := []struct{ sql, description string }{
@@ -1021,8 +1134,8 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
 		is_referral, order_index, status_changed_at, application_sent_date, recruiter_first_contact_date,
-			created_at, updated_at, cv_version_id, search_period_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			created_at, updated_at, last_activity_at, cv_version_id, search_period_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, err
@@ -1176,6 +1289,7 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 	if statusChangedAt == 0 {
 		statusChangedAt = job.CreatedAt
 	}
+	lastActivityAt := jobActivityTimestamp(job)
 	if job.Interviewers != nil {
 		encoded, _ := json.Marshal(job.Interviewers)
 		interviewers = encoded
@@ -1186,8 +1300,19 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 		job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
 		job.IsReferral, job.OrderIndex, statusChangedAt, job.ApplicationSentDate, job.RecruiterFirstContactDate,
-		job.CreatedAt, job.UpdatedAt, selectedCVVersionID(job), job.SearchPeriodID)
+		job.CreatedAt, job.UpdatedAt, lastActivityAt, selectedCVVersionID(job), job.SearchPeriodID)
 	return err
+}
+
+func jobActivityTimestamp(job models.Job) int64 {
+	if job.LastActivityAt != 0 {
+		return job.LastActivityAt
+	}
+	lastActivityAt := max(job.UpdatedAt, job.CreatedAt, job.StatusChangedAt)
+	if lastActivityAt != 0 {
+		return lastActivityAt
+	}
+	return time.Now().Unix()
 }
 
 func selectedCVVersionID(job models.Job) any {
