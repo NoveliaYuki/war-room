@@ -122,23 +122,45 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
+  min-height: 36px;
   box-sizing: border-box;
 }
 
+.today-meeting-actions > .btn-join-call,
+.today-meeting-actions > .btn-open-meeting {
+  min-height: 36px;
+  padding: 5px 10px;
+  font-size: 11px;
+  gap: 5px;
+}
+
+.today-meeting-actions > .btn-join-call {
+  --today-meeting-background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  --today-meeting-radius: var(--radius-sm);
+}
+
+.today-meeting-actions > .btn-open-meeting {
+  --today-meeting-background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+  --today-meeting-radius: var(--radius-md);
+}
+
+.today-meeting-actions .svg-icon { width: 12px; height: 12px; }
+
 .meeting-time-badge {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-accent-soft);
   background: rgba(59, 130, 246, 0.12);
   border: 1px solid rgba(59, 130, 246, 0.22);
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: var(--radius-xs);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
+
+.meeting-time-badge .svg-icon { width: 11px; height: 11px; }
 
 /* Grouped Day Sections */
 .schedule-day-group {
@@ -342,9 +364,12 @@
 
 /* Meeting Format Pills & Chips */
 .meeting-format-pill {
-  font-size: 11px;
+  min-height: 20px;
+  box-sizing: border-box;
+  font-size: 10px;
   font-weight: 600;
-  padding: 3px 8px;
+  line-height: 1;
+  padding: 0 6px;
   border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
@@ -416,6 +441,27 @@
   .meeting-row-right { width: 100%; flex-wrap: wrap; }
   .today-meeting-actions > *,
   .meeting-row-right > * { min-height: 44px; box-sizing: border-box; }
+  .today-meeting-actions > .btn-join-call,
+  .today-meeting-actions > .btn-open-meeting {
+    position: relative;
+    isolation: isolate;
+    min-height: 44px;
+    background: transparent;
+    box-shadow: none;
+  }
+  .today-meeting-actions > .btn-join-call::before,
+  .today-meeting-actions > .btn-open-meeting::before {
+    position: absolute;
+    z-index: -1;
+    inset: 4px 0;
+    border-radius: var(--today-meeting-radius);
+    background: var(--today-meeting-background);
+    content: "";
+  }
+  .today-meeting-actions > .btn-join-call:hover,
+  .today-meeting-actions > .btn-open-meeting:hover { transform: none; filter: none; }
+  .today-meeting-actions > .btn-join-call:hover::before,
+  .today-meeting-actions > .btn-open-meeting:hover::before { filter: brightness(1.1); }
   .meeting-note-toggle { min-height: 44px; }
   .day-group-header { flex-wrap: wrap; }
 }

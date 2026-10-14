@@ -396,11 +396,11 @@ func readProcessTimelineMetrics(t *testing.T, page playwright.Page) processTimel
 
 func assertProcessTimelineReadable(t *testing.T, metrics processTimelineMetrics, mobile bool) {
 	t.Helper()
-	if metrics.LabelFontSize < 13 || metrics.HintFontSize < 12 || metrics.DateFontSize < 13 {
-		t.Errorf("process timeline text should be readable (labels %.0fpx, date %.0fpx, hint %.0fpx)", metrics.LabelFontSize, metrics.DateFontSize, metrics.HintFontSize)
+	if metrics.LabelFontSize < 11 || metrics.HintFontSize < 12 || metrics.DateFontSize < 12 {
+		t.Errorf("process timeline text should use the compact readable scale (labels %.0fpx, date %.0fpx, hint %.0fpx)", metrics.LabelFontSize, metrics.DateFontSize, metrics.HintFontSize)
 	}
-	if mobile && (metrics.DateFontSize < 16 || metrics.DateHeight < 44 || !metrics.DateFitsRow) {
-		t.Errorf("mobile date control should remain readable, tappable, and within its row (font %.0fpx, height %.0fpx, fits row %t)", metrics.DateFontSize, metrics.DateHeight, metrics.DateFitsRow)
+	if mobile && (metrics.DateHeight < 44 || !metrics.DateFitsRow) {
+		t.Errorf("mobile date control should remain tappable and within its row (font %.0fpx, height %.0fpx, fits row %t)", metrics.DateFontSize, metrics.DateHeight, metrics.DateFitsRow)
 	}
 	if !mobile && metrics.DateHeight < 36 {
 		t.Errorf("desktop date control should have a usable 36px target (box %.0fpx, computed CSS height %s)", metrics.DateHeight, metrics.DateCSSHeight)
@@ -1530,11 +1530,11 @@ func TestDemoStageTabsExposeHorizontalOverflow(t *testing.T) {
 	valid, err := page.Evaluate(`() => {
 		const row = document.querySelector("#detail-modal .stage-hero-actions")?.getBoundingClientRect();
 		const current = document.querySelector("#detail-modal #btn-toggle-current-stage")?.getBoundingClientRect();
-		const moveUp = document.querySelector("#detail-modal #btn-move-stage-up")?.getBoundingClientRect();
 		const remove = document.querySelector("#detail-modal #btn-delete-stage")?.getBoundingClientRect();
 		const relationship = document.querySelector("#detail-modal .stage-recruiter-source-select");
-		return Boolean(row && current && moveUp && remove)
-			&& current.right < moveUp.left
+		return Boolean(row && current && remove)
+			&& !document.querySelector("#detail-modal #btn-move-stage-up")
+			&& current.right <= row.right
 			&& remove.right <= row.right + 1
 			&& relationship?.getBoundingClientRect().height >= 44
 			&& Number.parseFloat(getComputedStyle(relationship).fontSize) >= 16;

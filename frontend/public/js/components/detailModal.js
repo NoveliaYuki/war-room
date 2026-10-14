@@ -419,7 +419,6 @@ function renderModalHeader(view) {
           <div class="modal-company ${job.company_name.toLowerCase() === 'unknown' ? 'is-unknown' : ''}">
             <span class="editable-company-name" data-raw-value="${escapeAttr(job.company_name)}">${renderCompanyLabel(job.company_name)}</span>
             <button type="button" class="status-pill editable-job-status ${escapeAttr(job.status)}" aria-label="Job status: ${escapeAttr(JOB_STATUS_LABELS[job.status] || job.status)}. Click to change status." title="Click to cycle job status">${escapeHtml(JOB_STATUS_LABELS[job.status] || job.status)}</button>
-            <div class="modal-header-actions"><button class="modal-close-btn" type="button" aria-label="Close dialog" title="Close (Esc)">${icon("close", 14)}</button></div>
           </div>
           <h2 class="modal-title editable-position-title" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h2>
         </div>
@@ -440,6 +439,9 @@ function renderModalHeader(view) {
               hybrid: "Hybrid",
               on_site: "On-site",
             })}
+        </div>
+        <div class="modal-header-actions">
+          <button class="modal-close-btn" type="button" aria-label="Close dialog" title="Close (Esc)">${icon("close", 14)}</button>
         </div>
       </div>
     </div>
@@ -464,9 +466,7 @@ function renderJobDetailsSection(view) {
           ${renderProcessTimeline(job)}
 
           <div class="detail-section">
-            <div class="section-title">
-              <span>Role Highlights</span>
-            </div>
+            <div class="section-title"><span>Role Highlights</span></div>
             <div class="keyword-note-box editable-keywords" data-raw-value="${escapeAttr(job.keyword_note || '')}">
               ${renderOptionalText(job.keyword_note, '<span style="color: var(--text-muted); font-style: italic;">No keywords added</span>')}
             </div>
@@ -703,24 +703,20 @@ function bindMobileDetailPaneSwitch(modalEl) {
 
 /** Renders one cohesive section of the job detail modal. */
 function renderStageSchedule(stage) {
-  const interviewMode = stage.meeting_type === "onsite" ? "In person" : "Remote";
-  const nextMode = stage.meeting_type === "onsite" ? "remote" : "in person";
-  const modeTag = `<button type="button" class="interview-mode-tag ${stage.meeting_type === "onsite" ? "is-in-person" : "is-remote"}" aria-label="Interview mode: ${interviewMode}. Switch to ${nextMode}." title="Switch to ${nextMode}">${interviewMode}</button>`;
-  if (!stage.meeting_date && !stage.meeting_time) {
-    return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${modeTag}</div><div class="stage-schedule-actions"><button type="button" class="stage-action-btn btn-edit-meeting-schedule inline-icon-text">${icon("plus", 11)} ${icon("calendar", 12)} Schedule Interview Date & Time</button></div></div>`;
-  }
   const formats = new Map([
     ["phone", `${icon("phone", 12)} Phone Call`],
     ["onsite", `${icon("building", 12)} On-Site`],
     ["video", `${icon("video", 12)} Video Call`],
   ]);
-  const meetingUrl = safeUrl(stage.meeting_url);
-  const join = meetingUrl ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-meeting-inline inline-icon-text">${icon("video", 12)} Join Call ${icon("arrowUpRight", 11)}</a>` : "";
   const format = formats.get(stage.meeting_type) || formats.get("video");
   const meetingType = getMeetingTypeClass(stage.meeting_type);
-  return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${modeTag}<span class="stage-meeting-date inline-icon-text">${icon("calendar", 12)} <time datetime="${escapeAttr(stage.meeting_date || "")}">${escapeHtml(formatCalendarDate(stage.meeting_date))}</time> • ${escapeHtml(stage.meeting_time || "")}</span>
-    <span class="meeting-format-pill pill-${meetingType} inline-icon-text">${format}</span></div><div class="stage-schedule-actions">${join}
-    <button type="button" class="stage-action-btn btn-edit-meeting-schedule inline-icon-text">${icon("edit", 11)} Edit Schedule</button></div></div>`;
+  const formatTag = `<span class="meeting-format-pill pill-${meetingType} inline-icon-text">${format}</span>`;
+  if (!stage.meeting_date && !stage.meeting_time) {
+    return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${formatTag}</div></div>`;
+  }
+  const meetingUrl = safeUrl(stage.meeting_url);
+  const join = meetingUrl ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-meeting-inline inline-icon-text">${icon("video", 12)} Join Call ${icon("arrowUpRight", 11)}</a>` : "";
+  return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${formatTag}<span class="stage-meeting-date inline-icon-text">${icon("calendar", 12)} <time datetime="${escapeAttr(stage.meeting_date || "")}">${escapeHtml(formatCalendarDate(stage.meeting_date))}</time> • ${escapeHtml(stage.meeting_time || "")}</span>${join}</div></div>`;
 }
 
 /** Maps a meeting format to an allowed style class suffix. */
@@ -733,12 +729,13 @@ function renderStageActionButtons(view) {
   const { activeStage, activeStageIndex, stages } = view;
   const current = activeStage.status === "current";
   const stageName = activeStage.custom_title || activeStage.stage_type;
-  const moveUp = activeStageIndex > 0 ? `<button class="stage-action-btn" id="btn-move-stage-up" title="Move Up" aria-label="Move ${escapeAttr(stageName)} stage up">${icon("chevronUp", 12)}</button>` : "";
   const moveDown = activeStageIndex < stages.length - 1 ? `<button class="stage-action-btn" id="btn-move-stage-down" title="Move Down" aria-label="Move ${escapeAttr(stageName)} stage down">${icon("chevronDown", 12)}</button>` : "";
   const currentLabel = current
     ? `${icon("pin", 12)} <span class="stage-current-label-full">Current Step</span><span class="stage-current-label-compact">Current</span> ${icon("check", 12)}`
     : `${icon("target", 12)} <span class="stage-current-label-full">Set as Current Step</span><span class="stage-current-label-compact">Set Current</span>`;
-  return `<button class="btn-stage-current ${current ? "is-current" : ""}" id="btn-toggle-current-stage" title="Click to mark this as your current step in the process"><span class="inline-icon-text">${currentLabel}</span></button>${moveUp}${moveDown}<button class="stage-action-btn" id="btn-delete-stage" title="Delete Stage" aria-label="Delete ${escapeAttr(stageName)} stage" style="color: var(--status-rejected);">${icon("close", 12)}</button>`;
+  const scheduleLabel = activeStage.meeting_date || activeStage.meeting_time ? "Edit Schedule" : "Add Schedule";
+  const scheduleIcon = activeStage.meeting_date || activeStage.meeting_time ? "edit" : "calendar";
+  return `<button class="btn-stage-current ${current ? "is-current" : ""}" id="btn-toggle-current-stage" title="Click to mark this as your current step in the process"><span class="inline-icon-text">${currentLabel}</span></button><button type="button" class="stage-action-btn btn-edit-meeting-schedule inline-icon-text" title="${scheduleLabel}">${icon(scheduleIcon, 11)} ${scheduleLabel}</button>${moveDown}<button class="stage-action-btn" id="btn-delete-stage" title="Delete Stage" aria-label="Delete ${escapeAttr(stageName)} stage" style="color: var(--status-rejected);">${icon("close", 12)}</button>`;
 }
 
 /** Renders a single question row in the stage workspace. */
@@ -777,7 +774,7 @@ function renderActiveStageHero(view) {
 /** Renders the active stage editor or the no-stages prompt. */
 function renderActiveStageWorkspace(view) {
   if (!view.activeStage) return `<div class="stage-empty-state"><div class="stage-empty-state-copy"><p>No interview stages configured yet.</p><p class="stage-empty-state-guidance">Add only steps listed in the job posting or confirmed by the employer. You can add them later.</p></div><button class="btn-primary inline-icon-text stage-empty-state-action" id="btn-init-first-stage">${icon("plus", 12)} Add First Stage</button></div>`;
-  return `<div id="stage-panel" class="stage-panel" role="tabpanel" aria-labelledby="stage-tab-${view.activeStageIndex}" tabindex="0">${renderActiveStageHero(view)}${renderActiveStageFocus(view)}${renderStageQuestionWorkspace(view.activeStage)}</div>`;
+  return `<div id="stage-panel" class="stage-panel" role="tabpanel" aria-labelledby="stage-tab-${view.activeStageIndex}" tabindex="0">${renderActiveStageHero(view)}<div class="stage-round-content">${renderActiveStageFocus(view)}${renderStageQuestionWorkspace(view.activeStage)}</div></div>`;
 }
 
 /** Renders an in-context form for recording a confirmed interview stage. */
@@ -1615,30 +1612,6 @@ function bindActiveStageActions(context) {
       openScheduleStageForm(modalEl, backdropEl, job, activeStage, refreshModal);
     });
 
-    modalEl.querySelector(".interview-mode-tag")?.addEventListener("click", async () => {
-      try {
-        const meetingType = activeStage.meeting_type === "onsite" ? "video" : "onsite";
-        await api.updateStage(activeStage.id, { meeting_type: meetingType });
-        await refreshModal();
-      } catch (err) {
-        showToast(err.message, "error");
-      }
-    });
-
-    modalEl.querySelector("#btn-move-stage-up")?.addEventListener("click", async () => {
-      try {
-        const ids = stages.map((s) => s.id);
-        const temp = ids[activeStageIndex];
-        ids[activeStageIndex] = ids[activeStageIndex - 1];
-        ids[activeStageIndex - 1] = temp;
-        activeStageIndex -= 1;
-        await api.reorderStages(job.id, ids);
-        refreshModal();
-      } catch (err) {
-        showToast(err.message, "error");
-      }
-    });
-
     modalEl.querySelector("#btn-move-stage-down")?.addEventListener("click", async () => {
       try {
         const ids = stages.map((s) => s.id);
@@ -2116,9 +2089,9 @@ function getScheduleStageFormMarkup(stage, defaultDate, defaultType, title, hasE
         <div>
           <label class="meta-label" for="sel-meeting-type">Interview format</label>
           <select name="meeting_type" id="sel-meeting-type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-            ${formatOption("video", defaultType, "Remote · Video call")}
-            ${formatOption("phone", defaultType, "Remote · Phone call")}
-            ${formatOption("onsite", defaultType, "In person · On-site")}
+            ${formatOption("phone", defaultType, "Phone call")}
+            ${formatOption("video", defaultType, "Video call")}
+            ${formatOption("onsite", defaultType, "On-site")}
           </select>
         </div>
       </div>

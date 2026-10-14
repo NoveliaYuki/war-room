@@ -20,7 +20,7 @@ const STAGE_TYPE_CLASSES = new Map([
 ]);
 const MEETING_FORMAT_LABELS = new Map([
   ["phone", `${icon("phone", 12)} Phone Call`],
-  ["onsite", `${icon("building", 12)} In-Person / On-Site`],
+  ["onsite", `${icon("building", 12)} On-Site`],
   ["video", `${icon("video", 12)} Video Call`],
 ]);
 const MEETING_NOTE_CONTAINERS = new WeakSet();
@@ -168,7 +168,7 @@ function renderTodayMeeting(meeting) {
       <div class="inline-icon-text" style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">${renderMeetingCompany(meeting.company_name)}</div></div>
     ${renderMeetingRecruiter(meeting)}${renderMeetingInterviewers(meeting.stage_interviewers)}${renderMeetingNotes(meeting.stage_notes)}
     <div class="today-meeting-actions">${joinAction}
-      <button class="btn-primary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(meeting.job_id)}" style="padding: 6px 12px; font-size: 12px; justify-content: center;">${icon("chat", 13)} Open Questions & Prep ${icon("arrowUpRight", 11)}</button>
+      <button class="btn-primary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(meeting.job_id)}">${icon("chat", 13)} Open Questions & Prep ${icon("arrowUpRight", 11)}</button>
     </div>
   </div>`;
 }

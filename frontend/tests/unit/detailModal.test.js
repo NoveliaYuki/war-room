@@ -290,10 +290,9 @@ describe('detail modal', () => {
     expect(modal.querySelector('.modal-split-layout')).not.toBeNull();
     expect(modal.querySelector('.questions-workspace').textContent).toContain('(0)');
     expect(modal.querySelector('.interviewers-list').textContent).toContain('No interviewers added for this stage yet');
-    expect(modal.querySelector('.interview-mode-tag').textContent).toBe('In person');
-    modal.querySelector('.interview-mode-tag').click();
-    await tick();
-    expect(api.updateStage).toHaveBeenCalledWith('stage-1', { meeting_type: 'video' });
+    expect(modal.querySelector('.stage-schedule-metadata .meeting-format-pill').textContent).toContain('On-Site');
+    expect(modal.querySelector('.interview-mode-tag')).toBeNull();
+    expect(api.updateStage).not.toHaveBeenCalled();
     expect(api.scheduleMeeting).not.toHaveBeenCalled();
   });
 
@@ -811,12 +810,14 @@ describe('detail modal', () => {
     modal.querySelector('#file-upload-stage-input').dispatchEvent(new Event('change'));
 
     modal.querySelector('#btn-toggle-current-stage').click();
-    modal.querySelector('#btn-move-stage-up').click();
+    modal.querySelector('#stage-tab-0').click();
+    await tick();
+    modal.querySelector('#btn-move-stage-down').click();
     modal.querySelector('#btn-delete-stage').click();
     await tick();
     expect(api.setCurrentStage).toHaveBeenCalledWith('s2');
     expect(api.reorderStages).toHaveBeenCalledWith(fixture.id, ['s2', 's1']);
-    expect(api.deleteStage).toHaveBeenCalledWith('s2');
+    expect(api.deleteStage).toHaveBeenCalledWith('s1');
   });
 
   it('adds interviewers with an inline form and keeps it open when saving fails', async () => {
@@ -1070,7 +1071,8 @@ describe('detail modal', () => {
     expect(modal.querySelector('.editable-stage-desc').textContent).toBe('No stage description');
     expect(modal.querySelector('.q-toggle')).toBeNull();
     expect(modal.querySelector('.editable-question-text').textContent).toBe('Culture?');
-    expect(modal.querySelector('.interview-mode-tag').textContent).toBe('Remote');
+    expect(modal.querySelector('.meeting-format-pill').textContent).toContain('Phone Call');
+    expect(modal.querySelector('.interview-mode-tag')).toBeNull();
     expect(modal.querySelector('.questions-workspace-title').textContent).not.toContain('asked');
     expect(modal.querySelector('.stage-focus-group').textContent).toContain('Screening Documents');
     expect(modal.querySelector('#file-upload-stage-input')).toBeNull();
@@ -1095,7 +1097,7 @@ describe('detail modal', () => {
     else window.showToast = previousToast;
   });
 
-  it('handles custom stage fallbacks, onsite mode changes, optional links, and canceled destructive actions', async () => {
+  it('handles custom stage fallbacks, meeting formats, optional links, and canceled destructive actions', async () => {
     const fixture = {
       ...job([{
         id: 'custom-stage', stage_type: 'Custom Round', custom_title: '', status: 'current',
@@ -1109,13 +1111,12 @@ describe('detail modal', () => {
     const modal = document.querySelector('#detail-modal');
     await openDetailModal('job-1');
     expect(modal.querySelector('.stage-type-badge').classList.contains('HR')).toBe(true);
-    expect(modal.querySelector('.stage-schedule-badge-row .btn-edit-meeting-schedule')).not.toBeNull();
+    expect(modal.querySelector('.stage-hero-actions .btn-edit-meeting-schedule')).not.toBeNull();
     expect(modal.querySelector('.editable-stage-recruiter-contact a').textContent).toContain('LinkedIn Profile');
     expect(modal.querySelector('.attachment-size').textContent).toContain('Screening Document');
 
-    modal.querySelector('.interview-mode-tag').click();
-    await tick();
-    expect(api.updateStage).toHaveBeenCalledWith('custom-stage', { meeting_type: 'video' });
+    expect(modal.querySelector('.stage-schedule-metadata .meeting-format-pill').textContent).toContain('On-Site');
+    expect(modal.querySelector('.interview-mode-tag')).toBeNull();
 
     vi.stubGlobal('confirm', vi.fn(() => false));
     modal.querySelector('.btn-delete-job').click();
@@ -1164,13 +1165,17 @@ describe('detail modal', () => {
     api.setCurrentStage.mockRejectedValueOnce(new Error('current stage failed'));
     modal.querySelector('#btn-toggle-current-stage').click();
     api.reorderStages.mockRejectedValueOnce(new Error('reorder failed'));
-    modal.querySelector('#btn-move-stage-up').click();
-    api.deleteStage.mockRejectedValueOnce(new Error('delete stage failed'));
-    modal.querySelector('#btn-delete-stage').click();
+    modal.querySelector('#stage-tab-0').click();
+    await tick();
+    modal.querySelector('#btn-move-stage-down').click();
+    modal.querySelector('#stage-tab-1').click();
+    await tick();
     api.updateQuestion.mockRejectedValueOnce(new Error('question notes failed'));
     modal.querySelector('.q-notes').dispatchEvent(new Event('change'));
     api.deleteQuestion.mockRejectedValueOnce(new Error('question delete failed'));
     modal.querySelector('.q-del').click();
+    api.deleteStage.mockRejectedValueOnce(new Error('delete stage failed'));
+    modal.querySelector('#btn-delete-stage').click();
     await tick();
     expect(toast).toHaveBeenCalledWith('employment type failed', 'error');
     expect(toast).toHaveBeenCalledWith('status failed', 'error');
