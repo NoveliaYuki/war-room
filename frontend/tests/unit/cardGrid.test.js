@@ -59,9 +59,34 @@ function setup(jobs = [makeJob()], options = {}) {
     Object.hasOwn(options, 'modal') ? options.modal : modal,
     Object.hasOwn(options, 'backdrop') ? options.backdrop : backdrop,
     options.refresh ?? null,
+    options.sortMode ?? 'manual',
+    { groupByStatus: options.groupByStatus ?? false },
   );
   return { container, card: container.querySelector('.process-card'), modal, backdrop };
 }
+
+describe('status-grouped process cards', () => {
+  it('renders selected statuses in accepted, ongoing, waiting, rejected order', () => {
+    const { container } = setup([
+      makeJob({ id: 'waiting', status: 'waiting' }),
+      makeJob({ id: 'rejected', status: 'rejected' }),
+      makeJob({ id: 'accepted', status: 'accepted' }),
+      makeJob({ id: 'ongoing', status: 'ongoing' }),
+    ], { groupByStatus: true });
+
+    expect([...container.querySelectorAll('.process-status-group-heading')].map((item) => item.dataset.status))
+      .toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
+    expect([...container.querySelectorAll('.process-card .status-pill')].map((item) => item.textContent))
+      .toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
+    expect(container.querySelectorAll('.quick-add-card')).toHaveLength(4);
+    const children = [...container.children];
+    const headingIndexes = children.map((item, index) => item.matches('.process-status-group-heading') ? index : -1).filter((index) => index >= 0);
+    headingIndexes.forEach((index, groupIndex) => {
+      const nextHeadingIndex = headingIndexes[groupIndex + 1] ?? children.length;
+      expect(children.slice(index + 1, nextHeadingIndex).at(-1)).toMatchObject({ className: 'quick-add-card' });
+    });
+  });
+});
 
 function pointerEvent(type, { x = 10, y = 10, button = 0, pointerType = 'mouse', target } = {}) {
   const event = new Event(type, { bubbles: true, cancelable: true });

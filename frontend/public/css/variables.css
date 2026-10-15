@@ -13,7 +13,7 @@
   --bg-card-hover: #2c3647;
   --bg-input: #1b2230;
   --bg-overlay: rgba(13, 17, 25, 0.72);
-  --bg-header: rgba(23, 27, 38, 0.9);
+  --bg-header: #171b26;
   --bg-glass: rgba(30, 36, 49, 0.9);
   --bg-subtle-hover: rgba(255, 255, 255, 0.055);
   --bg-subtle: rgba(255, 255, 255, 0.08);
@@ -101,7 +101,7 @@
     --bg-card-hover: #f7faff;
     --bg-input: #ffffff;
     --bg-overlay: rgba(15, 23, 42, 0.24);
-    --bg-header: rgba(255, 255, 255, 0.96);
+    --bg-header: #ffffff;
     --bg-glass: rgba(255, 255, 255, 0.88);
     --bg-subtle-hover: rgba(37, 99, 235, 0.045);
     --bg-subtle: rgba(37, 99, 235, 0.07);
@@ -149,7 +149,7 @@
   --bg-card-hover: #f7faff;
   --bg-input: #ffffff;
   --bg-overlay: rgba(15, 23, 42, 0.24);
-  --bg-header: rgba(255, 255, 255, 0.96);
+  --bg-header: #ffffff;
   --bg-glass: rgba(255, 255, 255, 0.88);
   --bg-subtle-hover: rgba(37, 99, 235, 0.045);
   --bg-subtle: rgba(37, 99, 235, 0.07);

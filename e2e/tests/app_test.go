@@ -782,9 +782,23 @@ func TestSearchAndFiltersRemainAvailableInAllView(t *testing.T) {
 	}
 	if visible, err := page.Locator(".process-sort-control").IsVisible(); err != nil {
 		t.Fatalf("check sort control in all view: %v", err)
-	} else if visible {
-		t.Error("status-specific sort control should be hidden in all view")
+	} else if !visible {
+		t.Fatal("sort control should be available in all statuses view")
 	}
+	selectSortMode(t, page, "added-oldest")
+	if label, err := page.Locator("#process-sort-current").TextContent(); err != nil {
+		t.Fatalf("read selected sort mode: %v", err)
+	} else if strings.TrimSpace(label) != "Added · Oldest" {
+		t.Errorf("all statuses sort should show oldest first, got %q", strings.TrimSpace(label))
+	}
+
+	selectFilter(t, page, "accepted")
+	selectAdditionalStatusFilters(t, page, []string{"ongoing", "waiting", "rejected"})
+	if _, err := page.WaitForFunction(`() => [...document.querySelectorAll(".process-status-group-heading")].map(item => item.dataset.status).join(",") === "accepted,ongoing,waiting,rejected"`, nil); err != nil {
+		t.Fatalf("wait for individual status groups: %v", err)
+	}
+	assertBoardNavigationStaysAboveStatusGroups(t, page)
+	assertStatusGroupAddCardCount(t, page, 4)
 
 	selectFilter(t, page, "schedule")
 	if visible, err := page.Locator("#process-toolbar").IsVisible(); err != nil {
@@ -792,6 +806,205 @@ func TestSearchAndFiltersRemainAvailableInAllView(t *testing.T) {
 	} else if visible {
 		t.Error("search toolbar should be hidden in daily schedule")
 	}
+}
+
+func selectAdditionalStatusFilters(t *testing.T, page playwright.Page, statuses []string) {
+	t.Helper()
+	for _, status := range statuses {
+		if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+			t.Fatalf("open Filters to add %s status: %v", status, err)
+		}
+		if err := page.Locator(`label.status-filter-option:has(input[value="` + status + `"])`).Click(); err != nil {
+			t.Fatalf("add %s status filter: %v", status, err)
+		}
+		if err := page.Keyboard().Press("Escape"); err != nil {
+			t.Fatalf("close Filters after adding %s status: %v", status, err)
+		}
+	}
+}
+
+func assertStatusGroupAddCardCount(t *testing.T, page playwright.Page, expected int) {
+	t.Helper()
+	count, err := page.Locator(".quick-add-card").Count()
+	if err != nil {
+		t.Fatalf("count add cards in status groups: %v", err)
+	}
+	if count != expected {
+		t.Errorf("expected one add card at the end of each status group, got %d", count)
+	}
+}
+
+func assertBoardNavigationStaysAboveStatusGroups(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if _, err := page.WaitForFunction(`() => {
+	  window.scrollTo(0, document.documentElement.scrollHeight);
+	  const header = document.querySelector(".app-header").getBoundingClientRect();
+	  const nav = document.querySelector(".board-view-switch").getBoundingClientRect();
+	  return window.scrollY > 0 && Math.abs(nav.top - header.bottom) <= 1;
+	}`, nil); err != nil {
+		t.Fatalf("wait for board navigation to meet the sticky header: %v", err)
+	}
+	result, err := page.Evaluate(`() => {
+	  const header = document.querySelector(".app-header").getBoundingClientRect();
+	  const nav = document.querySelector(".board-view-switch").getBoundingClientRect();
+	  const switchStyle = getComputedStyle(document.querySelector(".board-view-switch"));
+	  const headerBackground = getComputedStyle(document.querySelector(".app-header")).backgroundColor.match(/[\d.]+/g);
+	  return Math.abs(nav.top - header.bottom) <= 1 &&
+	    switchStyle.position === "sticky" &&
+	    switchStyle.backgroundColor === getComputedStyle(document.body).backgroundColor &&
+	    (headerBackground.length === 3 || Number(headerBackground[3]) === 1) &&
+	    getComputedStyle(document.querySelector(".process-status-group-heading")).position === "static";
+	}`, nil)
+	if err != nil {
+		t.Fatalf("check board navigation and status group positioning: %v", err)
+	}
+	if result != true {
+		t.Error("board navigation and page header should have opaque backgrounds while status group headings scroll normally")
+	}
+}
+
+func TestBoardScrollPositionRestoresAfterScheduleSwitch(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 1280, 650)
+
+	savedValue, err := page.Evaluate(`() => {
+	  window.scrollTo(0, document.documentElement.scrollHeight);
+		return String(window.scrollY);
+	}`, nil)
+	if err != nil {
+		t.Fatalf("scroll board to its current position: %v", err)
+	}
+	savedScrollY := readScrollPosition(t, savedValue)
+	if savedScrollY <= 0 {
+		t.Fatalf("demo board should have a scrollable position, got %v", savedValue)
+	}
+
+	selectFilter(t, page, "schedule")
+	assertVisible(t, page.Locator(".schedule-container .today-status-title"))
+	if err := page.Locator("#tab-board").Click(); err != nil {
+		t.Fatalf("return to board: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector("#tab-board").getAttribute("aria-pressed") === "true" && !document.querySelector("#cards-grid").classList.contains("schedule-mode") && document.querySelector("#cards-grid .process-card")`, nil); err != nil {
+		t.Fatalf("wait for restored board view: %v", err)
+	}
+
+	restoredValue, err := page.Evaluate("() => String(window.scrollY)", nil)
+	if err != nil {
+		t.Fatalf("read restored board scroll position: %v", err)
+	}
+	restoredScrollY := readScrollPosition(t, restoredValue)
+	if math.Abs(restoredScrollY-savedScrollY) > 2 {
+		t.Errorf("board scroll position restored to %.0fpx, want %.0fpx", restoredScrollY, savedScrollY)
+	}
+}
+
+func TestBoardFiltersPersistAfterScheduleSwitch(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	selectFilter(t, page, "accepted")
+	selectAdditionalStatusFilters(t, page, []string{"ongoing"})
+	setAdditionalBoardFilters(t, page)
+	selectSortMode(t, page, "added-oldest")
+
+	filtersBefore := readBoardFilterAndSortState(t, page)
+	if err := page.Locator("#search-input").Fill("platform"); err != nil {
+		t.Fatalf("set board search before switching views: %v", err)
+	}
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatalf("close board filter panel: %v", err)
+	}
+	selectFilter(t, page, "schedule")
+	if _, err := page.WaitForFunction(`() => document.querySelector("#tab-schedule").getAttribute("aria-pressed") === "true"`, nil); err != nil {
+		t.Fatalf("wait for schedule view: %v", err)
+	}
+	if err := page.Locator("#tab-board").Click(); err != nil {
+		t.Fatalf("return to board: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector("#tab-board").getAttribute("aria-pressed") === "true" && !document.querySelector("#cards-grid").classList.contains("schedule-mode")`, nil); err != nil {
+		t.Fatalf("wait for board view: %v", err)
+	}
+
+	filtersAfter := readBoardFilterAndSortState(t, page)
+	if filtersAfter != filtersBefore {
+		t.Errorf("board filters changed after switching views: got %v, want %v", filtersAfter, filtersBefore)
+	}
+	assertBoardFilterControlsRestored(t, page)
+}
+
+func readBoardFilterAndSortState(t *testing.T, page playwright.Page) any {
+	t.Helper()
+	state, err := page.Evaluate(`() => JSON.stringify({
+	  filters: localStorage.getItem("war-room.process.filters.v1"),
+	  sort: localStorage.getItem("war-room.process.sort.all"),
+	})`, nil)
+	if err != nil {
+		t.Fatalf("read saved board filter and sort state: %v", err)
+	}
+	return state
+}
+
+func assertBoardFilterControlsRestored(t *testing.T, page playwright.Page) {
+	t.Helper()
+	controlsRestored, err := page.Evaluate(`() =>
+	  ["accepted", "ongoing"].every(status => document.querySelector('input[name="process-status-filter"][value="' + status + '"]').checked) &&
+	  document.querySelector('input[name="process-filter-arrangement"][value="remote"]').checked &&
+	  document.querySelector("#process-filter-no-referral").checked &&
+	  document.querySelector("#process-filter-expected-salary").value === "€85k" &&
+	  document.querySelector("#process-filter-posted-salary-min").value === "80000" &&
+	  document.querySelector("#process-filter-currency").value === "EUR" &&
+	  document.querySelector("#process-sort-current").textContent === "Added · Oldest" &&
+	  document.querySelector('[data-sort-mode="added-oldest"]').getAttribute("aria-checked") === "true" &&
+	  document.querySelector("#search-input").value === "platform"`, nil)
+	if err != nil {
+		t.Fatalf("check restored board filter controls: %v", err)
+	}
+	if controlsRestored != true {
+		t.Error("board filter selections and search should remain unchanged after switching views")
+	}
+}
+
+func setAdditionalBoardFilters(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if err := page.Locator("#process-filter-trigger").Click(); err != nil {
+		t.Fatalf("open board filters: %v", err)
+	}
+	for _, selector := range []string{
+		`input[name="process-filter-arrangement"][value="remote"]`,
+		"#process-filter-no-referral",
+	} {
+		if err := page.Locator(selector).Check(); err != nil {
+			t.Fatalf("select board filter %s: %v", selector, err)
+		}
+	}
+	for selector, value := range map[string]string{
+		"#process-filter-expected-salary":   "€85k",
+		"#process-filter-posted-salary-min": "80000",
+	} {
+		if err := page.Locator(selector).Fill(value); err != nil {
+			t.Fatalf("set board filter %s: %v", selector, err)
+		}
+		if err := page.Locator(selector).Press("Tab"); err != nil {
+			t.Fatalf("save board filter %s: %v", selector, err)
+		}
+	}
+	values := []string{"EUR"}
+	if _, err := page.Locator("#process-filter-currency").SelectOption(playwright.SelectOptionValues{Values: &values}); err != nil {
+		t.Fatalf("select board filter currency: %v", err)
+	}
+}
+
+func readScrollPosition(t *testing.T, value any) float64 {
+	t.Helper()
+	text, ok := value.(string)
+	if !ok {
+		t.Fatalf("scroll position should be a string, got %v", value)
+	}
+	position, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		t.Fatalf("parse scroll position %q: %v", text, err)
+	}
+	return position
 }
 
 func TestMutedTextMeetsAAContrastInBothThemes(t *testing.T) {

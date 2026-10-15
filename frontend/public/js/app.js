@@ -61,6 +61,7 @@ function getSavedStatusFilter() {
 
 let currentFilter = getSavedFilter();
 let currentStatusFilter = currentFilter === "schedule" ? getSavedStatusFilter() : currentFilter;
+const viewScrollPositions = { board: 0, schedule: 0 };
 if (currentFilter !== "schedule") {
   try { window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, currentStatusFilter); } catch { /* Keep the restored status filter for this page. */ }
 }
@@ -186,10 +187,11 @@ function updateFilterSummary() {
 /**
  * Updates filter counters and re-renders cards.
  */
-async function refreshApp() {
+async function refreshApp({ restoreScrollY } = {}) {
   try {
     const boardData = await refreshBoardCounts();
     await renderSelectedBoardView(boardData);
+    if (Number.isFinite(restoreScrollY)) window.scrollTo(0, restoreScrollY);
     clearAppLoadError();
   } catch (err) {
     console.error("Failed to load jobs data:", err);
@@ -251,12 +253,13 @@ async function renderSelectedBoardView({ allPeriodCounts, scopedCounts }) {
 async function renderProcessCards(allPeriodCounts, scopedCounts) {
   const jobs = await api.getJobs(processFilters.statuses.length ? "all" : currentFilter, currentSearch);
   const filteredJobs = filterJobs(jobs, processFilters);
-  const sortMode = currentFilter === "all" ? "manual" : readSavedSortMode(window.localStorage, currentFilter);
-  renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode, processFilters.statuses), modalEl, backdropEl, refreshApp, sortMode, {
+  const sortMode = readSavedSortMode(window.localStorage, currentFilter);
+  renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode, {
     filter: currentFilter,
     totalCount: allPeriodCounts.all,
     statusCount: scopedCounts[currentFilter] ?? scopedCounts.all,
     hasCustomView: hasActiveCustomView(),
+    groupByStatus: processFilters.statuses.length > 1,
     onResetView: resetSearchAndFilters,
   });
 }
@@ -558,7 +561,7 @@ function saveProcessFilters() {
 /** Updates the visible order selector and explains the active status order. */
 function updateSortControl() {
   if (!processToolbarEl || !processSortControlEl || !processSortTrigger || !processSortCurrent) return;
-  const isStatusTab = ["waiting", "ongoing", "accepted", "rejected"].includes(currentFilter);
+  const isStatusTab = ["all", "waiting", "ongoing", "accepted", "rejected"].includes(currentFilter);
   processToolbarEl.hidden = currentFilter === "schedule";
   processSortControlEl.hidden = !isStatusTab;
   if (!isStatusTab) return;
@@ -693,6 +696,7 @@ async function submitNewJobForm(event, form, closeForm) {
  */
 function setFilter(filter, { preserveStatusSelection = false } = {}) {
   if (!validFilters.has(filter)) return;
+  const restoreScrollY = getNextViewScrollPosition(filter);
   currentFilter = filter;
   if (filter !== "all" && !preserveStatusSelection) processFilters.statuses = [];
   if (filter !== "schedule") {
@@ -709,7 +713,20 @@ function setFilter(filter, { preserveStatusSelection = false } = {}) {
     // Keep navigation working when browser storage is unavailable.
   }
   updateFilterSummary();
-  refreshApp();
+  void refreshApp(restoreScrollY === undefined ? undefined : { restoreScrollY });
+}
+
+function getNextViewScrollPosition(filter) {
+  const previousView = currentFilter === "schedule" ? "schedule" : "board";
+  const nextView = filter === "schedule" ? "schedule" : "board";
+  if (previousView === nextView) return undefined;
+  viewScrollPositions[previousView] = window.scrollY;
+  return viewScrollPositions[nextView];
+}
+
+function syncBoardViewSwitchOffset() {
+  const header = document.querySelector(".app-header");
+  document.documentElement.style.setProperty("--board-view-switch-top", `${header.getBoundingClientRect().height}px`);
 }
 
 /** Returns whether keyboard focus is currently in an editable control. */
@@ -1355,9 +1372,9 @@ statusFilterControls.forEach((control) => control.addEventListener("change", () 
     .map((option) => option.value);
   setFilter(processFilters.statuses.length === 1 ? processFilters.statuses[0] : "all", { preserveStatusSelection: true });
 }));
-boardButton?.addEventListener("click", () => setFilter(currentStatusFilter));
+boardButton?.addEventListener("click", () => setFilter(currentStatusFilter, { preserveStatusSelection: true }));
 scheduleButton?.addEventListener("click", () => {
-  setFilter("schedule");
+  setFilter("schedule", { preserveStatusSelection: true });
 });
 
 processFilterTrigger?.addEventListener("click", () => {
@@ -1619,6 +1636,7 @@ menuToggle?.addEventListener("click", () => {
   menuToggle.setAttribute("aria-expanded", String(!isOpen));
   menuToggle.setAttribute("aria-label", isOpen ? "Open navigation menu" : "Close navigation menu");
   headerControls?.classList.toggle("is-open", !isOpen);
+  syncBoardViewSwitchOffset();
 });
 backdropEl.addEventListener("click", (e) => {
   if (e.target === backdropEl) {
@@ -1631,6 +1649,9 @@ window.addEventListener("keydown", handleGlobalKeydown);
 
 initializeProcessFilterControls();
 updateFilterSummary();
+
+syncBoardViewSwitchOffset();
+window.addEventListener("resize", syncBoardViewSwitchOffset, { passive: true });
 
 await refreshApp();
 document.body.dataset.appReady = "true";
