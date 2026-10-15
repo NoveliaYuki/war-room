@@ -55,7 +55,7 @@ const job = (stages = []) => ({
   keyword_note: 'remote', company_overview: 'Company', reasons_to_change: 'Growth', experience_notes: 'Platform work',
   expected_salary: '€85k base, flexible', interview_notes: 'Notes',
   work_arrangement: 'unknown', employment_type: 'unknown',
-  job_post_url: 'https://example.com/job', description: 'Original description', avatar_seed: 'seed', company_domain: 'acme.test',
+  job_post_url: 'https://example.com/job', application_url: 'https://example.com/careers/role', description: 'Original description', avatar_seed: 'seed', company_domain: 'acme.test',
   attachments: [], interviewers: [], stages,
 });
 
@@ -84,6 +84,16 @@ describe('detail modal', () => {
     await openDetailModal('job-1');
     modal.querySelector('.btn-close-modal').click();
     expect(closeWithFlip).toHaveBeenCalledTimes(1);
+  });
+
+  it('places the job post link before the company and role overview', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+
+    const jobPostSection = modal.querySelector('.editable-job-post-url').closest('.detail-section');
+    const overviewSection = modal.querySelector('#company-overview-display').closest('.detail-section');
+    expect(jobPostSection.compareDocumentPosition(overviewSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('renders the same attachment controls in demo mode', async () => {
@@ -373,7 +383,7 @@ describe('detail modal', () => {
     expect(api.createQuestion).toHaveBeenCalledWith({ stage_id: 's1', question: 'Ask about on-call', answer_notes: '' });
   });
 
-  it('keeps the left control and allows manual scrolling across interview stages', async () => {
+  it('keeps interview stages horizontally scrollable without a back arrow', async () => {
     const stages = ["HR", "Technical", "Cultural", "Offer"].map((stage_type, index) => ({
       id: `s${index + 1}`, stage_type, status: index === 0 ? 'current' : 'pending', questions: [],
     }));
@@ -381,7 +391,7 @@ describe('detail modal', () => {
     const modal = document.querySelector('#detail-modal');
     await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
     const tabs = modal.querySelector('.stages-tab-bar');
-    const previous = modal.querySelector('.stage-tabs-scroll-button.is-prev');
+    expect(modal.querySelector('.stage-tabs-scroll-button')).toBeNull();
     Object.defineProperties(tabs, {
       scrollWidth: { configurable: true, value: 700 },
       clientWidth: { configurable: true, value: 400 },
@@ -393,14 +403,10 @@ describe('detail modal', () => {
     });
 
     tabs.dispatchEvent(new Event('scroll'));
-    expect(previous.hidden).toBe(true);
-    expect(modal.querySelector('.stage-tabs-scroll-button.is-next')).toBeNull();
+    expect(tabs.scrollLeft).toBe(0);
     tabs.scrollLeft = 300;
     tabs.dispatchEvent(new Event('scroll'));
-    expect(previous.hidden).toBe(false);
-    previous.click();
-    expect(tabs.scrollBy).toHaveBeenLastCalledWith({ left: -300, behavior: 'smooth' });
-    expect(previous.hidden).toBe(true);
+    expect(tabs.scrollLeft).toBe(300);
   });
 
   it('navigates interview stage tabs with the keyboard without wrapping at either end', async () => {
@@ -477,7 +483,7 @@ describe('detail modal', () => {
     expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(90);
     modal.querySelector('.stages-tab-bar').scrollLeft = 210;
     resizeCallbacks.forEach((callback) => callback());
-    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(115);
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(140);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -632,6 +638,7 @@ describe('detail modal', () => {
       ['.editable-reasons-to-change', 'More scope', { reasons_to_change: 'More scope' }],
       ['.editable-expected-salary', '€90k plus equity', { expected_salary: '€90k plus equity' }],
       ['.editable-job-post-url', '', { job_post_url: null }],
+      ['.editable-application-url', 'https://example.com/apply', { application_url: 'https://example.com/apply' }],
     ];
     for (const [selector, value, payload] of cases) {
       await editInline(modal, selector, value);
@@ -1058,7 +1065,7 @@ describe('detail modal', () => {
     expect(modal.querySelector('.referral-tag').textContent).toContain('Referral');
     expect(modal.querySelector('.modal-meta-pills .recruiter-badge')).toBeNull();
     expect(modal.querySelector('.editable-stage-recruiter-name').textContent).toContain('Stage Contact');
-    expect(modal.querySelector('.editable-job-post-url').textContent).toContain('No job post link recorded');
+    expect(modal.querySelector('.editable-job-post-url').textContent).toContain('No LinkedIn post link recorded');
     expect(modal.querySelector('#reachout-text-container').style.display).toBe('none');
     expect(modal.querySelector('[data-markdown-field="description"]')).not.toBeNull();
     expect(modal.querySelector('.editable-keywords').textContent).toContain('No keywords');
@@ -1221,11 +1228,12 @@ describe('detail modal', () => {
     form.querySelector('[name="position_title"]').value = 'Staff Engineer';
     form.querySelector('[name="experience_notes"]').value = 'Distributed systems';
     form.querySelector('[name="expected_salary"]').value = '€95k depending on scope';
+    form.querySelector('[name="application_url"]').value = 'https://example.com/apply';
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await tick();
     expect(api.updateJob).toHaveBeenCalledWith('job-1', expect.objectContaining({
       position_title: 'Staff Engineer', salary_type: 'limited', salary_min: 70000, salary_max: 90000,
-      experience_notes: 'Distributed systems', expected_salary: '€95k depending on scope', is_referral: false,
+      experience_notes: 'Distributed systems', expected_salary: '€95k depending on scope', application_url: 'https://example.com/apply', is_referral: false,
     }));
   });
 

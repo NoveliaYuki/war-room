@@ -73,7 +73,7 @@ func requireArchiveNoError(t *testing.T, err error) {
 func roundTripSource(t *testing.T) ([]byte, string, string, int) {
 	t.Helper()
 	_, source, _, cfg := newCoverageApp(t)
-	job, err := source.CreateJob(models.CreateJobInput{CompanyName: "Example", PositionTitle: "Engineer", CompanyDomain: ptr("example.org"), Interviewers: []models.Interviewer{{Name: "Alex", Role: "Lead"}}, CreateDefaultStages: ptr(true)})
+	job, err := source.CreateJob(models.CreateJobInput{CompanyName: "Example", PositionTitle: "Engineer", CompanyDomain: ptr("example.org"), JobPostURL: ptr("https://linkedin.com/jobs/view/123"), ApplicationURL: ptr("https://example.org/careers/engineer"), Interviewers: []models.Interviewer{{Name: "Alex", Role: "Lead"}}, CreateDefaultStages: ptr(true)})
 	requireArchiveNoError(t, err)
 	attachment, err := source.StoreAttachment(job.ID, nil, "resume.txt", strings.NewReader("resume"), 6, "text/plain")
 	requireArchiveNoError(t, err)
@@ -106,6 +106,9 @@ func verifyRoundTripTarget(t *testing.T, archive []byte, jobID, attachmentID str
 	requireArchiveNoError(t, err)
 	if imported == nil {
 		t.Fatal("imported process is missing")
+	}
+	if imported.JobPostURL == nil || *imported.JobPostURL != "https://linkedin.com/jobs/view/123" || imported.ApplicationURL == nil || *imported.ApplicationURL != "https://example.org/careers/engineer" {
+		t.Fatalf("imported job links = (%v, %v)", imported.JobPostURL, imported.ApplicationURL)
 	}
 	if len(imported.Attachments) != 1 || len(imported.Stages) != stages || len(imported.Stages[0].Questions) != 1 {
 		t.Fatalf("imported process = %#v", imported)

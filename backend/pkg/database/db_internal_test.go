@@ -91,6 +91,74 @@ func TestSearchPeriodMigrationPreservesExistingJobsAsUnassigned(t *testing.T) {
 	}
 }
 
+func TestApplicationURLMigrationPreservesJobsAndTracksChanges(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustMigrationExec(t, db, schemaSQL)
+	mustMigrationSchema(t, db)
+	mustMigrationExec(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, last_activity_at) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed', 1)`)
+	mustMigrationExec(t, db, "DROP TRIGGER touch_job_activity; ALTER TABLE jobs DROP COLUMN application_url; DELETE FROM schema_migrations WHERE version = 15")
+	mustMigrationSchema(t, db)
+	if err := migrateJobApplicationURL(db); err != nil {
+		t.Fatalf("rerun application URL migration: %v", err)
+	}
+	var applicationURL sql.NullString
+	if err := db.QueryRow("SELECT application_url FROM jobs WHERE id = 'legacy-job'").Scan(&applicationURL); err != nil {
+		t.Fatal(err)
+	}
+	if applicationURL.Valid {
+		t.Fatalf("legacy application URL should be empty, got %q", applicationURL.String)
+	}
+	assertApplicationURLUpdatesActivity(t, db)
+}
+
+func TestApplicationURLMigrationReportsFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		failQuery string
+		failExec  string
+	}{
+		{name: "inspect column", failQuery: "pragma_table_info"},
+		{name: "add column", failExec: "ALTER TABLE jobs ADD COLUMN application_url"},
+		{name: "refresh trigger", failExec: "DROP TRIGGER IF EXISTS touch_job_activity"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			mustMigrationExec(t, db, schemaSQL)
+			err := migrateJobApplicationURL(migrationTestExecutor{db: db, failQuery: test.failQuery, failExec: test.failExec})
+			if err == nil {
+				t.Fatal("migration should report the injected failure")
+			}
+		})
+	}
+}
+
+func mustMigrationExec(t *testing.T, db *sql.DB, query string, args ...any) {
+	t.Helper()
+	if _, err := db.Exec(query, args...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustMigrationSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := migrateSchema(db); err != nil {
+		t.Fatalf("migrate schema: %v", err)
+	}
+}
+
+func assertApplicationURLUpdatesActivity(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustMigrationExec(t, db, "UPDATE jobs SET application_url = ? WHERE id = 'legacy-job'", "https://example.com/apply")
+	var activity int64
+	if err := db.QueryRow("SELECT last_activity_at FROM jobs WHERE id = 'legacy-job'").Scan(&activity); err != nil {
+		t.Fatal(err)
+	}
+	if activity <= 1 {
+		t.Fatalf("application URL update did not refresh activity timestamp: %d", activity)
+	}
+}
+
 func TestOpenEndedSearchPeriodMigrationPreservesAssignments(t *testing.T) {
 	db := openMigrationTestDB(t)
 	seedVersionTwelveSearchPeriod(t, db)

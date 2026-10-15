@@ -212,7 +212,7 @@ func buildJob(input models.CreateJobInput) (*models.Job, error) {
 		SalaryCurrency: currency, RecruiterType: recruiterType,
 		RecruiterName: input.RecruiterName, RecruiterAgency: input.RecruiterAgency,
 		RecruiterContact: input.RecruiterContact, Interviewers: input.Interviewers,
-		JobPostURL: input.JobPostURL, AvatarSeed: avatar, KeywordNote: keyword,
+		JobPostURL: input.JobPostURL, ApplicationURL: input.ApplicationURL, AvatarSeed: avatar, KeywordNote: keyword,
 		Description: valueOrEmpty(input.Description), CompanyOverview: valueOrEmpty(input.CompanyOverview),
 		CompanyDomain: input.CompanyDomain, InterviewNotes: valueOrEmpty(input.InterviewNotes),
 		ApplicationSentDate:       applicationSentDate,
@@ -732,6 +732,9 @@ func addJobRecruiterFields(fields map[string]interface{}, input models.UpdateJob
 	}
 	if input.JobPostURL != nil {
 		fields["job_post_url"] = *input.JobPostURL
+	}
+	if input.ApplicationURL != nil {
+		fields["application_url"] = *input.ApplicationURL
 	}
 	if input.AvatarSeed != nil {
 		fields["avatar_seed"] = *input.AvatarSeed
