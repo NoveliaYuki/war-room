@@ -282,6 +282,34 @@ describe('detail modal', () => {
     expect(modal.querySelector('.questions-list').scrollTop).toBe(24);
   });
 
+  it('restores each mobile pane scroll position and keeps the status pill compact', async () => {
+    api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const layout = modal.querySelector('.modal-split-layout');
+    const overviewButton = modal.querySelector('[data-mobile-pane="overview"]');
+    const stagesButton = modal.querySelector('[data-mobile-pane="stages"]');
+    const statusButton = modal.querySelector('.editable-job-status');
+
+    expect(statusButton.querySelector('.status-pill').textContent).toBe('Ongoing');
+    expect(statusButton.classList.contains('status-pill')).toBe(false);
+
+    overviewButton.click();
+    layout.scrollTop = 320;
+    layout.dispatchEvent(new Event('scroll'));
+    stagesButton.click();
+    expect(layout.scrollTop).toBe(0);
+
+    layout.scrollTop = 140;
+    layout.dispatchEvent(new Event('scroll'));
+    overviewButton.click();
+    expect(layout.scrollTop).toBe(320);
+
+    stagesButton.click();
+    expect(layout.scrollTop).toBe(140);
+  });
+
   it('renders stages when the API returns null question and interviewer lists', async () => {
     api.getJob.mockResolvedValue(job([{
       id: 'stage-1',

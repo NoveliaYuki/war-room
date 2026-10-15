@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.10.1 — 2026-10-15
+
+## Highlights
+- Preserve scroll position when switching between Job details and Interview stages on mobile, and make the Ongoing status badge more compact.
+
+## What changed
+- Save and restore each detail tab's scroll position for the current job. Reset saved positions when opening a different job.
+- Reduce the visible status pill height while retaining a 44px touch target.
+- Related PR: pending.
+
 ## 1.10.0 — 2026-10-15
 
 ## Highlights
