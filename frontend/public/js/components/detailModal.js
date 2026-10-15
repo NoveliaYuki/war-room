@@ -418,7 +418,7 @@ function renderModalHeader(view) {
         <div class="modal-title-area">
           <div class="modal-company ${job.company_name.toLowerCase() === 'unknown' ? 'is-unknown' : ''}">
             <span class="editable-company-name" data-raw-value="${escapeAttr(job.company_name)}">${renderCompanyLabel(job.company_name)}</span>
-            <button type="button" class="status-pill editable-job-status ${escapeAttr(job.status)}" aria-label="Job status: ${escapeAttr(JOB_STATUS_LABELS[job.status] || job.status)}. Click to change status." title="Click to cycle job status">${escapeHtml(JOB_STATUS_LABELS[job.status] || job.status)}</button>
+            <button type="button" class="editable-job-status" aria-label="Job status: ${escapeAttr(JOB_STATUS_LABELS[job.status] || job.status)}. Click to change status." title="Click to cycle job status"><span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(JOB_STATUS_LABELS[job.status] || job.status)}</span></button>
           </div>
           <h2 class="modal-title editable-position-title" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h2>
         </div>
@@ -687,16 +687,24 @@ function bindMobileDetailPaneSwitch(modalEl) {
   const layout = modalEl.querySelector(".modal-split-layout");
   if (!switcher || !layout) return;
 
+  const scrollPositions = modalEl.mobileDetailScrollPositions ||= { overview: 0, stages: 0 };
+  layout.addEventListener("scroll", () => {
+    const activePane = modalEl.dataset.mobileDetailPane;
+    if (activePane in scrollPositions) scrollPositions[activePane] = layout.scrollTop;
+  }, { passive: true });
+
   switcher.addEventListener("click", (event) => {
     const button = event.target.closest("[data-mobile-pane]");
     if (!button) return;
     const pane = button.dataset.mobilePane;
     if (!["overview", "stages"].includes(pane)) return;
+    const currentPane = modalEl.dataset.mobileDetailPane;
+    if (currentPane in scrollPositions) scrollPositions[currentPane] = layout.scrollTop;
     modalEl.dataset.mobileDetailPane = pane;
     switcher.querySelectorAll("[data-mobile-pane]").forEach((option) => {
       option.setAttribute("aria-pressed", String(option === button));
     });
-    layout.scrollTop = 0;
+    layout.scrollTop = scrollPositions[pane];
     if (pane === "stages") positionActiveStageTab(modalEl);
   });
 }
@@ -1782,6 +1790,10 @@ function positionActiveStageTab(modalEl) {
 
 function renderModalContent(modalEl, backdropEl, job, onGlobalRefresh) {
   const view = createModalView(job);
+  if (modalEl.dataset.mobileDetailJobId !== String(job.id)) {
+    modalEl.mobileDetailScrollPositions = { overview: 0, stages: 0 };
+    modalEl.dataset.mobileDetailJobId = String(job.id);
+  }
   const mobilePane = modalEl.dataset.mobileDetailPane || (view.stages.length ? "stages" : "overview");
   modalEl.dataset.mobileDetailPane = mobilePane;
   modalEl.innerHTML = `
