@@ -8,7 +8,7 @@
 ## What changed
 - Save and restore each detail tab's scroll position for the current job. Reset saved positions when opening a different job.
 - Reduce the visible status pill height while retaining a 44px touch target.
-- Related PR: pending.
+- Related PR: [#4](https://github.com/NoveliaYuki/war-room/pull/4).
 
 ## 1.10.0 — 2026-10-15
 
