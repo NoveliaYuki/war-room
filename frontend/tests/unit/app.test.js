@@ -24,6 +24,7 @@ describe('application entry point', () => {
     });
     delete document.documentElement.dataset.theme;
     document.body.innerHTML = `
+      <header class="app-header"></header>
       <div id="app-load-error" hidden><button id="app-load-retry" type="button">Try again</button></div>
       <div id="cards-grid" aria-busy="true"><div class="board-loading-state" role="status">Loading selection processes</div></div><div id="modal-backdrop"><div id="detail-modal"></div></div>
       <button id="btn-menu-toggle" aria-expanded="false"></button>

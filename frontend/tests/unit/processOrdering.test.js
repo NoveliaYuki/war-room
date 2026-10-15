@@ -15,15 +15,19 @@ describe('process ordering', () => {
     expect(readSavedSortMode(storage, 'waiting')).toBe('added-newest');
   });
 
-  it('groups multiple selected statuses in the requested display order', () => {
+  it('sorts all statuses by the selected sort mode', () => {
     const jobs = [
-      { id: 'rejected', status: 'rejected', order_index: 1 },
-      { id: 'waiting', status: 'waiting', order_index: 2 },
-      { id: 'ongoing', status: 'ongoing', order_index: 3 },
-      { id: 'accepted', status: 'accepted', order_index: 4 },
+      { id: 'rejected', status: 'rejected', order_index: 1, created_at: 1 },
+      { id: 'waiting', status: 'waiting', order_index: 2, created_at: 2 },
+      { id: 'ongoing', status: 'ongoing', order_index: 3, created_at: 4 },
+      { id: 'accepted', status: 'accepted', order_index: 4, created_at: 3 },
     ];
-    expect(sortJobsForDisplay(jobs, 'all', 'manual', ['accepted', 'ongoing', 'waiting', 'rejected'])
-      .map(({ id }) => id)).toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
+    expect(sortJobsForDisplay(jobs, 'all', 'added-newest')
+      .map(({ id }) => id)).toEqual(['ongoing', 'accepted', 'waiting', 'rejected']);
+    expect(sortJobsForDisplay(jobs, 'all', 'added-oldest')
+      .map(({ id }) => id)).toEqual(['rejected', 'waiting', 'accepted', 'ongoing']);
+    expect(sortJobsForDisplay(jobs, 'all', 'manual')
+      .map(({ id }) => id)).toEqual(['rejected', 'waiting', 'ongoing', 'accepted']);
   });
 
   it('sorts each date, progress, and manual mode while keeping ties deterministic', () => {
@@ -40,7 +44,7 @@ describe('process ordering', () => {
     expect(ids('advanced')).toEqual(['new', 'middle', 'old']);
     expect(ids('early')).toEqual(['old', 'middle', 'new']);
     expect(ids('manual')).toEqual(['middle', 'new', 'old']);
-    expect(ids('added-newest', 'all')).toEqual(['middle', 'new', 'old']);
+    expect(ids('added-newest', 'all')).toEqual(['new', 'middle', 'old']);
     expect(sortJobsForDisplay(jobs, 'waiting', 'added-newest')).not.toBe(jobs);
     const stageLess = [{ id: 'one', order_index: 2, created_at: 1 }, { id: 'two', order_index: 1, created_at: 2 }];
     expect(sortJobsForDisplay(stageLess, 'ongoing', 'advanced').map(({ id }) => id)).toEqual(['two', 'one']);

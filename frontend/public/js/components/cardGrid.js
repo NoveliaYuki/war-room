@@ -210,6 +210,23 @@ function setWideLogoFrame(card) {
   if (logo.complete) applyFrame();
 }
 
+/** Creates the action card used to start a new selection process. */
+function createQuickAddCard() {
+  const addCard = document.createElement("button");
+  addCard.className = "quick-add-card";
+  addCard.type = "button";
+  addCard.setAttribute("aria-label", "Add selection process");
+  addCard.innerHTML = `
+    <div class="quick-add-icon">${icon("plus", 22)}</div>
+    <div class="quick-add-title">Add Selection Process</div>
+    <div class="quick-add-subtitle">Track a new job opportunity or recruiter reachout</div>
+  `;
+  addCard.addEventListener("click", () => {
+    document.querySelector("#btn-new-process")?.click();
+  });
+  return addCard;
+}
+
 /** Updates the CSS mouse position for the card's glow effect. */
 function updateCardGlow(card, event) {
   const rect = card.getBoundingClientRect();
@@ -404,7 +421,7 @@ function resolveEmptyStateCopy(hasProcesses, hasCustomView, statusTabIsEmpty, st
  * @param {HTMLElement} backdropEl - The modal backdrop element.
  * @param {Function} onGlobalRefresh - Global refresh callback.
  * @param {string} [sortMode='manual'] - Recent ordering or the user's saved manual order.
- * @param {{filter?: string, totalCount?: number, statusCount?: number, hasCustomView?: boolean, onResetView?: () => void}} [emptyStateContext] - Counts and active tab for an empty grid.
+ * @param {{filter?: string, totalCount?: number, statusCount?: number, hasCustomView?: boolean, groupByStatus?: boolean, onResetView?: () => void}} [emptyStateContext] - Counts, grouping, and active tab for an empty grid.
  */
 export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropEl = null, onGlobalRefresh = null, sortMode = "manual", emptyStateContext = {}) {
   containerEl.innerHTML = "";
@@ -414,37 +431,47 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
     return;
   }
 
-  // 1. Render all active selection cards
-  jobs.forEach((job) => {
-    const card = createCardElement(job, sortMode);
-    bindCardInlineEditors(card, job, onGlobalRefresh);
-    bindCardDeletion(card, job, onGlobalRefresh);
-    const isDragActive = sortMode === "manual"
-      ? enableHoldToDrag(card, containerEl, (newOrder) => Promise.resolve(api.reorderJobs(newOrder))
-        .then(async () => {
-          await onGlobalRefresh?.();
-          announceCardReorder(job, newOrder);
-        })
-        .catch(() => showToast("Could not save card order", "error")))
-      : () => false;
-    bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
-    containerEl.appendChild(card);
+  const groupedJobs = emptyStateContext.groupByStatus
+    ? ["accepted", "ongoing", "waiting", "rejected"].flatMap((status) => {
+      const statusJobs = jobs.filter((job) => job.status === status);
+      return statusJobs.length ? [{ status, jobs: statusJobs }] : [];
+    })
+    : [{ status: "", jobs }];
+
+  // 1. Render selection cards, optionally grouped by status.
+  groupedJobs.forEach(({ status, jobs: statusJobs }) => {
+    if (status) {
+      const heading = document.createElement("h2");
+      heading.className = `process-status-group-heading status-${status}`;
+      heading.dataset.status = status;
+      const label = document.createElement("span");
+      label.textContent = status[0].toUpperCase() + status.slice(1);
+      const count = document.createElement("span");
+      count.className = "process-status-group-count";
+      count.textContent = String(statusJobs.length);
+      count.setAttribute("aria-label", `${statusJobs.length} processes`);
+      heading.append(label, count);
+      containerEl.appendChild(heading);
+    }
+    statusJobs.forEach((job) => {
+      const card = createCardElement(job, sortMode);
+      bindCardInlineEditors(card, job, onGlobalRefresh);
+      bindCardDeletion(card, job, onGlobalRefresh);
+      const isDragActive = sortMode === "manual"
+        ? enableHoldToDrag(card, containerEl, (newOrder) => Promise.resolve(api.reorderJobs(newOrder))
+          .then(async () => {
+            await onGlobalRefresh?.();
+            announceCardReorder(job, newOrder);
+          })
+          .catch(() => showToast("Could not save card order", "error")))
+        : () => false;
+      bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
+      containerEl.appendChild(card);
+    });
+    if (status) containerEl.appendChild(createQuickAddCard());
   });
 
-  // 2. Add the "+ Add Selection Process" quick action card in the preview grid
-  const addCard = document.createElement("button");
-  addCard.className = "quick-add-card";
-  addCard.type = "button";
-  addCard.setAttribute("aria-label", "Add selection process");
-  addCard.innerHTML = `
-    <div class="quick-add-icon">${icon("plus", 22)}</div>
-    <div class="quick-add-title">Add Selection Process</div>
-    <div class="quick-add-subtitle">Track a new job opportunity or recruiter reachout</div>
-  `;
-  addCard.addEventListener("click", () => {
-    document.querySelector("#btn-new-process")?.click();
-  });
-  containerEl.appendChild(addCard);
+  if (!emptyStateContext.groupByStatus) containerEl.appendChild(createQuickAddCard());
 }
 
 /** Announces a saved card position change to assistive technology. */
