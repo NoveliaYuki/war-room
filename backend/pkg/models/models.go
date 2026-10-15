@@ -126,6 +126,7 @@ type Job struct {
 	RecruiterContact          *string         `json:"recruiter_contact"`
 	InterviewersJSON          string          `json:"-"`
 	JobPostURL                *string         `json:"job_post_url"`
+	ApplicationURL            *string         `json:"application_url"`
 	AvatarSeed                string          `json:"avatar_seed"`
 	KeywordNote               string          `json:"keyword_note"`
 	Description               string          `json:"description"`
@@ -382,6 +383,7 @@ type CreateJobInput struct {
 	RecruiterContact          *string          `json:"recruiter_contact"`
 	Interviewers              []Interviewer    `json:"interviewers"`
 	JobPostURL                *string          `json:"job_post_url"`
+	ApplicationURL            *string          `json:"application_url"`
 	AvatarSeed                *string          `json:"avatar_seed"`
 	KeywordNote               *string          `json:"keyword_note"`
 	Description               *string          `json:"description"`
@@ -416,6 +418,7 @@ type UpdateJobInput struct {
 	RecruiterContact          *string          `json:"recruiter_contact"`
 	Interviewers              []Interviewer    `json:"interviewers"`
 	JobPostURL                *string          `json:"job_post_url"`
+	ApplicationURL            *string          `json:"application_url"`
 	AvatarSeed                *string          `json:"avatar_seed"`
 	KeywordNote               *string          `json:"keyword_note"`
 	Description               *string          `json:"description"`

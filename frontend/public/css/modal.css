@@ -142,6 +142,8 @@
 .job-cv-picker-label { font-weight: 600; }
 .job-cv-picker-status { flex-basis: 100%; color: var(--text-danger, #dc2626); overflow-wrap: anywhere; }
 .editable-overview { padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); color: var(--text-primary); font-size: 13px; line-height: 1.55; }
+.job-post-link-fields { display: grid; gap: 10px; }
+.job-post-link-field { min-width: 0; }
 .markdown-field-edit, .btn-toggle-reachout { flex: 0 0 auto; white-space: nowrap; }
 .markdown-field-edit { min-height: 34px; padding: 6px 10px; font-size: 12px; }
 .markdown-preview > :first-child { margin-top: 0; }
@@ -1177,9 +1179,8 @@ body.is-resizing-split * {
 
 /* Stage Tab Bar at Top of Right Pane */
 .stage-navigation { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-.stage-tabs-scroll { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch; flex: 1 1 auto; min-width: 0; }
+.stage-tabs-scroll { flex: 1 1 auto; min-width: 0; }
 .stages-tab-bar {
-  grid-column: 2;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -1192,31 +1193,6 @@ body.is-resizing-split * {
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
-
-.stage-tabs-scroll-button {
-  position: static;
-  z-index: 1;
-  grid-row: 1;
-  align-self: start;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 40px;
-  padding: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface-elevated);
-  color: var(--text-secondary);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-}
-
-.stage-tabs-scroll-button.is-prev { grid-column: 1; }
-.stage-tabs-scroll-button.is-prev { left: 0; background: var(--bg-surface-elevated); border-left: 0; }
-.stage-tabs-scroll-button[hidden] { display: none; }
-.stage-tabs-scroll-button:hover { color: var(--accent-blue); }
-.stage-tabs-scroll-button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
 
 .stage-tab-item {
   display: flex;
@@ -1792,9 +1768,7 @@ body.is-resizing-split * {
   }
   #detail-modal .process-timeline-item time,
   #detail-modal .process-timeline-item > span:last-child { font-size: 11px; }
-  #detail-modal .stage-tabs-scroll-button { position: static; grid-row: 1; width: 44px; height: 44px; min-height: 44px; padding: 0; }
-  #detail-modal .stage-tabs-scroll-button.is-prev { grid-column: 1; }
-  #detail-modal .stages-tab-bar { grid-column: 2; width: 100%; min-width: 0; box-sizing: border-box; }
+  #detail-modal .stages-tab-bar { width: 100%; min-width: 0; box-sizing: border-box; }
   #detail-modal .stage-tab-item { min-height: 44px; box-sizing: border-box; }
 }
 

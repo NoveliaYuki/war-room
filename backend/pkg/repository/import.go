@@ -162,11 +162,11 @@ func prepareImportStatements(tx *sql.Tx) (*importStatements, error) {
 	job, err := tx.Prepare(`INSERT INTO jobs (
 		id, company_name, position_title, status, salary_type, salary_min, salary_max,
 		salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
-		interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
+		interviewers_json, job_post_url, application_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
 		work_arrangement, employment_type, is_referral, order_index, status_changed_at,
 		application_sent_date, recruiter_first_contact_date, created_at, updated_at, last_activity_at, cv_version_id, search_period_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func insertImportedJob(statements *importStatements, job models.Job) error {
 	}
 	if _, err := statements.job.Exec(job.ID, job.CompanyName, job.PositionTitle, job.Status, defaultValue(string(job.SalaryType), "unknown"), job.SalaryMin, job.SalaryMax,
 		defaultValue(job.SalaryCurrency, "EUR"), defaultValue(string(job.RecruiterType), "none"), job.RecruiterName, job.RecruiterAgency, job.RecruiterContact,
-		interviewers, job.JobPostURL, job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
+		interviewers, job.JobPostURL, job.ApplicationURL, job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary, defaultValue(string(job.WorkArrangement), "unknown"),
 		defaultValue(string(job.EmploymentType), "unknown"), job.IsReferral, job.OrderIndex, statusChangedAt,
 		job.ApplicationSentDate, job.RecruiterFirstContactDate, job.CreatedAt, job.UpdatedAt, lastActivityAt, cvVersionID, job.SearchPeriodID); err != nil {

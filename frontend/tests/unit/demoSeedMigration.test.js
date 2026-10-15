@@ -6,7 +6,8 @@ const updatedSeed = {
   company_name: 'NVIDIA',
   avatar_seed: 'NVIDIA',
   company_domain: 'nvidia.com',
-  job_post_url: 'https://careers.nvidia.com',
+  job_post_url: 'https://linkedin.com/jobs/view/demo',
+  application_url: 'https://careers.nvidia.com',
   salary_min: 125000,
   salary_max: 165000,
   salary_type: 'limited',
@@ -42,6 +43,7 @@ describe('demo seed migration', () => {
     expect(migrateLegacyDemoJob([job], updatedSeed)).toBe(true);
     expect(job.company_name).toBe('NVIDIA');
     expect(job.company_domain).toBe('nvidia.com');
+    expect(job.application_url).toBe('https://careers.nvidia.com');
     expect(job).toMatchObject({ salary_min: 125000, salary_max: 165000, salary_currency: 'EUR' });
     expect(job.keyword_note).toBe(updatedSeed.keyword_note);
     expect(job.description).toContain("NVIDIA's hybrid team");

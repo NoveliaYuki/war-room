@@ -226,10 +226,10 @@ function renderMarkdownField(value, placeholder) {
   return value ? renderMarkdown(value) : `<span class="empty-note">${escapeHtml(placeholder)}</span>`;
 }
 
-/** Renders a job link only when it uses a safe web URL. */
-function renderJobPostLink(value) {
+/** Renders an optional job link only when it uses a safe web URL. */
+function renderJobPostLink(value, emptyLabel = "No link recorded") {
   if (safeUrl(value)) return `<a href="${escapeAttr(safeUrl(value))}" target="_blank" rel="noopener noreferrer" class="inline-icon-text detail-external-link" style="word-break: break-all; color: var(--accent-blue);">${escapeHtml(value)} ${icon("arrowUpRight", 11)}</a>`;
-  return value ? escapeHtml(value) : '<span style="color: var(--text-muted); font-style: italic; font-size: 12px;">No job post link recorded</span>';
+  return value ? escapeHtml(value) : `<span style="color: var(--text-muted); font-style: italic; font-size: 12px;">${escapeHtml(emptyLabel)}</span>`;
 }
 
 /** Formats a UTC timestamp as a calendar date in the viewer's locale. */
@@ -482,22 +482,33 @@ function renderJobDetailsSection(view) {
           </div>
 
           <div class="detail-section">
+            <div class="section-title"><span class="inline-icon-text">${icon("externalLink", 12)} Job Post & Spec Links</span></div>
+            <div class="job-post-link-fields">
+              <div class="job-post-link-field">
+                <div class="meta-label">LinkedIn Post</div>
+                <div class="meta-item" style="background: var(--bg-surface-elevated); padding: 9px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                  <span class="meta-value editable-job-post-url" data-raw-value="${escapeAttr(job.job_post_url || '')}">
+                    ${renderJobPostLink(job.job_post_url, "No LinkedIn post link recorded")}
+                  </span>
+                </div>
+              </div>
+              <div class="job-post-link-field">
+                <div class="meta-label">Company Application Page</div>
+                <div class="meta-item" style="background: var(--bg-surface-elevated); padding: 9px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                  <span class="meta-value editable-application-url" data-raw-value="${escapeAttr(job.application_url || '')}">
+                    ${renderJobPostLink(job.application_url, "No company application link recorded")}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
             <div class="section-title">
               <span class="inline-icon-text">${icon("building", 13)} Company & Role Overview</span>
               <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="company_overview" aria-label="Edit company and role overview">Edit</button>
             </div>
             <div id="company-overview-display" class="editable-overview markdown-preview" data-raw-value="${escapeAttr(job.company_overview || '')}">${renderMarkdownField(job.company_overview, 'Summarize what the company does and what the role involves.')}</div>
-          </div>
-
-          <div class="detail-section">
-            <div class="section-title">
-              <span class="inline-icon-text">${icon("externalLink", 12)} Job Post & Spec Link</span>
-            </div>
-            <div class="meta-item" style="background: var(--bg-surface-elevated); padding: 9px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
-              <span class="meta-value editable-job-post-url" data-raw-value="${escapeAttr(job.job_post_url || '')}">
-                ${renderJobPostLink(job.job_post_url)}
-              </span>
-            </div>
           </div>
 
           ${renderJobDescription(job)}
@@ -633,7 +644,6 @@ function renderStageTabs(view) {
   return `
         <div class="stage-navigation">
           <div class="stage-tabs-scroll">
-            <button class="stage-tabs-scroll-button is-prev" type="button" aria-label="Scroll interview stages left" title="Scroll interview stages left" hidden>${icon("chevronLeft", 14)}</button>
             <div class="stages-tab-bar" role="tablist" aria-label="Interview stages">
               ${stages
                 .map(
@@ -657,28 +667,18 @@ function renderStageTabs(view) {
   `;
 }
 
-/** Keeps interview stage overflow controls in sync with the horizontal tab list. */
-function bindStageTabScrollControls(modalEl) {
+/** Keeps the active interview stage visible when the tab bar changes size. */
+function bindStageTabResizeObserver(modalEl) {
   stageTabResizeObservers.get(modalEl)?.disconnect();
   const tabs = modalEl.querySelector(".stages-tab-bar");
-  const previous = modalEl.querySelector(".stage-tabs-scroll-button.is-prev");
-  if (!tabs || !previous) return;
-
-  const updateControls = () => {
-    const maxScroll = tabs.scrollWidth - tabs.clientWidth;
-    previous.hidden = tabs.scrollLeft <= 1;
-  };
-  previous.addEventListener("click", () => tabs.scrollBy({ left: -Math.max(180, tabs.clientWidth * 0.75), behavior: "smooth" }));
-  tabs.addEventListener("scroll", updateControls, { passive: true });
+  if (!tabs) return;
   if (typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {
       positionActiveStageTab(modalEl);
-      updateControls();
     });
     observer.observe(tabs);
     stageTabResizeObservers.set(modalEl, observer);
   }
-  window.requestAnimationFrame(updateControls);
 }
 
 /** Switches the stacked detail panes on smaller screens. */
@@ -1131,16 +1131,20 @@ function bindJobTextEditors(context) {
     });
   }
 
-  const elJobPostUrl = modalEl.querySelector(".editable-job-post-url");
-  if (elJobPostUrl) {
-    makeInlineEditable(elJobPostUrl, {
-      placeholder: "https://... (Job spec or careers link)",
-      onSave: async (newVal) => {
-        await api.updateJob(job.id, { job_post_url: newVal || null });
-        refreshModal();
-      },
-    });
-  }
+  bindEditableJobURL(modalEl, job, refreshModal, ".editable-job-post-url", "job_post_url", "https://linkedin.com/jobs/view/...");
+  bindEditableJobURL(modalEl, job, refreshModal, ".editable-application-url", "application_url", "https://company.com/careers/...");
+}
+
+function bindEditableJobURL(modalEl, job, refreshModal, selector, field, placeholder) {
+  const element = modalEl.querySelector(selector);
+  if (!element) return;
+  makeInlineEditable(element, {
+    placeholder,
+    onSave: async (newVal) => {
+      await api.updateJob(job.id, { [field]: newVal || null });
+      refreshModal();
+    },
+  });
 }
 
 /** Saves editable application and first-contact dates when their date picker changes. */
@@ -1768,8 +1772,7 @@ function positionActiveStageTab(modalEl) {
   const activeRect = activeTab.getBoundingClientRect();
   const maxScroll = Math.max(0, tabs.scrollWidth - tabs.clientWidth);
   const currentScroll = tabs.scrollLeft;
-  const scrollButtonInset = 25;
-  const visibleLeft = tabsRect.left + (currentScroll > 1 ? scrollButtonInset : 0);
+  const visibleLeft = tabsRect.left;
   const visibleRight = tabsRect.right;
   let targetScroll = currentScroll;
   if (activeRect.left < visibleLeft) targetScroll += activeRect.left - visibleLeft;
@@ -1806,7 +1809,7 @@ ${renderActiveStageWorkspace(view)}
   `;
 
   positionActiveStageTab(modalEl);
-  bindStageTabScrollControls(modalEl);
+  bindStageTabResizeObserver(modalEl);
   bindMobileDetailPaneSwitch(modalEl);
 
   attachModalHandlers({ modalEl, backdropEl, job, onGlobalRefresh, ...view });
@@ -1881,13 +1884,17 @@ function renderEditDetailsMarkup(job, periods = []) {
 
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label" for="edit-job-post-url">Job Post URL (LinkedIn or Careers Page)</label>
+          <label class="meta-label" for="edit-job-post-url">LinkedIn Post URL (Optional)</label>
           <input id="edit-job-post-url" type="url" name="job_post_url" value="${formValue(job, "job_post_url")}" placeholder="https://linkedin.com/jobs/view/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label" for="edit-company-domain">Company Domain (For Logo)</label>
-          <input id="edit-company-domain" type="text" name="company_domain" value="${formValue(job, "company_domain")}" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-application-url">Company Application Page (Optional)</label>
+          <input id="edit-application-url" type="url" name="application_url" value="${formValue(job, "application_url")}" placeholder="https://company.com/careers/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
+      </div>
+      <div>
+        <label class="meta-label" for="edit-company-domain">Company Domain (For Logo)</label>
+        <input id="edit-company-domain" type="text" name="company_domain" value="${formValue(job, "company_domain")}" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
       </div>
 
       ${periods.length ? `<div>
@@ -2013,6 +2020,7 @@ async function openEditDetailsForm(modalEl, backdropEl, job, onSaved) {
         recruiter_name: data.get("recruiter_name"),
         recruiter_agency: data.get("recruiter_agency"),
         job_post_url: data.get("job_post_url"),
+        application_url: data.get("application_url"),
         company_domain: data.get("company_domain"),
         keyword_note: data.get("keyword_note"),
         company_overview: data.get("company_overview"),
