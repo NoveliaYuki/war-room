@@ -5,7 +5,10 @@ description: Run War Room’s required privacy, quality, security, data-model, D
 
 ## 1. Overview
 
-These gates are mandatory before every commit.
+These gates are mandatory before commits for PRs that include files outside
+documentation and agent skills. PRs limited to documentation or agent skills
+can skip the full suite after reviewing the diff and running `git diff --check`.
+For mixed-scope PRs, run the full suite.
 Use project Docker containers for tools and tests; do not install dependencies on the host.
 Do not stage or commit unless the user explicitly authorizes it.
 
@@ -96,7 +99,7 @@ requesting a merge.
 
 ## 6. Step 4 — Verify the Reloaded UI in Browsers and Mobile Simulators
 
-This is a required check before every commit. Follow `AGENTS.md`'s “Start and verify” and “Mobile browser setup” instructions. Rebuild and force-recreate the affected app containers, wait until healthy, then open both `http://localhost:3000` and `http://localhost:3000/?demo` in desktop Google Chrome. Verify the current change in both modes at relevant wide and narrow viewport sizes. For a change with no rendered UI impact, still load both modes and state why no UI interaction changed.
+For app-affecting changes, follow `AGENTS.md`'s “Start and verify” and “Mobile browser setup” instructions. Rebuild and force-recreate the affected app containers, wait until healthy, then open both `http://localhost:3000` and `http://localhost:3000/?demo` in desktop Google Chrome. Verify the current change in both modes at relevant wide and narrow viewport sizes. PRs limited to documentation or agent skills have no rendered UI impact and can skip browser checks.
 
 Start the `warroom-firefox-android` Android AVD, start Appium with `./scripts/start-appium.sh`, and verify the changed flow separately in Firefox, Google Chrome, and Chromium. Install a separate Chromium browser build in the AVD if a supported build is available; if none is available, report the exact limitation and do not count Chrome as Chromium coverage. For iOS, use Xcode via `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, boot an available iPhone simulator with `xcrun simctl`, and verify Firefox, Chromium, and Safari. Branded Google Chrome cannot be installed in this iOS simulator because it has no App Store or official Chrome simulator build; skip this browser/platform cell, record that limitation, and continue with the available browsers. Check installed apps using `adb shell pm list packages` and `xcrun simctl listapps booted`; do not report coverage for an absent app. Do not ask the user to connect an iPhone when they have said they do not own one, and do not try to install the App Store build into the simulator. Test the installed unbranded iOS Chromium build as Chromium, not as Google Chrome. Mark any other unavailable browser/platform cell with the exact limitation and continue testing every available browser. Use Appium UiAutomator2/XCUITest native touch actions or direct simulator operation for touch behavior; screenshots and desktop emulation alone do not verify gestures. Inspect both app and demo modes and the affected layout at phone size.
 
@@ -104,14 +107,14 @@ At minimum, inspect text readability, wrapping, spacing, control alignment, clip
 
 Record results for each available browser separately: Android Firefox, Google Chrome, and Chromium; iOS Firefox, Chromium, and Safari. Include each browser's version/build and verified engine. Safari and the available iOS Chromium source build use WebKit. Never count Google Chrome as separate Chromium coverage or call unbranded Chromium Google Chrome. Do not infer Firefox or Chrome's engine from its name or OS; verify the exact build configuration and any applicable alternative-engine entitlement. Record branded iOS Chrome as unavailable because this simulator cannot install it, and skip that cell without failing the browser matrix; do not request a physical iPhone from a user who has said they do not own one. If no supported standalone Chromium browser build can be installed in Android, report Android Chromium as unavailable; do not count Chrome as its substitute. Do not substitute Safari or Chromium and claim Google Chrome passed. Do not sign into an Apple account or accept Xcode legal terms for the user. Never request or grant Screen & System Audio Recording permission; Appium touch actions do not require it. If another required OS, browser, or simulator runtime is unavailable, document the exact limitation and continue all available checks; do not claim coverage for a browser that was not tested.
 
-Run the available mobile browser matrix even for documentation-only changes; confirm the app still loads and the mobile layouts remain usable, then note that the changed files have no rendered UI impact. The unavailable branded iOS Chrome cell is an accepted skip when its simulator limitation is recorded; do not mark that cell as tested.
+Run the available mobile browser matrix for app-affecting changes. Documentation-only and agent-skill-only PRs can skip the mobile matrix because they do not change app behavior. The unavailable branded iOS Chrome cell is an accepted skip when its simulator limitation is recorded; do not mark that cell as tested.
 
 ## 7. Red Flags — Never / Always
 
 ### Never
 
 - Never install project dependencies on the host or run tests outside Docker.
-- Never commit after a failed or skipped required gate.
+- Never commit after a failed required gate; skip the full suite only for PRs limited to documentation or agent skills.
 - Never stage `data/`, `backend/data/`, personal records, logos, or attachments.
 - Never seed a fresh install with job-selection data.
 - Never run `docker compose down --volumes` or overwrite a populated volume.
@@ -122,7 +125,7 @@ Run the available mobile browser matrix even for documentation-only changes; con
 - Always verify Git ignore rules and Docker build-context exclusions.
 - Always verify a fresh database contains no job-selection records and `.env` values reach their consumers.
 - Always review data ownership, constraints, migrations, and query efficiency.
-- Always run unit, integration, and Playwright suites in the listed order.
+- Always run unit, integration, and Playwright suites in the listed order when the full pre-commit suite is required.
 - Always report pass/fail, coverage, blockers, and the final file list.
 
 ## 8. Worked Example — Fresh Clone
