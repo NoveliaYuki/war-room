@@ -15,13 +15,13 @@ docker compose up --build -d
 
 Open <http://localhost:3000>. Check app health with `docker compose ps`; view browser-test output with `docker compose logs --tail=100 test`. The test backend uses temporary storage and never reads or changes the app database. Stop containers with `docker compose down`; this preserves app data. **Do not run `docker compose down --volumes` unless the user explicitly asks to delete the local database and uploads.**
 
-After every project change, rebuild and recreate the app containers so the running app uses the current files. Run `docker compose --project-name war-room up --build --force-recreate -d frontend backend` (include any other affected app service), then wait for `docker compose --project-name war-room ps` to report healthy services. Keep the same project name, port overrides, and CORS settings used by the active local stack. The standard local stack serves the app at `http://localhost:3000`.
+After every app-affecting change, rebuild and recreate the app containers so the running app uses the current files. Run `docker compose --project-name war-room up --build --force-recreate -d frontend backend` (include any other affected app service), then wait for `docker compose --project-name war-room ps` to report healthy services. Keep the same project name, port overrides, and CORS settings used by the active local stack. The standard local stack serves the app at `http://localhost:3000`.
 
 ```sh
 docker compose --project-name war-room up --build --force-recreate -d frontend backend
 ```
 
-After each reload, open both `http://localhost:3000` and `http://localhost:3000/?demo` in Google Chrome. Confirm the change appears and behaves correctly in both modes. Inspect the affected UI at relevant desktop and narrow viewport sizes, checking spacing, alignment, wrapping, and overlap. Do not hand off the change until both views have been checked; report any view that could not be verified.
+After each reload for an app-affecting change, open both `http://localhost:3000` and `http://localhost:3000/?demo` in Google Chrome. Confirm the change appears and behaves correctly in both modes. Inspect the affected UI at relevant desktop and narrow viewport sizes, checking spacing, alignment, wrapping, and overlap. Do not hand off the change until both views have been checked; report any view that could not be verified. PRs limited to documentation or agent skills can skip reload and browser checks.
 
 ## Mobile browser setup
 
@@ -91,6 +91,6 @@ Check both `/` and `/?demo` at phone-sized viewports in Firefox, Google Chrome, 
 
 ## Checks before handoff
 
-Before committing, run `docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test`. It verifies the single root version source, formatting, Go and JavaScript quality rules, backend and frontend unit coverage (90% minimum), backend integration, and Go Playwright tests in order inside Docker. Then run `docker compose --project-name war-room-precommit down`, even if a check fails. Also run `git diff --check`, inspect staged and untracked files, and validate Compose changes. Report blocked checks; do not claim public-production readiness while authentication is absent.
+Before committing a PR that changes files outside documentation and agent skills, run `docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test`. It verifies the single root version source, formatting, Go and JavaScript quality rules, backend and frontend unit coverage (90% minimum), backend integration, and Go Playwright tests in order inside Docker. Then run `docker compose --project-name war-room-precommit down`, even if a check fails. PRs limited to documentation or agent skills can skip the full suite. For every PR, run `git diff --check` and inspect staged and untracked files; validate Compose changes when Compose files change. Report blocked checks; do not claim public-production readiness while authentication is absent.
 
 The README is a short human onboarding guide. These instructions and `.agents/skills/pre-commit/SKILL.md` are the operational checklist; do not assume a contributor or agent has read the full README.

@@ -6,7 +6,7 @@ description: Apply War Room commit, version, and push conventions when preparing
 ## 1. Overview
 
 Use only when the user asks to prepare a commit, release, or pull request.
-Complete [pre-commit](../pre-commit/SKILL.md) before any authorized commit.
+Run [pre-commit](../pre-commit/SKILL.md) before an authorized commit whenever a PR changes files outside documentation and agent skills. PRs limited to documentation or agent skills can skip the full suite; inspect the diff and run relevant lightweight checks. If a PR mixes these scopes, run the full suite.
 Editing files or approving tests does not authorize Git operations.
 All repository changes go through a topic branch and a pull request to `main`;
 never commit or push directly to `main`.
@@ -40,6 +40,8 @@ change directly to `main`, even for a release or a small fix. Merge only through
 the pull request after the required checks pass. Keep GitHub branch protection on
 `main` enabled so direct pushes, force pushes, and deletion of `main` are blocked.
 Enable automatic deletion of head branches after their pull requests are merged.
+Always squash merge pull requests so each one adds a single commit to `main`;
+do not use merge commits or rebase merges.
 
 ```text
 main → feature/<short-description> → pull request → main
@@ -49,7 +51,7 @@ main → feature/<short-description> → pull request → main
 
 ```text
 authorization → feature branch → inspect changes → choose type/version
-              → pass pre-commit → verify files → pull request → merge
+              → required checks → verify files → pull request → merge
 ```
 
 Stop at the last step the user authorized. Creating a branch, pushing it, opening
@@ -130,8 +132,11 @@ imperative summary, and wording.
 
 ## 8. Step 4 — Verify, Merge, and Release
 
-Before committing, inspect staged files and run all pre-commit checks. Do not
-commit or request merge if a check fails. Report checks accurately in the PR.
+Before committing, inspect staged files. Run the full pre-commit suite when the
+PR changes files outside documentation and agent skills; documentation-only
+and agent-skill-only PRs can skip it after `git diff --check` and file review.
+For mixed-scope PRs, run the full suite. Do not commit or request merge if a
+required check fails, and report checks accurately in the PR.
 
 After the release PR merges and CI passes, tag and publish its minor or major
 version. Use these release-note sections; keep each bullet to at most two
@@ -156,12 +161,12 @@ Add an **Upgrade notes** section only when users must take a manual action.
 - Never commit or push directly to `main`; never bypass the pull request.
 - Never publish a patch release.
 - Never include private data, local state, or generated artifacts.
-- Never bypass pre-commit checks or rewrite published history.
+- Never bypass required pre-commit checks or rewrite published history.
 - Never make multiple version bumps in one PR.
 
 ### Always
 
-- Always run pre-commit before an authorized commit.
+- Always run pre-commit before an authorized commit when the PR includes files outside documentation and agent skills; skip the full suite only for docs-only or agent-skill-only PRs.
 - Always use a topic branch and a pull request targeting `main`.
 - Always wait for passing CI before merging or publishing a release.
 - Always choose the type by intent before file scope.
