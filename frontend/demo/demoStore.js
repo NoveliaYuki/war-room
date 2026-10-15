@@ -955,7 +955,7 @@ function makeJob(payload) {
     salary_max: payload.salary_max ?? null, salary_currency: payload.salary_currency || "EUR",
     recruiter_type: payload.recruiter_type || "none", recruiter_name: payload.recruiter_name || null,
     recruiter_agency: payload.recruiter_agency || null, recruiter_contact: null,
-    job_post_url: payload.job_post_url || null, avatar_seed: payload.company_name || "Unknown",
+    job_post_url: payload.job_post_url || null, application_url: payload.application_url || null, avatar_seed: payload.company_name || "Unknown",
     keyword_note: payload.keyword_note || "", description: payload.description || "",
     company_overview: payload.company_overview || "", company_domain: payload.company_domain || null,
     interview_notes: payload.interview_notes || "", reasons_to_change: payload.reasons_to_change || "",

@@ -124,7 +124,7 @@ export const initialJobs = roles.map((role, index) => {
     recruiter_type: isExternalRecruiter ? "external" : "internal", recruiter_name: recruiterName,
     recruiter_agency: isExternalRecruiter ? demoAgencies[index % demoAgencies.length] : `${role.company} Talent Acquisition`,
     recruiter_contact: demoContacts[index % demoContacts.length],
-    job_post_url: `https://careers.${role.domain}`, avatar_seed: role.company, keyword_note: role.keywords,
+    job_post_url: null, application_url: `https://careers.${role.domain}`, avatar_seed: role.company, keyword_note: role.keywords,
     description: `${role.title} on ${role.company}'s ${role.arrangement.replace("_", " ")} team. The role focuses on ${role.keywords.toLowerCase()}. Technologies mentioned in this fictional sample posting: ${role.technologies.join(", ")}. Responsibilities include designing and shipping reliable software, reviewing technical proposals, partnering with product and design, and improving service quality. The team works across engineering, product, and design; success is measured through customer outcomes, delivery quality, and operational health.\n\nFictional sample opportunity for the War Room demo; this is not an active job listing.`,
     company_overview: `${role.company} is shown as a sample employer in this fictional interview pipeline. Company identity and logo are real; the role details, recruiter, interviewers, and hiring activity are illustrative demo data.`,
     company_domain: role.domain, interview_notes: `${interviewPrep[index % interviewPrep.length]} ${["Ask how the team plans work across a typical quarter.", "Clarify the balance between hands-on delivery and technical leadership.", "Ask what the first 90 days would look like for this role."][index % 3]}`,

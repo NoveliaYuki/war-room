@@ -664,6 +664,7 @@ function buildJobPayload(form) {
     recruiter_name: data.get("recruiter_name"),
     recruiter_agency: data.get("recruiter_agency"),
     job_post_url: data.get("job_post_url"),
+    application_url: data.get("application_url"),
     company_domain: data.get("company_domain") || null,
     keyword_note: data.get("keyword_note"),
     company_overview: data.get("company_overview"),
@@ -1168,12 +1169,18 @@ function openNewProcessModal() {
         </select>
       </div>` : ""}
 
-      <h3 class="edit-section-heading">Job posting</h3>
-      <div>
-        <label class="meta-label" for="create-job-post-url">Job Post Link (Optional)</label>
-        <input id="create-job-post-url" type="url" name="job_post_url" placeholder="https://company.com/jobs/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        <span class="process-form-helper">Leave blank for recruiter-only opportunities</span>
+      <h3 class="edit-section-heading">Job posting &amp; application links</h3>
+      <div class="form-grid form-grid-two">
+        <div>
+          <label class="meta-label" for="create-job-post-url">LinkedIn Post URL (Optional)</label>
+          <input id="create-job-post-url" type="url" name="job_post_url" placeholder="https://linkedin.com/jobs/view/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        </div>
+        <div>
+          <label class="meta-label" for="create-application-url">Company Application Page (Optional)</label>
+          <input id="create-application-url" type="url" name="application_url" placeholder="https://company.com/careers/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        </div>
       </div>
+      <span class="process-form-helper">Both links are optional.</span>
 
       <div>
         <label class="meta-label inline-icon-text" for="create-company-overview">${icon("building", 13)} Company & Role Overview</label>

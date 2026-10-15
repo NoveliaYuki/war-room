@@ -265,7 +265,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 14
+const latestSchemaVersion = 15
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -409,9 +409,27 @@ func runFinalSchemaMigration(executor schemaExecutor, version int) error {
 		return migrateSearchPeriods(executor)
 	case 14:
 		return migrateJobActivity(executor)
+	case 15:
+		return migrateJobApplicationURL(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
+}
+
+func migrateJobApplicationURL(executor schemaExecutor) error {
+	exists, err := hasColumn(executor, "jobs", "application_url")
+	if err != nil {
+		return fmt.Errorf("inspect jobs.application_url: %w", err)
+	}
+	if !exists {
+		if err := executeMigrationSQL(executor, "ALTER TABLE jobs ADD COLUMN application_url TEXT NULL", "add jobs.application_url"); err != nil {
+			return err
+		}
+	}
+	if err := executeMigrationSQL(executor, "DROP TRIGGER IF EXISTS touch_job_activity", "refresh job activity trigger"); err != nil {
+		return err
+	}
+	return executeMigrationSQL(executor, jobActivityTriggersSQL, "track job application URL changes")
 }
 
 func migrateJobActivity(executor schemaExecutor) error {
@@ -456,7 +474,7 @@ const jobActivityTriggersSQL = `
 CREATE TRIGGER IF NOT EXISTS touch_job_activity
 AFTER UPDATE OF company_name, position_title, salary_type, salary_min, salary_max,
     salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
-    interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
+    interviewers_json, job_post_url, application_url, avatar_seed, keyword_note, description, company_overview,
     company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
     work_arrangement, employment_type, is_referral, order_index, application_sent_date,
     recruiter_first_contact_date, cv_version_id, search_period_id ON jobs
@@ -466,7 +484,7 @@ WHEN NEW.company_name IS NOT OLD.company_name OR NEW.position_title IS NOT OLD.p
   OR NEW.salary_currency IS NOT OLD.salary_currency OR NEW.recruiter_type IS NOT OLD.recruiter_type
   OR NEW.recruiter_name IS NOT OLD.recruiter_name OR NEW.recruiter_agency IS NOT OLD.recruiter_agency
   OR NEW.recruiter_contact IS NOT OLD.recruiter_contact OR NEW.interviewers_json IS NOT OLD.interviewers_json
-  OR NEW.job_post_url IS NOT OLD.job_post_url OR NEW.avatar_seed IS NOT OLD.avatar_seed
+  OR NEW.job_post_url IS NOT OLD.job_post_url OR NEW.application_url IS NOT OLD.application_url OR NEW.avatar_seed IS NOT OLD.avatar_seed
   OR NEW.keyword_note IS NOT OLD.keyword_note OR NEW.description IS NOT OLD.description
   OR NEW.company_overview IS NOT OLD.company_overview OR NEW.company_domain IS NOT OLD.company_domain
   OR NEW.interview_notes IS NOT OLD.interview_notes OR NEW.reasons_to_change IS NOT OLD.reasons_to_change
@@ -1131,11 +1149,11 @@ func prepareRestoreStatements(tx *sql.Tx) (*restoreStatements, error) {
 		INSERT INTO jobs (
 			id, company_name, position_title, status, salary_type, salary_min, salary_max,
 			salary_currency, recruiter_type, recruiter_name, recruiter_agency, recruiter_contact,
-			interviewers_json, job_post_url, avatar_seed, keyword_note, description, company_overview,
+			interviewers_json, job_post_url, application_url, avatar_seed, keyword_note, description, company_overview,
 		company_domain, interview_notes, reasons_to_change, experience_notes, expected_salary,
 		is_referral, order_index, status_changed_at, application_sent_date, recruiter_first_contact_date,
 			created_at, updated_at, last_activity_at, cv_version_id, search_period_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return nil, err
@@ -1296,7 +1314,7 @@ func restoreJobRow(statement *sql.Stmt, job models.Job) error {
 	}
 	_, err := statement.Exec(job.ID, job.CompanyName, job.PositionTitle, job.Status, salaryType,
 		job.SalaryMin, job.SalaryMax, currency, recruiterType, job.RecruiterName,
-		job.RecruiterAgency, job.RecruiterContact, string(interviewers), job.JobPostURL,
+		job.RecruiterAgency, job.RecruiterContact, string(interviewers), job.JobPostURL, job.ApplicationURL,
 		job.AvatarSeed, job.KeywordNote, job.Description, job.CompanyOverview, job.CompanyDomain,
 		job.InterviewNotes, job.ReasonsToChange, job.ExperienceNotes, job.ExpectedSalary,
 		job.IsReferral, job.OrderIndex, statusChangedAt, job.ApplicationSentDate, job.RecruiterFirstContactDate,

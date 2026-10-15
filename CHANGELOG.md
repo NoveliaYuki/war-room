@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.0 — 2026-10-15
+
+## Highlights
+- Store separate optional links to the LinkedIn job post and the company application page for each opportunity.
+- Add the company application page link to job creation, editing, details, persistence, and backups.
+
+## What changed
+- Move Job Post & Spec Links above Company & Role Overview and remove the previous-stage arrow while keeping interview stage tabs scrollable.
+- Include the 1.9.1 detail modal and meeting layout refinements and the 1.9.2 filter alignment and board view state fixes.
+
+
 ## 1.9.0 — 2026-10-13
 
 ## Highlights

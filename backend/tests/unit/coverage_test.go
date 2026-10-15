@@ -538,6 +538,35 @@ func TestWorkArrangementValuesAndDefault(t *testing.T) {
 	}
 }
 
+func TestApplicationURLPersistsAndCanBeUpdated(t *testing.T) {
+	_, jobs, repo, _ := newCoverageApp(t)
+	postURL := "https://linkedin.com/jobs/view/123"
+	applicationURL := "https://example.com/careers/role"
+	created, err := jobs.CreateJob(models.CreateJobInput{
+		CompanyName: "Example", PositionTitle: "Engineer", JobPostURL: &postURL, ApplicationURL: &applicationURL,
+	})
+	requireArchiveNoError(t, err)
+	assertOptionalURL(t, created.JobPostURL, postURL)
+	assertOptionalURL(t, created.ApplicationURL, applicationURL)
+	updatedURL := "https://example.com/apply/role"
+	updated, err := jobs.UpdateJob(created.ID, models.UpdateJobInput{ApplicationURL: &updatedURL})
+	requireArchiveNoError(t, err)
+	loaded, err := repo.GetJobByID(created.ID)
+	requireArchiveNoError(t, err)
+	assertOptionalURL(t, updated.ApplicationURL, updatedURL)
+	assertOptionalURL(t, loaded.ApplicationURL, updatedURL)
+}
+
+func assertOptionalURL(t *testing.T, value *string, expected string) {
+	t.Helper()
+	if value == nil {
+		t.Fatalf("URL is nil, want %q", expected)
+	}
+	if *value != expected {
+		t.Fatalf("URL = %q, want %q", *value, expected)
+	}
+}
+
 func assertCreatedJobFields(t *testing.T, created *models.Job) {
 	t.Helper()
 	if created.CompanyName != "Acme" || created.PositionTitle != "Engineer" || *created.SalaryMin != 100 || len(created.KeywordNote) != 100 || !created.IsReferral || created.ExperienceNotes != "platform migrations" || created.ExpectedSalary != "flexible by scope" || created.WorkArrangement != models.WorkArrangementRemote {

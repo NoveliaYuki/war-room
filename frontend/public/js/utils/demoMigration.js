@@ -1,6 +1,6 @@
 function updateSeedFields(job, updatedSeed) {
   for (const field of [
-    "company_name", "avatar_seed", "company_domain", "job_post_url",
+    "company_name", "avatar_seed", "company_domain", "job_post_url", "application_url",
     "salary_min", "salary_max", "salary_type", "salary_currency",
     "work_arrangement", "employment_type", "is_referral",
   ]) {
