@@ -140,6 +140,12 @@ export const initialJobs = roles.map((role, index) => {
     application_sent_date: role.status === "waiting" && !role.referral ? formatLocalDate(new Date(createdAt * 1000)) : undefined,
     created_at: createdAt,
     status_changed_at: Math.floor((now - (role.statusChangedDaysAgo ?? index) * 86400000) / 1000),
+    history: [
+      { occurred_at: createdAt, action: "created" },
+      ...(Math.floor((now - (role.statusChangedDaysAgo ?? index) * 86400000) / 1000) > createdAt
+        ? [{ occurred_at: Math.floor((now - (role.statusChangedDaysAgo ?? index) * 86400000) / 1000), action: `moved to ${role.status}` }]
+        : []),
+    ],
     updated_at: Math.floor(now / 1000),
     last_activity_at: Math.floor((now - (role.lastActivityDaysAgo ?? 0) * 86400000) / 1000),
     automatic_rejection_reason: role.automaticRejectionReason || "",

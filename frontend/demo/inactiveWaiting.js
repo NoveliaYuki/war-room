@@ -13,6 +13,8 @@ export function applyInactiveWaitingPolicy(jobs, nowMs = Date.now()) {
     if (job.status !== "waiting" || Number(job.last_activity_at) > cutoff) return;
     job.status = "rejected";
     job.status_changed_at = nowSeconds;
+    job.history ||= [];
+    job.history.push({ occurred_at: nowSeconds, action: "moved to rejected" });
     job.automatic_rejection_reason = "Automatically rejected after 30 days without saved activity.";
     changed = true;
   });

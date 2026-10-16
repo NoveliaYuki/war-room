@@ -58,7 +58,7 @@ func (r *Repository) ReplaceAllWithSearchPeriods(jobs []models.Job, periods []mo
 		return err
 	}
 	defer statements.close()
-	if err := insertImportedJobs(statements, jobs); err != nil {
+	if err := insertImportedJobs(tx, statements, jobs); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -149,10 +149,23 @@ func maxCVVersion(versions []models.CVVersion, nextVersion int) int {
 	return maxNext
 }
 
-func insertImportedJobs(statements *importStatements, jobs []models.Job) error {
+func insertImportedJobs(tx *sql.Tx, statements *importStatements, jobs []models.Job) error {
 	for _, job := range jobs {
 		if err := insertImportedJob(statements, job); err != nil {
 			return fmt.Errorf("import process %q: %w", job.ID, err)
+		}
+		if len(job.History) > 0 {
+			if _, err := tx.Exec(`DELETE FROM job_history WHERE job_id = ?`, job.ID); err != nil {
+				return fmt.Errorf("replace history for process %q: %w", job.ID, err)
+			}
+			for _, item := range job.History {
+				if item.OccurredAt <= 0 || item.Action == "" || len(item.Action) > 160 {
+					return fmt.Errorf("import process %q: invalid history entry", job.ID)
+				}
+				if _, err := tx.Exec(`INSERT INTO job_history (job_id, occurred_at, action) VALUES (?, ?, ?)`, job.ID, item.OccurredAt, item.Action); err != nil {
+					return fmt.Errorf("import history for process %q: %w", job.ID, err)
+				}
+			}
 		}
 	}
 	return nil

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.0 — 2026-10-16
+
+## Highlights
+- Show a dated history of job card creation and saved changes.
+
+## What changed
+- Add a compact, expandable Card History section with recent relative timestamps and older dated entries.
+- Record new card status and role detail changes in the database and demo mode; keep imported history when present and avoid inventing unavailable legacy events.
+- Related PR: [#7](https://github.com/NoveliaYuki/war-room/pull/7).
+
 ## 1.10.1 — 2026-10-15
 
 ## Highlights

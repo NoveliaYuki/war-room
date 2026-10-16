@@ -265,7 +265,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 15
+const latestSchemaVersion = 16
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -411,10 +411,56 @@ func runFinalSchemaMigration(executor schemaExecutor, version int) error {
 		return migrateJobActivity(executor)
 	case 15:
 		return migrateJobApplicationURL(executor)
+	case 16:
+		return migrateJobHistory(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
 }
+
+func migrateJobHistory(executor schemaExecutor) error {
+	if err := executeMigrationSQL(executor, `CREATE TABLE IF NOT EXISTS job_history (
+		id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+		job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+		occurred_at INTEGER NOT NULL,
+		action TEXT NOT NULL
+	)`, "create job history table"); err != nil {
+		return err
+	}
+	if err := executeMigrationSQL(executor, "CREATE INDEX IF NOT EXISTS idx_job_history_job_time ON job_history(job_id, occurred_at DESC, id)", "index job history"); err != nil {
+		return err
+	}
+	return executeMigrationSQL(executor, jobHistoryTriggersSQL, "track job history")
+}
+
+const jobHistoryTriggersSQL = `
+CREATE TRIGGER IF NOT EXISTS record_job_created
+AFTER INSERT ON jobs
+BEGIN
+	INSERT INTO job_history (job_id, occurred_at, action) VALUES (NEW.id, NEW.created_at, 'created');
+END;
+CREATE TRIGGER IF NOT EXISTS record_job_status_history
+AFTER UPDATE OF status ON jobs
+WHEN OLD.status <> NEW.status
+BEGIN
+	INSERT INTO job_history (job_id, occurred_at, action) VALUES (NEW.id, unixepoch(), 'moved to ' || NEW.status);
+END;
+CREATE TRIGGER IF NOT EXISTS record_job_company_history
+AFTER UPDATE OF company_name ON jobs WHEN OLD.company_name <> NEW.company_name
+BEGIN INSERT INTO job_history (job_id, occurred_at, action) VALUES (NEW.id, unixepoch(), 'changed company'); END;
+CREATE TRIGGER IF NOT EXISTS record_job_position_history
+AFTER UPDATE OF position_title ON jobs WHEN OLD.position_title <> NEW.position_title
+BEGIN INSERT INTO job_history (job_id, occurred_at, action) VALUES (NEW.id, unixepoch(), 'changed role'); END;
+CREATE TRIGGER IF NOT EXISTS record_job_highlights_history
+AFTER UPDATE OF keyword_note ON jobs WHEN OLD.keyword_note <> NEW.keyword_note
+BEGIN INSERT INTO job_history (job_id, occurred_at, action) VALUES (NEW.id, unixepoch(), 'changed role highlights'); END;
+CREATE TRIGGER IF NOT EXISTS record_job_description_history
+AFTER UPDATE OF description ON jobs WHEN OLD.description <> NEW.description
+BEGIN INSERT INTO job_history (job_id, occurred_at, action) VALUES (NEW.id, unixepoch(), 'changed job description'); END;
+CREATE TRIGGER IF NOT EXISTS record_job_overview_history
+AFTER UPDATE OF company_overview ON jobs WHEN OLD.company_overview <> NEW.company_overview
+BEGIN INSERT INTO job_history (job_id, occurred_at, action) VALUES (NEW.id, unixepoch(), 'changed company and role overview'); END;
+`
 
 func migrateJobApplicationURL(executor schemaExecutor) error {
 	exists, err := hasColumn(executor, "jobs", "application_url")

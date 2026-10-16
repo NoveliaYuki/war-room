@@ -50,6 +50,58 @@ func TestReplaceAllJobsWithCVRestoresGappedSequenceAndSelection(t *testing.T) {
 	}
 }
 
+func TestReplaceAllJobsPreservesHistoryAndRejectsInvalidHistory(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := models.Job{ID: "job-history", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, RecruiterType: models.RecruiterNone,
+		History: []models.JobHistory{{OccurredAt: 100, Action: "created"}, {OccurredAt: 200, Action: "moved to ongoing"}}}
+	assertImportedJobHistory(t, repo, job)
+	assertInvalidHistoryRollback(t, repo, job)
+}
+
+func TestHistoryReadFailuresAreReturnedForListsAndDetails(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "history-read-error")
+	if _, err := repo.db.Exec(`DROP TABLE job_history`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.GetAllJobs("", ""); err == nil {
+		t.Fatal("job list ignored unavailable history")
+	}
+	if _, err := repo.GetJobByID("history-read-error"); err == nil {
+		t.Fatal("job details ignored unavailable history")
+	}
+}
+
+func assertImportedJobHistory(t *testing.T, repo *Repository, job models.Job) {
+	t.Helper()
+	if err := repo.ReplaceAllJobs([]models.Job{job}); err != nil {
+		t.Fatalf("import history: %v", err)
+	}
+	loaded, err := repo.GetJobByID(job.ID)
+	if err != nil || len(loaded.History) != 2 || loaded.History[0] != job.History[0] || loaded.History[1] != job.History[1] {
+		t.Fatalf("imported history=%+v err=%v", loaded, err)
+	}
+	listed, err := repo.GetAllJobs("", "")
+	if err != nil || len(listed) != 1 || len(listed[0].History) != 2 {
+		t.Fatalf("listed history=%+v err=%v", listed, err)
+	}
+}
+
+func assertInvalidHistoryRollback(t *testing.T, repo *Repository, job models.Job) {
+	t.Helper()
+	for _, history := range []models.JobHistory{{OccurredAt: 0, Action: "created"}, {OccurredAt: 100, Action: ""}} {
+		job.History = []models.JobHistory{history}
+		if err := repo.ReplaceAllJobs([]models.Job{job}); err == nil {
+			t.Fatalf("invalid history %+v was imported", history)
+		}
+		loaded, err := repo.GetJobByID(job.ID)
+		if err != nil || len(loaded.History) != 2 {
+			t.Fatalf("invalid import did not preserve original history: %+v err=%v", loaded, err)
+		}
+	}
+}
+
 func TestCVRepositoryVersionLifecycle(t *testing.T) {
 	repo := newImportRepositoryFixture(t)
 	insertRepositoryTestJob(t, repo, "job-cv")

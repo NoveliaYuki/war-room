@@ -830,6 +830,59 @@ body.is-resizing-split * {
 .process-timeline-item input[type="date"]:disabled { opacity: 0.65; }
 .process-timeline-hint { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 
+.card-history-section {
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+.card-history-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  list-style: none;
+  text-transform: uppercase;
+}
+.card-history-toggle::-webkit-details-marker { display: none; }
+.card-history-toggle:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 3px; }
+.card-history-toggle-meta { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.card-history-chevron { display: inline-flex; transition: transform 160ms ease; }
+.card-history-section:not([open]) { min-height: 0; gap: 0; padding: 0 10px; }
+.card-history-section:not([open]) .card-history-toggle { min-height: 30px; font-size: 10px; line-height: 1; }
+.card-history-section[open] .card-history-chevron { transform: rotate(180deg); }
+.card-history-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.card-history-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.card-history-item:last-child { border-bottom: 0; }
+.card-history-item > span { min-width: 0; overflow-wrap: anywhere; }
+.card-history-item time {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 .technology-detail-section .section-title { color: var(--text-info); }
 .technology-count { font-variant-numeric: tabular-nums; }
 .technology-assigned-list { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -96,6 +96,54 @@ describe('detail modal', () => {
     expect(jobPostSection.compareDocumentPosition(overviewSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('shows a compact expandable history with relative and dated saved events', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    api.getJob.mockResolvedValue({
+      ...job(),
+      status: 'accepted',
+      created_at: now - 5 * 86400,
+      status_changed_at: now - 3 * 86400,
+      history: [
+        { occurred_at: now, action: 'changed role highlights' },
+        { occurred_at: now - 60, action: 'changed role' },
+        { occurred_at: now - 2 * 3600, action: '<img src=x onerror=alert(1)>' },
+        { occurred_at: now - 3 * 86400, action: 'moved to accepted' },
+      ],
+    });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const history = modal.querySelector('.card-history-section');
+    expect(history.open).toBe(false);
+    expect(history.querySelector('.card-history-toggle').textContent).toContain('5');
+    expect(history.querySelectorAll('.card-history-item')).toHaveLength(5);
+    expect(history.querySelector('.card-history-item > span').textContent).toBe('changed role highlights');
+    expect(history.querySelector('.card-history-item time').textContent).toBe('just now');
+    expect([...history.querySelectorAll('.card-history-item > span')].map((item) => item.textContent)).toContain('moved to approved');
+    expect(history.querySelector('.card-history-item img')).toBeNull();
+    expect([...history.querySelectorAll('.card-history-item time')].some((time) => time.textContent.includes('hour'))).toBe(true);
+    expect([...history.querySelectorAll('.card-history-item time')].some((time) => /\d{2}:\d{2}/.test(time.textContent))).toBe(true);
+    history.querySelector('summary').click();
+    expect(history.open).toBe(true);
+  });
+
+  it('uses only saved legacy creation and status dates when history is absent', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    api.getJob.mockResolvedValue({
+      ...job(),
+      status: 'waiting',
+      created_at: now - 2 * 86400,
+      status_changed_at: now - 86400,
+    });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const history = modal.querySelector('.card-history-section');
+    expect(history.querySelector('.card-history-toggle').textContent).toContain('2');
+    expect([...history.querySelectorAll('.card-history-item > span')].map((item) => item.textContent)).toEqual(['moved to waiting', 'created']);
+    expect(history.querySelectorAll('.card-history-item time')).toHaveLength(2);
+  });
+
   it('renders the same attachment controls in demo mode', async () => {
     document.body.dataset.demo = 'true';
     api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]));

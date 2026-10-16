@@ -57,7 +57,11 @@ func TestVersionedMigrationRejectsNewerSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize database: %v", err)
 	}
-	if _, err := db.Exec("INSERT INTO schema_migrations(version) VALUES (16)"); err != nil {
+	var futureVersion int
+	if err := db.QueryRow("SELECT MAX(version) + 1 FROM schema_migrations").Scan(&futureVersion); err != nil {
+		t.Fatalf("read latest migration: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO schema_migrations(version) VALUES (?)", futureVersion); err != nil {
 		t.Fatalf("insert future migration: %v", err)
 	}
 	if err := db.Close(); err != nil {
