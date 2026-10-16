@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.1 — 2026-10-16
+
+## Highlights
+- Remove the duplicate card creation date from Process Dates.
+
+## What changed
+- Keep card creation visible in Card History and remove the extra date row and Process Dates helper text.
+- Related PR: [#8](https://github.com/NoveliaYuki/war-room/pull/8).
+
 ## 1.11.0 — 2026-10-16
 
 ## Highlights

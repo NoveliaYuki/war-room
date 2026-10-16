@@ -232,26 +232,14 @@ function renderJobPostLink(value, emptyLabel = "No link recorded") {
   return value ? escapeHtml(value) : `<span style="color: var(--text-muted); font-style: italic; font-size: 12px;">${escapeHtml(emptyLabel)}</span>`;
 }
 
-/** Formats a UTC timestamp as a calendar date in the viewer's locale. */
-function formatProcessAddedDate(timestamp) {
-  if (!Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0) return "Date unavailable";
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", year: "numeric" }).format(new Date(Number(timestamp) * 1000));
-}
-
-/** Renders process creation, application, and first recruiter contact dates. */
+/** Renders application and first recruiter contact dates. */
 function renderProcessTimeline(job) {
-  const createdAt = Number(job.created_at);
-  const addedDate = Number.isFinite(createdAt) && createdAt > 0
-    ? `<time datetime="${escapeAttr(new Date(createdAt * 1000).toISOString())}">${escapeHtml(formatProcessAddedDate(createdAt))}</time>`
-    : `<span>${escapeHtml(formatProcessAddedDate(job.created_at))}</span>`;
   return `<div class="detail-section process-timeline-section">
     <div class="section-title"><span>Process Dates</span></div>
     <div class="process-timeline-list">
-      <div class="process-timeline-item"><span>Added to War Room</span>${addedDate}</div>
       <label class="process-timeline-item" for="application-sent-date"><span>Application / CV sent</span><input id="application-sent-date" type="date" data-process-date="application_sent_date" value="${escapeAttr(job.application_sent_date || "")}" /></label>
       <label class="process-timeline-item" for="recruiter-first-contact-date"><span>First recruiter contact</span><input id="recruiter-first-contact-date" type="date" data-process-date="recruiter_first_contact_date" value="${escapeAttr(job.recruiter_first_contact_date || "")}" /></label>
     </div>
-    <p class="process-timeline-hint">Add the dates that apply; leave the others blank.</p>
   </div>`;
 }
 

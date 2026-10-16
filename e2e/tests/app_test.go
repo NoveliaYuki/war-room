@@ -339,6 +339,11 @@ func TestProcessTimelineIsReadableOnDesktopAndMobile(t *testing.T) {
 	if err := page.Locator("#detail-modal .process-timeline-section").WaitFor(); err != nil {
 		t.Fatalf("wait for process timeline: %v", err)
 	}
+	if count, err := page.Locator("#detail-modal .process-timeline-hint").Count(); err != nil {
+		t.Fatalf("count process-timeline helper text: %v", err)
+	} else if count != 0 {
+		t.Error("process timeline should not show helper text")
+	}
 	if _, err := page.Evaluate("() => document.getAnimations().forEach(animation => animation.finish())", nil); err != nil {
 		t.Fatalf("finish detail modal animation: %v", err)
 	}
@@ -359,7 +364,6 @@ type processTimelineMetrics struct {
 	DateFontSize  float64 `json:"dateFontSize"`
 	DateHeight    float64 `json:"dateHeight"`
 	DateCSSHeight string  `json:"dateCSSHeight"`
-	HintFontSize  float64 `json:"hintFontSize"`
 	DateFitsRow   bool    `json:"dateFitsRow"`
 }
 
@@ -376,7 +380,6 @@ func readProcessTimelineMetrics(t *testing.T, page playwright.Page) processTimel
 	    dateFontSize: Number.parseFloat(getComputedStyle(input).fontSize),
 	    dateHeight: inputBounds.height,
 	    dateCSSHeight: getComputedStyle(input).height,
-	    hintFontSize: Number.parseFloat(getComputedStyle(section.querySelector(".process-timeline-hint")).fontSize),
 	    dateFitsRow: inputBounds.right <= itemBounds.right + 1,
 	  };
 	}`, nil)
@@ -396,8 +399,8 @@ func readProcessTimelineMetrics(t *testing.T, page playwright.Page) processTimel
 
 func assertProcessTimelineReadable(t *testing.T, metrics processTimelineMetrics, mobile bool) {
 	t.Helper()
-	if metrics.LabelFontSize < 11 || metrics.HintFontSize < 12 || metrics.DateFontSize < 12 {
-		t.Errorf("process timeline text should use the compact readable scale (labels %.0fpx, date %.0fpx, hint %.0fpx)", metrics.LabelFontSize, metrics.DateFontSize, metrics.HintFontSize)
+	if metrics.LabelFontSize < 11 || metrics.DateFontSize < 12 {
+		t.Errorf("process timeline text should use the compact readable scale (labels %.0fpx, date %.0fpx)", metrics.LabelFontSize, metrics.DateFontSize)
 	}
 	if mobile && (metrics.DateHeight < 44 || !metrics.DateFitsRow) {
 		t.Errorf("mobile date control should remain tappable and within its row (font %.0fpx, height %.0fpx, fits row %t)", metrics.DateFontSize, metrics.DateHeight, metrics.DateFitsRow)
