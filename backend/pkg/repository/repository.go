@@ -64,7 +64,37 @@ func (r *Repository) GetAllJobs(status, search string) ([]models.Job, error) {
 	if err := populateJobTechnologies(r.reader, jobs); err != nil {
 		return nil, err
 	}
+	if err := populateJobHistory(r.reader, jobs); err != nil {
+		return nil, err
+	}
 	return jobs, rows.Err()
+}
+
+func populateJobHistory(reader readQueryer, jobs []models.Job) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	byID := make(map[string]int, len(jobs))
+	for index := range jobs {
+		jobs[index].History = []models.JobHistory{}
+		byID[jobs[index].ID] = index
+	}
+	rows, err := reader.Query(`SELECT job_id, occurred_at, action FROM job_history ORDER BY occurred_at, id`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var jobID string
+		var item models.JobHistory
+		if err := rows.Scan(&jobID, &item.OccurredAt, &item.Action); err != nil {
+			return err
+		}
+		if index, exists := byID[jobID]; exists {
+			jobs[index].History = append(jobs[index].History, item)
+		}
+	}
+	return rows.Err()
 }
 
 func populateJobTechnologies(reader readQueryer, jobs []models.Job) error {
@@ -230,7 +260,33 @@ func (r *Repository) GetJobByID(id string) (*models.Job, error) {
 		return nil, err
 	}
 	j.Technologies = jobTechnologies
+	if err := r.loadJobHistory(&j); err != nil {
+		return nil, err
+	}
 	return &j, nil
+}
+
+func (r *Repository) loadJobHistory(job *models.Job) error {
+	rows, err := r.reader.Query(`SELECT occurred_at, action FROM job_history WHERE job_id = ? ORDER BY occurred_at DESC, id DESC`, job.ID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	job.History = []models.JobHistory{}
+	for rows.Next() {
+		var item models.JobHistory
+		if err := rows.Scan(&item.OccurredAt, &item.Action); err != nil {
+			return err
+		}
+		job.History = append(job.History, item)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for left, right := 0, len(job.History)-1; left < right; left, right = left+1, right-1 {
+		job.History[left], job.History[right] = job.History[right], job.History[left]
+	}
+	return nil
 }
 
 // ListCVVersions returns CV uploads in descending version order.

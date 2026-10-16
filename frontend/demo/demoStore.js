@@ -28,6 +28,15 @@ const SEARCH_PERIODS_KEY = "war-room-demo-search-periods-v1";
 const SEARCH_PERIOD_SEED_KEY = "war-room-demo-search-period-seed-v1";
 const SEARCH_PERIOD_SEED_VERSION = "3";
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const DEMO_HISTORY_ACTIONS = new Map([
+  ["company_name", "changed company"], ["position_title", "changed role"], ["keyword_note", "changed role highlights"],
+  ["description", "changed job description"], ["company_overview", "changed company and role overview"],
+]);
+
+function recordDemoHistory(job, action, timestamp = Math.floor(Date.now() / 1000)) {
+  job.history ||= [];
+  job.history.push({ occurred_at: timestamp, action });
+}
 
 function readDemoCvVersions() {
   try {
@@ -964,6 +973,7 @@ function makeJob(payload) {
     search_period_id: requestedPeriod || null,
     application_sent_date: payload.is_referral ? null : today,
     is_referral: Boolean(payload.is_referral), order_index: jobs.length, created_at: nowSeconds, status_changed_at: nowSeconds, updated_at: nowSeconds, last_activity_at: nowSeconds,
+    history: [{ occurred_at: nowSeconds, action: "created" }],
     interviewers: [], stages: [], attachments: [],
     technologies: [],
   };
@@ -1170,8 +1180,13 @@ export const demoApi = {
       const ids = fields.technology_ids;
       if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some((technologyID) => !technologies.some((item) => item.id === technologyID))) throw new Error("Choose technologies from the catalog.");
       job.technologies = ids.map((technologyID) => { const item = technologies.find((technology) => technology.id === technologyID); return { id: item.id, name: item.name }; });
+      recordDemoHistory(job, "changed tech stack", nowSeconds);
       delete fields.technology_ids;
     }
+    DEMO_HISTORY_ACTIONS.forEach((action, field) => {
+      if (Object.hasOwn(fields, field) && fields[field] !== job[field]) recordDemoHistory(job, action, nowSeconds);
+    });
+    if (statusChanged) recordDemoHistory(job, `moved to ${payload.status}`, nowSeconds);
     Object.assign(job, fields, { updated_at: nowSeconds });
     touchDemoJob(job, nowSeconds * 1000);
     if (statusChanged) job.status_changed_at = nowSeconds;
@@ -1183,7 +1198,7 @@ export const demoApi = {
     jobs = jobs.filter((item) => item.id !== String(id)); save(); return { success: true };
   },
   async reorderJobs(ids) { const order = new Map(ids.map((id, index) => [String(id), index])); jobs.forEach((job) => { if (order.has(job.id) && job.order_index !== order.get(job.id)) { job.order_index = order.get(job.id); touchDemoJob(job); } }); jobs.sort((a, b) => a.order_index - b.order_index); save(); return { success: true }; },
-  async createStage(payload) { const job = getJob(payload.job_id); const firstStage = job.stages.length === 0; const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); touchDemoJob(job); if (firstStage) { job.status = "ongoing"; job.status_changed_at = Math.floor(Date.now() / 1000); } refreshDerived(job); save(); return clone(stage); },
+  async createStage(payload) { const job = getJob(payload.job_id); const firstStage = job.stages.length === 0; const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); touchDemoJob(job); if (firstStage) { job.status = "ongoing"; job.status_changed_at = Math.floor(Date.now() / 1000); recordDemoHistory(job, "moved to ongoing", job.status_changed_at); } refreshDerived(job); save(); return clone(stage); },
   async updateStage(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, payload); touchDemoJob(job); refreshDerived(job); save(); return clone(stage); },
   async setCurrentStage(id) { const { job, stage } = getStage(id); job.stages.forEach((item) => { item.status = item.id === stage.id ? "current" : item.status === "current" ? "completed" : item.status; }); touchDemoJob(job); refreshDerived(job); save(); return clone(stage); },
   async getMeetings(date = "") { return jobs.flatMap((job) => job.stages.filter((stage) => stage.meeting_date && (!date || stage.meeting_date === date)).map((stage) => toMeeting(job, stage))); },

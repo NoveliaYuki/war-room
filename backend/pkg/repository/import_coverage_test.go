@@ -52,6 +52,25 @@ func TestReplaceAllJobsClosesPreparedStatementsWhenSchemaIsIncomplete(t *testing
 	}
 }
 
+func TestReplaceAllJobsReportsHistoryWriteFailures(t *testing.T) {
+	for _, test := range []struct{ name, trigger string }{
+		{name: "delete", trigger: `CREATE TRIGGER reject_history_delete BEFORE DELETE ON job_history BEGIN SELECT RAISE(ABORT, 'rejected history delete'); END`},
+		{name: "insert", trigger: `CREATE TRIGGER reject_history_insert BEFORE INSERT ON job_history WHEN NEW.action = 'moved to ongoing' BEGIN SELECT RAISE(ABORT, 'rejected history insert'); END`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newImportRepositoryFixture(t)
+			if _, err := repo.db.Exec(test.trigger); err != nil {
+				t.Fatal(err)
+			}
+			job := models.Job{ID: "history-error", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+				History: []models.JobHistory{{OccurredAt: 100, Action: "moved to ongoing"}}}
+			if err := repo.ReplaceAllJobs([]models.Job{job}); err == nil {
+				t.Fatal("import unexpectedly ignored history write failure")
+			}
+		})
+	}
+}
+
 func TestReplaceAllJobsRollsBackInvalidImportedCVLibrary(t *testing.T) {
 	repo := newImportRepositoryFixture(t)
 	insertRepositoryTestJob(t, repo, "kept-job")

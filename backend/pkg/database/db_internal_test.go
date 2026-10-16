@@ -133,6 +133,88 @@ func TestApplicationURLMigrationReportsFailures(t *testing.T) {
 	}
 }
 
+func TestJobHistoryMigrationRecordsNewChangesWithoutInventingLegacyEvents(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustMigrationExec(t, db, schemaSQL)
+	mustMigrationExec(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, created_at, keyword_note) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed', 100, 'Initial highlights')`)
+	mustMigrateJobHistory(t, db)
+	mustMigrationExec(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, created_at, keyword_note) VALUES ('new-job', 'Designer', 'waiting', 'unknown', 'none', 'seed', 200, 'Initial highlights')`)
+	mustMigrationExec(t, db, `UPDATE jobs SET status = 'ongoing', keyword_note = 'New highlights' WHERE id = 'new-job'`)
+	assertHistoryEvents(t, readHistoryEvents(t, db))
+	assertNoLegacyHistory(t, db)
+}
+
+func TestJobHistoryMigrationReportsTableAndIndexFailures(t *testing.T) {
+	for _, failure := range []string{"CREATE TABLE IF NOT EXISTS job_history", "CREATE INDEX IF NOT EXISTS idx_job_history_job_time"} {
+		t.Run(failure, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			mustMigrationExec(t, db, schemaSQL)
+			if err := migrateJobHistory(migrationTestExecutor{db: db, failExec: failure}); err == nil {
+				t.Fatalf("migration did not report failure for %q", failure)
+			}
+		})
+	}
+}
+
+func mustMigrateJobHistory(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := migrateJobHistory(db); err != nil {
+		t.Fatalf("apply job history migration: %v", err)
+	}
+}
+
+func readHistoryEvents(t *testing.T, db *sql.DB) map[string]int64 {
+	t.Helper()
+	rows, err := db.Query(`SELECT job_id, occurred_at, action FROM job_history ORDER BY occurred_at, id`)
+	if err != nil {
+		t.Fatalf("read job history: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	seen := make(map[string]int64, 3)
+	for rows.Next() {
+		var jobID string
+		var occurredAt int64
+		var action string
+		if err := rows.Scan(&jobID, &occurredAt, &action); err != nil {
+			t.Fatalf("scan job history: %v", err)
+		}
+		if jobID != "new-job" {
+			t.Fatalf("unexpected history for legacy job %q: %q", jobID, action)
+		}
+		seen[action] = occurredAt
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate job history: %v", err)
+	}
+	return seen
+}
+
+func assertHistoryEvents(t *testing.T, seen map[string]int64) {
+	t.Helper()
+	if len(seen) != 3 {
+		t.Fatalf("history event count=%d want=3: %+v", len(seen), seen)
+	}
+	if seen["created"] != 200 {
+		t.Fatalf("creation history=%d want=200", seen["created"])
+	}
+	for _, action := range []string{"moved to ongoing", "changed role highlights"} {
+		if seen[action] < 200 {
+			t.Fatalf("%q timestamp=%d want at least 200", action, seen[action])
+		}
+	}
+}
+
+func assertNoLegacyHistory(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var legacyEvents int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM job_history WHERE job_id = 'legacy-job'`).Scan(&legacyEvents); err != nil {
+		t.Fatalf("count legacy history: %v", err)
+	}
+	if legacyEvents != 0 {
+		t.Fatalf("migration invented %d events for an existing job", legacyEvents)
+	}
+}
+
 func mustMigrationExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {

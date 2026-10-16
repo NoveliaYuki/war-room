@@ -157,6 +157,13 @@ type Job struct {
 	Attachments       []Attachment  `json:"attachments,omitempty"`
 	SelectedCVVersion *CVVersion    `json:"selected_cv_version"`
 	Technologies      []Technology  `json:"technologies,omitempty"`
+	History           []JobHistory  `json:"history,omitempty"`
+}
+
+// JobHistory records a dated change to a selection process.
+type JobHistory struct {
+	OccurredAt int64  `json:"occurred_at"`
+	Action     string `json:"action"`
 }
 
 // SearchPeriod groups jobs within a user-defined date range; an empty end date means ongoing.

@@ -255,6 +255,49 @@ function renderProcessTimeline(job) {
   </div>`;
 }
 
+const JOB_STATUS_HISTORY_LABELS = { waiting: "waiting", ongoing: "ongoing", accepted: "approved", rejected: "rejected" };
+
+/** Formats recent activity relatively and older activity as a dated timestamp. */
+function formatJobHistoryDate(timestamp) {
+  const date = new Date(Number(timestamp) * 1000);
+  if (!Number.isFinite(date.getTime())) return "";
+  const elapsedMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (elapsedMinutes < 1) return "just now";
+  if (elapsedMinutes < 60) return new Intl.RelativeTimeFormat(undefined, { numeric: "always" }).format(-elapsedMinutes, "minute");
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return new Intl.RelativeTimeFormat(undefined, { numeric: "always" }).format(-elapsedHours, "hour");
+  const parts = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.weekday} ${values.day} ${values.month} ${values.hour}:${values.minute}`;
+}
+
+/** Renders dated changes and only the saved legacy dates available for a job. */
+function renderJobHistory(job) {
+  const history = Array.isArray(job.history) ? [...job.history] : [];
+  const hasCreatedEvent = history.some((event) => event.action === "created");
+  const createdAt = Number(job.created_at);
+  if (!hasCreatedEvent && createdAt > 0) history.push({ occurred_at: createdAt, action: "created" });
+  const hasStatusEvent = history.some((event) => String(event.action || "").startsWith("moved to "));
+  const statusChangedAt = Number(job.status_changed_at);
+  if (!hasStatusEvent && statusChangedAt > createdAt && JOB_STATUS_HISTORY_LABELS[job.status]) {
+    history.push({ occurred_at: statusChangedAt, action: `moved to ${JOB_STATUS_HISTORY_LABELS[job.status]}` });
+  }
+  const entries = history
+    .filter((event) => Number(event.occurred_at) > 0 && event.action)
+    .sort((a, b) => Number(b.occurred_at) - Number(a.occurred_at));
+  if (!entries.length) return "";
+  return `<details class="detail-section card-history-section">
+    <summary class="card-history-toggle"><span>Card History</span><span class="card-history-toggle-meta"><span>${entries.length}</span><span class="card-history-chevron">${icon("chevronDown", 12)}</span></span></summary>
+    <ol class="card-history-list">${entries.map((event) => {
+      const timestamp = Number(event.occurred_at);
+      const label = String(event.action).startsWith("moved to ")
+        ? `moved to ${JOB_STATUS_HISTORY_LABELS[String(event.action).slice(9)] || String(event.action).slice(9)}`
+        : event.action;
+      return `<li class="card-history-item"><span>${escapeHtml(label)}</span><time datetime="${escapeAttr(new Date(timestamp * 1000).toISOString())}">${escapeHtml(formatJobHistoryDate(timestamp))}</time></li>`;
+    }).join("")}</ol>
+  </details>`;
+}
+
 /** Renders the optional original job description section. */
 function renderJobDescription(job) {
   return `<div class="detail-section">
@@ -464,6 +507,7 @@ function renderJobDetailsSection(view) {
           <div class="process-subsection-header"><span class="group-title inline-icon-text">${icon("building", 13)} Job Details</span></div>
 
           ${renderProcessTimeline(job)}
+          ${renderJobHistory(job)}
 
           <div class="detail-section">
             <div class="section-title"><span>Role Highlights</span></div>
