@@ -6,12 +6,14 @@
 import { api } from "./api.js";
 import { renderCardGrid } from "./components/cardGrid.js";
 import { renderScheduleView } from "./components/scheduleView.js";
+import { renderScheduleLoadingState } from "./components/loadingViews.js";
+import { captureLoadingView, revealLoadedContent } from "./utils/loadingTransition.js";
 import { openDetailModal } from "./components/detailModal.js";
 import { openCvLibrary } from "./components/cvLibrary.js";
 import { openTechnologyLibrary } from "./components/technologyLibrary.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
-import { activateModal, restoreModalFocus, trapModalTab } from "./modalA11y.js";
+import { activateModal, restoreModalFocus, setModalBackgroundScrollPosition, trapModalTab } from "./modalA11y.js";
 import { showToast } from "./utils/toast.js";
 import { confirmAction } from "./utils/confirmDialog.js";
 import { escapeAttr, escapeHtml } from "./utils/sanitize.js";
@@ -35,6 +37,8 @@ function handleAvatarImageError(event) {
 document.addEventListener("error", handleAvatarImageError, true);
 
 const FILTER_STORAGE_KEY = "war-room.active-filter";
+const OPEN_JOB_STORAGE_KEY = "war-room.open-job";
+const SCROLL_POSITION_STORAGE_KEY = "war-room.window-scroll";
 const STATUS_FILTER_STORAGE_KEY = "war-room.status-filter";
 const PROCESS_FILTER_STORAGE_KEY = "war-room.process.filters.v1";
 const THEME_STORAGE_KEY = "war-room.theme";
@@ -62,6 +66,8 @@ function getSavedStatusFilter() {
 let currentFilter = getSavedFilter();
 let currentStatusFilter = currentFilter === "schedule" ? getSavedStatusFilter() : currentFilter;
 const viewScrollPositions = { board: 0, schedule: 0 };
+let restoringPageState = true;
+let appRefreshRequestId = 0;
 if (currentFilter !== "schedule") {
   try { window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, currentStatusFilter); } catch { /* Keep the restored status filter for this page. */ }
 }
@@ -127,6 +133,34 @@ const processSortOptions = document.querySelectorAll("[data-sort-mode]");
 const processFilterAnyReferral = document.querySelector("#process-filter-any-referral");
 let managementReturnJobId = "";
 
+/** Stores the page scroll position so a reload returns to the same content. */
+function saveWindowScrollPosition() {
+  if (restoringPageState || backdropEl?.classList.contains("active")) return;
+  try { window.localStorage.setItem(SCROLL_POSITION_STORAGE_KEY, String(window.scrollY)); } catch { /* Keep the current page usable if storage is unavailable. */ }
+}
+
+/** Restores a valid saved window scroll position after the selected view renders. */
+function getSavedWindowScrollPosition() {
+  try {
+    const position = Number(window.localStorage.getItem(SCROLL_POSITION_STORAGE_KEY));
+    return Number.isFinite(position) && position >= 0 ? position : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Remembers which job detail is open across reloads. */
+function saveOpenJob(jobId) {
+  try {
+    if (jobId) window.localStorage.setItem(OPEN_JOB_STORAGE_KEY, String(jobId));
+    else window.localStorage.removeItem(OPEN_JOB_STORAGE_KEY);
+  } catch { /* Keep job details usable if storage is unavailable. */ }
+}
+
+function getSavedOpenJob() {
+  try { return window.localStorage.getItem(OPEN_JOB_STORAGE_KEY) || ""; } catch { return ""; }
+}
+
 /** Returns the selected theme, falling back to the current system preference. */
 function getActiveTheme() {
   const selected = document.documentElement.dataset.theme;
@@ -188,15 +222,33 @@ function updateFilterSummary() {
  * Updates filter counters and re-renders cards.
  */
 async function refreshApp({ restoreScrollY } = {}) {
+  const requestId = ++appRefreshRequestId;
+  setViewLoading(false);
+  const loadingTimer = window.setTimeout(() => {
+    if (requestId === appRefreshRequestId && !restoringPageState) setViewLoading(true);
+  }, 300);
   try {
+    if (restoringPageState && currentFilter === "schedule") renderScheduleLoadingState(cardGridEl);
     const boardData = await refreshBoardCounts();
-    await renderSelectedBoardView(boardData);
+    if (requestId !== appRefreshRequestId) return;
+    await renderSelectedBoardView(boardData, requestId);
+    if (requestId !== appRefreshRequestId) return;
     if (Number.isFinite(restoreScrollY)) window.scrollTo(0, restoreScrollY);
     clearAppLoadError();
   } catch (err) {
+    if (requestId !== appRefreshRequestId) return;
     console.error("Failed to load jobs data:", err);
     showAppLoadError();
+  } finally {
+    window.clearTimeout(loadingTimer);
+    if (requestId === appRefreshRequestId) setViewLoading(false);
   }
+}
+
+/** Shows a quiet status only when loading takes long enough to be noticeable. */
+function setViewLoading(visible) {
+  const status = document.querySelector("#view-loading-status");
+  if (status) status.hidden = !visible;
 }
 
 async function refreshBoardCounts() {
@@ -216,7 +268,7 @@ async function refreshBoardCounts() {
   updateBoardCountLabels(scopedCounts);
   updateFilterSummary();
   updateProcessFilterSummary();
-  return { allPeriodCounts, scopedCounts };
+  return { allPeriodCounts, scopedCounts, meetings };
 }
 
 /** Loads optional search period data without blocking the main process board. */
@@ -238,22 +290,27 @@ function updateBoardCountLabels(counts) {
   document.querySelector("#count-rejected").textContent = counts.rejected;
 }
 
-async function renderSelectedBoardView({ allPeriodCounts, scopedCounts }) {
+async function renderSelectedBoardView({ allPeriodCounts, scopedCounts, meetings }, requestId) {
   if (currentFilter === "schedule") {
     cardGridEl.classList.add("schedule-mode");
-    await renderScheduleView(cardGridEl, modalEl, backdropEl, refreshApp);
+    await renderScheduleView(cardGridEl, modalEl, backdropEl, refreshApp, {
+      showLoading: restoringPageState, meetings,
+    });
   } else {
-    cardGridEl.classList.remove("schedule-mode");
-    await renderProcessCards(allPeriodCounts, scopedCounts);
+    await renderProcessCards(allPeriodCounts, scopedCounts, requestId);
   }
-  cardGridEl.querySelector(".board-loading-state")?.remove();
+  if (requestId !== appRefreshRequestId) return;
+  cardGridEl.querySelector(":scope > .board-loading-state")?.remove();
   cardGridEl.setAttribute("aria-busy", "false");
 }
 
-async function renderProcessCards(allPeriodCounts, scopedCounts) {
+async function renderProcessCards(allPeriodCounts, scopedCounts, requestId) {
   const jobs = await api.getJobs(processFilters.statuses.length ? "all" : currentFilter, currentSearch);
+  if (requestId !== appRefreshRequestId) return;
   const filteredJobs = filterJobs(jobs, processFilters);
   const sortMode = readSavedSortMode(window.localStorage, currentFilter);
+  const loadingView = restoringPageState ? captureLoadingView(cardGridEl) : null;
+  cardGridEl.classList.remove("schedule-mode");
   renderCardGrid(cardGridEl, sortJobsForDisplay(filteredJobs, currentFilter, sortMode), modalEl, backdropEl, refreshApp, sortMode, {
     filter: currentFilter,
     totalCount: allPeriodCounts.all,
@@ -262,6 +319,7 @@ async function renderProcessCards(allPeriodCounts, scopedCounts) {
     groupByStatus: processFilters.statuses.length > 1,
     onResetView: resetSearchAndFilters,
   });
+  revealLoadedContent(cardGridEl, loadingView);
 }
 
 function hasActiveProcessFilters() {
@@ -756,6 +814,7 @@ function filterFromShortcut(event, isTyping) {
 
 /** Closes the modal and clears its content. */
 function closeModal() {
+  saveOpenJob("");
   closeWithFlip(modalEl, backdropEl, () => {
     modalEl.innerHTML = "";
     modalEl.classList.remove("new-process-modal");
@@ -1653,6 +1712,8 @@ backdropEl.addEventListener("click", (e) => {
 });
 
 window.addEventListener("keydown", handleGlobalKeydown);
+window.addEventListener("scroll", saveWindowScrollPosition, { passive: true });
+window.addEventListener("pagehide", saveWindowScrollPosition);
 
 initializeProcessFilterControls();
 updateFilterSummary();
@@ -1660,5 +1721,18 @@ updateFilterSummary();
 syncBoardViewSwitchOffset();
 window.addEventListener("resize", syncBoardViewSwitchOffset, { passive: true });
 
+if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
+const savedScrollPosition = getSavedWindowScrollPosition();
+const savedOpenJob = getSavedOpenJob();
+const detailReady = savedOpenJob
+  ? openDetailModal(modalEl, backdropEl, savedOpenJob, refreshApp)
+  : Promise.resolve();
 await refreshApp();
+if (savedOpenJob && backdropEl.classList.contains("active")) {
+  setModalBackgroundScrollPosition(savedScrollPosition);
+} else {
+  window.scrollTo(0, savedScrollPosition);
+}
+restoringPageState = false;
+await detailReady;
 document.body.dataset.appReady = "true";

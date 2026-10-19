@@ -182,6 +182,7 @@ describe('application entry point', () => {
     document.querySelector('#tab-schedule').click();
     await flush();
     expect(mocks.renderScheduleView).toHaveBeenCalled();
+    expect(mocks.renderScheduleView.mock.calls.at(-1)[4]).toMatchObject({ showLoading: false });
     expect(document.querySelector('#tab-schedule').getAttribute('aria-pressed')).toBe('true');
     document.querySelector('#tab-board').click();
     await flush();

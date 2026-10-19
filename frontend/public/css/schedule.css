@@ -15,6 +15,59 @@
   gap: 24px;
 }
 
+.schedule-loading-state { min-height: 100vh; }
+.schedule-loading-state span,
+.schedule-loading-state i,
+.schedule-skeleton-heading,
+.schedule-skeleton-copy,
+.schedule-skeleton-day-heading,
+.schedule-skeleton-avatar,
+.schedule-skeleton-title,
+.schedule-skeleton-meta,
+.schedule-skeleton-note,
+.schedule-skeleton-actions i {
+  display: block;
+  background: linear-gradient(100deg, var(--bg-surface-elevated) 20%, color-mix(in srgb, var(--bg-surface-elevated) 62%, var(--text-muted)) 38%, var(--bg-surface-elevated) 56%);
+  background-size: 220% 100%;
+  animation: scheduleSkeletonShimmer 1.5s ease-in-out infinite;
+}
+.schedule-skeleton-today,
+.schedule-skeleton-group { padding: 22px 26px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); background: var(--bg-card); box-shadow: var(--shadow-sm); }
+.schedule-skeleton-heading { width: 230px; max-width: 65%; height: 18px; border-radius: 6px; }
+.schedule-skeleton-copy { width: min(520px, 90%); height: 12px; margin-top: 16px; border-radius: 6px; }
+.schedule-skeleton-today-card { display: flex; align-items: center; gap: 14px; min-height: 78px; margin-top: 20px; padding: 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+.schedule-skeleton-today-card > span:first-child { width: 52px; height: 52px; flex: 0 0 52px; border-radius: var(--radius-md); }
+.schedule-skeleton-today-card > div { display: grid; flex: 1; gap: 10px; }
+.schedule-skeleton-today-card i { width: min(380px, 90%); height: 11px; border-radius: 6px; }
+.schedule-skeleton-today-card i:last-child { width: min(230px, 70%); }
+.schedule-skeleton-today-card > span:last-child { width: 140px; height: 38px; border-radius: var(--radius-md); }
+.schedule-skeleton-group { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.schedule-skeleton-day-heading { display: flex; height: auto; align-items: center; justify-content: space-between; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); background: none; }
+.schedule-skeleton-day-heading span { width: 260px; max-width: 70%; height: 17px; border-radius: 6px; }
+.schedule-skeleton-day-heading i { width: 62px; height: 24px; border-radius: var(--radius-full); }
+.schedule-skeleton-row { display: flex; align-items: center; gap: 22px; min-height: 164px; padding: 24px 28px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); background: var(--bg-card); }
+.schedule-skeleton-avatar { width: 60px; height: 60px; flex: 0 0 60px; border-radius: var(--radius-md); }
+.schedule-skeleton-row-content { display: grid; flex: 1; gap: 14px; min-width: 0; }
+.schedule-skeleton-title { width: min(420px, 78%); height: 18px; border-radius: 6px; }
+.schedule-skeleton-meta { width: min(390px, 72%); height: 32px; border-radius: var(--radius-sm); }
+.schedule-skeleton-note { width: 100%; height: 46px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
+.schedule-skeleton-actions { display: grid; gap: 10px; width: 145px; flex: 0 0 145px; }
+.schedule-skeleton-actions i { height: 40px; border-radius: var(--radius-md); }
+@keyframes scheduleSkeletonShimmer { to { background-position-x: -220%; } }
+@media (max-width: 720px) {
+  .schedule-skeleton-today, .schedule-skeleton-row { padding: 16px; }
+  .schedule-skeleton-row { flex-wrap: wrap; gap: 12px; }
+  .schedule-skeleton-avatar { width: 44px; height: 44px; flex-basis: 44px; }
+  .schedule-skeleton-row-content { flex-basis: calc(100% - 60px); }
+  .schedule-skeleton-meta { width: 90%; }
+  .schedule-skeleton-actions { display: flex; width: 100%; flex-basis: 100%; padding-left: 56px; }
+  .schedule-skeleton-actions i { width: 130px; }
+  .schedule-skeleton-today-card > span:last-child { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .schedule-loading-state span, .schedule-loading-state i, .schedule-skeleton-heading, .schedule-skeleton-copy, .schedule-skeleton-day-heading, .schedule-skeleton-avatar, .schedule-skeleton-title, .schedule-skeleton-meta, .schedule-skeleton-note, .schedule-skeleton-actions i { animation: none; }
+}
+
 /* Today's Hero Banner */
 .today-banner {
   padding: 22px 26px;

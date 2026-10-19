@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.12.0 — 2026-10-19
+
+## Highlights
+- Restore the selected board or schedule view, open job, and page position after reload.
+- Keep fast loads immediate and show brief loading feedback only when loading takes noticeable time.
+
+## What changed
+- Add matching loading placeholders for the board, schedule, and job details, with a short content handoff for slower loads.
+- Keep the current view visible during tab changes and avoid replaying loading effects for normal navigation.
+- Related PR: [#PENDING](https://github.com/NoveliaYuki/war-room/pull/PENDING).
+
 ## 1.11.1 — 2026-10-16
 
 ## Highlights

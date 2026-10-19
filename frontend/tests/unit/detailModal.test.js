@@ -71,6 +71,19 @@ beforeEach(() => {
 });
 
 describe('detail modal', () => {
+  it('opens a fast job request with ready content instead of flashing an empty dialog', async () => {
+    const backdrop = document.querySelector('#modal-backdrop');
+    let finishJob;
+    api.getJob.mockImplementationOnce(() => new Promise((resolve) => { finishJob = resolve; }));
+    const pending = openDetailModal('job-1');
+    expect(backdrop.classList.contains('active')).toBe(false);
+    finishJob(job());
+    await pending;
+    expect(backdrop.classList.contains('active')).toBe(true);
+    expect(document.querySelector('.modal-title')).not.toBeNull();
+    expect(document.querySelector('.detail-loading-skeleton')).toBeNull();
+  });
+
   it('runs the close animation once for each close control', async () => {
     api.getJob.mockResolvedValue(job());
     const modal = document.querySelector('#detail-modal');

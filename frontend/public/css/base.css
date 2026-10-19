@@ -36,6 +36,18 @@ body {
   background-attachment: fixed;
 }
 
+.loading-content-host { position: relative; }
+.loading-crossfade-overlay { position: absolute; z-index: 2; pointer-events: none; overflow: hidden; }
+.loading-crossfade-overlay > * { width: 100%; height: 100%; margin: 0; }
+.board-loading-state, .schedule-loading-state, .detail-loading-skeleton { visibility: hidden; }
+.loading-placeholder-ready .board-loading-state,
+.loading-placeholder-ready .schedule-loading-state,
+.loading-placeholder-ready .detail-loading-skeleton,
+.loading-crossfade-overlay .board-loading-state,
+.loading-crossfade-overlay .schedule-loading-state,
+.loading-crossfade-overlay .detail-loading-skeleton { visibility: visible; }
+.detail-loading-skeleton .modal-close-btn { visibility: visible; }
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

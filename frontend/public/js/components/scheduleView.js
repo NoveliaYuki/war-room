@@ -1,3 +1,5 @@
+import { renderScheduleLoadingState } from "./loadingViews.js";
+import { captureLoadingView, revealLoadedContent } from "../utils/loadingTransition.js";
 import { showToast } from "../utils/toast.js";
 import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
 import { formatCalendarDate } from "../utils/date.js";
@@ -180,15 +182,29 @@ function renderTodayMeeting(meeting) {
  * @param {HTMLElement} modalEl - Target modal element.
  * @param {HTMLElement} backdropEl - Modal backdrop.
  * @param {Function} onGlobalRefresh - Global state refresh callback.
+ * @param {Object} [options] - Initial loading behavior and meetings already fetched by the app.
  */
-export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlobalRefresh) {
-  containerEl.innerHTML = `
-    <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-      Loading your everyday schedule...
-    </div>
-  `;
+export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlobalRefresh, { showLoading = true, meetings: prefetchedMeetings } = {}) {
+  if (showLoading) renderScheduleLoadingState(containerEl);
 
-  const meetings = await api.getMeetings();
+  const meetings = prefetchedMeetings ?? await api.getMeetings();
+  const loadingView = showLoading ? captureLoadingView(containerEl) : null;
+  containerEl.innerHTML = renderScheduleMarkup(meetings);
+
+  bindMeetingNotePreviews(containerEl);
+  bindPastMeetingsDisclosure(containerEl);
+
+  containerEl.querySelectorAll(".btn-open-meeting").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const jobId = btn.getAttribute("data-jobid");
+      await openDetailModal(modalEl, backdropEl, jobId, onGlobalRefresh);
+    });
+  });
+  revealLoadedContent(containerEl, loadingView);
+}
+
+/** Builds the schedule sections from one meeting snapshot. */
+function renderScheduleMarkup(meetings) {
   const todayStr = getLocalDateString(0);
   const tomorrowStr = getLocalDateString(1);
 
@@ -217,7 +233,7 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
   const hasMeetingsToday = todayMeetings.length > 0;
   const niceToday = formatNiceDate(todayStr);
 
-  containerEl.innerHTML = `
+  return `
     <div class="schedule-container">
       <div class="today-banner ${hasMeetingsToday ? 'has-meetings' : ''}">
         <div class="today-banner-header">
@@ -317,16 +333,6 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
     </div>
   `;
 
-  bindMeetingNotePreviews(containerEl);
-  bindPastMeetingsDisclosure(containerEl);
-
-  containerEl.querySelectorAll(".btn-open-meeting").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const jobId = btn.getAttribute("data-jobid");
-      backdropEl.classList.add("active");
-      await openDetailModal(modalEl, backdropEl, jobId, onGlobalRefresh);
-    });
-  });
 }
 
 /**

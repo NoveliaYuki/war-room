@@ -501,7 +501,7 @@ describe('cardGrid', () => {
     const { container, card, modal, backdrop } = setup([makeJob()]);
     card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await Promise.resolve();
-    expect(mocks.openWithFlip).toHaveBeenCalledWith(card, modal, backdrop);
+    expect(mocks.openWithFlip).not.toHaveBeenCalled();
     expect(mocks.openDetailModal).toHaveBeenCalledWith(modal, backdrop, 'job-1', null);
     const count = mocks.openDetailModal.mock.calls.length;
     card.querySelector('.btn-card-delete').dispatchEvent(new MouseEvent('click', { bubbles: true }));

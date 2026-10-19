@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:${BACKEND_HOST_PORT:-4040}:4040"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_HOST_PORT:-4040}:4040"
     environment:
       PORT: "4040"
       HOST: "${BACKEND_HOST:-0.0.0.0}"

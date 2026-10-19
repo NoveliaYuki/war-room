@@ -1,3 +1,5 @@
+import { renderDetailLoadingSkeleton } from "./loadingViews.js";
+import { captureLoadingView, markLoadingStarted, revealLoadedContent } from "../utils/loadingTransition.js";
 import { showToast } from "../utils/toast.js";
 /**
  * @fileoverview Card Detail Modal Component.
@@ -36,6 +38,7 @@ const MIN_RIGHT_PANE_PX = 400;
 const SPLIT_GUTTER_PX = 14;
 const JOB_STATUS_CYCLE = ["waiting", "ongoing", "rejected", "accepted"];
 const JOB_STATUS_LABELS = { waiting: "Waiting", ongoing: "Ongoing", rejected: "Rejected", accepted: "Approved" };
+const OPEN_JOB_STORAGE_KEY = "war-room.open-job";
 const splitResizeObservers = new WeakMap();
 const stageTabResizeObservers = new WeakMap();
 let detailLoadRequestId = 0;
@@ -406,15 +409,13 @@ export async function openDetailModal(arg1, arg2, arg3, arg4) {
   const requestId = ++detailLoadRequestId;
   cancelPendingFlipClose();
   const { modalEl, backdropEl, jobId, onGlobalRefresh } = resolveDetailModalTarget(arg1, arg2, arg3, arg4);
+  try { window.localStorage.setItem(OPEN_JOB_STORAGE_KEY, String(jobId)); } catch { /* Details remain available when browser storage is blocked. */ }
 
-  if (backdropEl) {
-    backdropEl.classList.add("active");
-  }
-  activateModal(modalEl);
+  const loadingTimer = prepareDetailLoading(modalEl, backdropEl, requestId);
 
   try {
     const job = await api.getJob(jobId);
-    if (requestId !== detailLoadRequestId) return;
+    if (!isPendingDetailLoad(requestId, modalEl)) return;
     if (!job) {
       console.error("Job process not found:", jobId);
       clearFailedDetailLoad(modalEl, backdropEl);
@@ -422,18 +423,54 @@ export async function openDetailModal(arg1, arg2, arg3, arg4) {
     }
     const currentIdx = job.stages ? job.stages.findIndex((s) => s.status === "current") : -1;
     activeStageIndex = currentIdx !== -1 ? currentIdx : 0;
+    const loadingView = captureLoadingView(modalEl);
     renderModalContent(modalEl, backdropEl, job, onGlobalRefresh);
+    revealLoadedContent(modalEl, loadingView);
+    modalEl.removeAttribute("aria-busy");
+    showDetailModal(modalEl, backdropEl);
     focusModalContents(modalEl, ".modal-close-btn");
   } catch (err) {
-    if (requestId !== detailLoadRequestId) return;
+    if (!isPendingDetailLoad(requestId, modalEl)) return;
     console.error("Failed to load job details:", err);
     clearFailedDetailLoad(modalEl, backdropEl);
+  } finally {
+    window.clearTimeout(loadingTimer);
   }
+}
+
+/** Opens a ready dialog, or its loading shell after a noticeable wait. */
+function showDetailModal(modalEl, backdropEl) {
+  backdropEl?.classList.add("active");
+  activateModal(modalEl);
+}
+
+function isPendingDetailLoad(requestId, modalEl) {
+  return requestId === detailLoadRequestId && Boolean(modalEl.querySelector(".detail-loading-skeleton"));
+}
+
+/** Keeps fast job requests from flashing an empty loading dialog. */
+function prepareDetailLoading(modalEl, backdropEl, requestId) {
+  modalEl.setAttribute("aria-busy", "true");
+  markLoadingStarted(modalEl);
+  modalEl.innerHTML = renderDetailLoadingSkeleton();
+  modalEl.querySelector(".modal-close-btn")?.addEventListener("click", () => {
+    detailLoadRequestId += 1;
+    clearFailedDetailLoad(modalEl, backdropEl);
+  });
+  if (backdropEl?.classList.contains("active")) {
+    activateModal(modalEl);
+    return null;
+  }
+  return window.setTimeout(() => {
+    if (isPendingDetailLoad(requestId, modalEl)) showDetailModal(modalEl, backdropEl);
+  }, 250);
 }
 
 /** Removes the empty modal shell after the requested job cannot be loaded. */
 function clearFailedDetailLoad(modalEl, backdropEl) {
+  try { window.localStorage.removeItem(OPEN_JOB_STORAGE_KEY); } catch { /* Keep the dialog usable when browser storage is blocked. */ }
   modalEl.innerHTML = "";
+  modalEl.removeAttribute("aria-busy");
   backdropEl?.classList.remove("active");
   restoreModalFocus();
 }
@@ -870,6 +907,7 @@ function attachModalHandlers(context) {
 
   const closeAction = () => {
     detailLoadRequestId += 1;
+    try { window.localStorage.removeItem(OPEN_JOB_STORAGE_KEY); } catch { /* Keep closing available when browser storage is blocked. */ }
     splitResizeObservers.get(modalEl)?.disconnect();
     stageTabResizeObservers.get(modalEl)?.disconnect();
     closeWithFlip(modalEl, backdropEl, () => {
