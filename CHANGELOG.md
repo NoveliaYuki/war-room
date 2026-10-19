@@ -9,7 +9,7 @@
 ## What changed
 - Add matching loading placeholders for the board, schedule, and job details, with a short content handoff for slower loads.
 - Keep the current view visible during tab changes and avoid replaying loading effects for normal navigation.
-- Related PR: [#PENDING](https://github.com/NoveliaYuki/war-room/pull/PENDING).
+- Related PR: [#9](https://github.com/NoveliaYuki/war-room/pull/9).
 
 ## 1.11.1 — 2026-10-16
 
