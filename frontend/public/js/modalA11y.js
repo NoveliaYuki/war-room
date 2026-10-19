@@ -81,6 +81,13 @@ export function trapModalTab(event, modal) {
   return true;
 }
 
+/** Restores the background position after data loads behind a restored dialog. */
+export function setModalBackgroundScrollPosition(scrollY) {
+  if (!backgroundState || !Number.isFinite(scrollY) || scrollY < 0) return;
+  backgroundState.scrollY = scrollY;
+  document.body.style.top = `-${scrollY}px`;
+}
+
 /** Returns focus to the control that opened the dialog. */
 export function restoreModalFocus() {
   const state = backgroundState;

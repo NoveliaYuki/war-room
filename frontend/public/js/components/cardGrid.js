@@ -7,7 +7,6 @@ import { showToast } from "../utils/toast.js";
 
 import { api } from "../api.js";
 import { renderCompanyAvatar } from "../avatar.js";
-import { openWithFlip } from "../flip.js";
 import { openDetailModal } from "./detailModal.js";
 import { icon } from "../icons.js";
 import { makeInlineEditable, parseSalaryInput } from "../inlineEdit.js";
@@ -327,11 +326,10 @@ function bindCardDeletion(card, job, onGlobalRefresh) {
 }
 
 /** Opens a job detail modal unless the user is currently dragging the card. */
-async function openCardDetails(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive) {
+async function openCardDetails(job, modalEl, backdropEl, onGlobalRefresh, isDragActive) {
   if (isDragActive()) return;
   const targetModal = modalEl || document.querySelector("#detail-modal");
   const targetBackdrop = backdropEl || document.querySelector("#modal-backdrop");
-  if (targetModal && targetBackdrop) openWithFlip(card, targetModal, targetBackdrop);
   await openDetailModal(targetModal, targetBackdrop, job.id, onGlobalRefresh);
 }
 
@@ -344,7 +342,7 @@ function isNestedControl(target) {
 function bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive) {
   const detailClickDelayMs = 500;
   let cardClickTimer = null;
-  const openDetails = () => openCardDetails(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
+  const openDetails = () => openCardDetails(job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
   card.querySelector(".btn-card-open-details")?.addEventListener("click", openDetails);
   card.addEventListener("click", (event) => {
     if (isDragActive() || isNestedControl(event.target)) return;

@@ -14,9 +14,42 @@ beforeEach(() => {
   mocks.useApiAdapter.mockClear();
   window.history.replaceState({}, '', '/');
   delete document.body.dataset.demo;
+  window.localStorage.clear();
+  document.body.removeAttribute('style');
+  document.documentElement.style.overflow = '';
+  document.body.innerHTML = '<div class="app-container"><button id="tab-board" class="active" aria-pressed="true"></button><button id="tab-schedule" aria-pressed="false"></button><div id="process-toolbar"></div><div id="cards-grid"><div class="board-loading-state"></div></div></div><div id="modal-backdrop"><div id="detail-modal" tabindex="-1"></div></div>';
 });
 
 describe('shared frontend boot', () => {
+  it('shows a saved job skeleton before runtime config resolves and allows closing it', async () => {
+    window.localStorage.setItem('war-room.open-job', 'saved-job');
+    let finishConfig;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { finishConfig = resolve; })));
+    const boot = import('../../public/js/boot.js');
+    await vi.waitFor(() => expect(document.querySelector('.detail-loading-skeleton')).not.toBeNull());
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(true);
+    expect(document.body.style.position).toBe('fixed');
+    document.querySelector('.modal-close-btn').click();
+    expect(window.localStorage.getItem('war-room.open-job')).toBeNull();
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(false);
+    finishConfig({ ok: false });
+    await boot;
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the saved schedule skeleton before runtime config resolves', async () => {
+    window.localStorage.setItem('war-room.active-filter', 'schedule');
+    let finishConfig;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { finishConfig = resolve; })));
+    const boot = import('../../public/js/boot.js');
+    await vi.waitFor(() => expect(document.querySelector('.schedule-loading-state')).not.toBeNull());
+    expect(document.querySelector('#tab-schedule').getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('#process-toolbar').hidden).toBe(true);
+    finishConfig({ ok: false });
+    await boot;
+    vi.unstubAllGlobals();
+  });
+
   it('keeps the backend adapter for the local app', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ mode: 'backend' }) }));
     await import('../../public/js/boot.js');

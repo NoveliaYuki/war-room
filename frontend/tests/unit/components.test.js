@@ -209,6 +209,29 @@ describe('stage tracker', () => {
 });
 
 describe('schedule view', () => {
+  it('keeps the current view visible while a tab switch waits for meetings', async () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>Current view</p>';
+    const currentView = root.firstElementChild;
+    let finishMeetings;
+    mocks.api.getMeetings.mockImplementationOnce(() => new Promise((resolve) => { finishMeetings = resolve; }));
+    const loading = renderScheduleView(root, document.createElement('div'), document.createElement('div'), vi.fn(), { showLoading: false });
+    expect(root.firstElementChild).toBe(currentView);
+    expect(root.querySelector('.schedule-loading-state')).toBeNull();
+    finishMeetings([]);
+    await loading;
+    expect(root.querySelector('.schedule-container')).not.toBeNull();
+    expect(root.querySelector('.loading-crossfade-overlay')).toBeNull();
+  });
+
+  it('reuses meetings already fetched by the app without a second request', async () => {
+    const callsBefore = mocks.api.getMeetings.mock.calls.length;
+    const root = document.createElement('div');
+    await renderScheduleView(root, document.createElement('div'), document.createElement('div'), vi.fn(), { showLoading: false, meetings: [] });
+    expect(mocks.api.getMeetings.mock.calls.length).toBe(callsBefore);
+    expect(root.querySelector('.schedule-container')).not.toBeNull();
+  });
+
   it('renders a valid scheduled date with its weekday without timezone shifts', async () => {
     const root = document.createElement('div');
     mocks.api.getMeetings.mockResolvedValueOnce([{
@@ -292,7 +315,7 @@ describe('schedule view', () => {
     expect(root.querySelector('.today-meeting-card img')).toBeNull();
     root.querySelector('.btn-open-meeting').click();
     await flush();
-    expect(backdrop.classList.contains('active')).toBe(true);
+    expect(backdrop.classList.contains('active')).toBe(false);
     expect(mocks.openDetailModal).toHaveBeenCalled();
     root.querySelector('.meeting-row-card .btn-open-meeting').click();
     await flush();

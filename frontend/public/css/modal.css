@@ -14,7 +14,8 @@
   -webkit-backdrop-filter: blur(14px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--duration-normal) var(--ease-spring);
+  transition: none !important;
+  animation: none !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -39,7 +40,51 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  will-change: transform, opacity, border-radius;
+  will-change: auto;
+  transition: none !important;
+  animation: none !important;
+}
+
+.detail-loading-skeleton { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.detail-skeleton-header { display: flex; min-height: 90px; align-items: center; gap: 14px; padding: 16px 22px; border-bottom: 1px solid var(--border-subtle); }
+.detail-skeleton-avatar, .detail-skeleton-line, .detail-skeleton-section-title { background: linear-gradient(100deg, var(--bg-surface-elevated) 20%, color-mix(in srgb, var(--bg-surface-elevated) 62%, var(--text-muted)) 38%, var(--bg-surface-elevated) 56%); background-size: 220% 100%; animation: detailSkeletonShimmer 1.5s ease-in-out infinite; }
+.detail-skeleton-avatar { width: 48px; height: 48px; flex: 0 0 48px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.detail-skeleton-heading { display: grid; width: min(38%, 360px); gap: 8px; }
+.detail-skeleton-pills { display: flex; gap: 8px; margin-left: auto; }
+.detail-skeleton-pills .detail-skeleton-line { width: 66px; height: 23px; border-radius: var(--radius-full); }
+.detail-skeleton-pills .detail-skeleton-line.is-short { width: 48px; }
+.detail-skeleton-close { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; }
+.detail-skeleton-line { display: block; width: 100%; height: 11px; border-radius: 6px; }
+.detail-skeleton-line.is-short { width: 62%; }
+.detail-skeleton-heading .detail-skeleton-line:first-child { width: 43%; height: 10px; }
+.detail-skeleton-heading .detail-skeleton-line:last-child { width: 100%; height: 17px; }
+.detail-skeleton-layout { pointer-events: none; }
+.detail-skeleton-pane { display: grid; align-content: start; gap: 12px; }
+.detail-skeleton-section-title { width: 45%; height: 12px; border-radius: 6px; }
+.detail-skeleton-section-title.is-short { width: 34%; margin-top: 10px; }
+.detail-skeleton-panel { display: grid; align-content: center; gap: 14px; min-height: 110px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+.detail-skeleton-hero { min-height: 130px; }
+.detail-skeleton-tabs { display: flex; gap: 10px; overflow: hidden; margin-bottom: 5px; }
+.detail-skeleton-tabs .detail-skeleton-line { width: 38%; height: 34px; flex: 0 0 38%; border-radius: var(--radius-md); }
+@keyframes detailSkeletonShimmer { to { background-position-x: -220%; } }
+.detail-skeleton-mobile-switch { display: none; }
+
+@media (max-width: 1080px) {
+  .detail-skeleton-header { min-height: 78px; gap: 10px; padding: 12px; }
+  .detail-skeleton-pills { display: none; }
+  .detail-skeleton-heading { flex: 1; }
+  .detail-skeleton-mobile-switch { display: grid; }
+  .detail-skeleton-mobile-switch > span { height: 32px; border-radius: var(--radius-sm); background: linear-gradient(100deg, var(--bg-surface-elevated) 20%, color-mix(in srgb, var(--bg-surface-elevated) 62%, var(--text-muted)) 38%, var(--bg-surface-elevated) 56%); background-size: 220% 100%; animation: detailSkeletonShimmer 1.5s ease-in-out infinite; }
+  .detail-skeleton-layout { display: block; overflow: auto; }
+  .detail-skeleton-layout .split-pane-resizer { display: none; }
+  .detail-skeleton-pane { display: grid; }
+  .detail-skeleton-layout .split-pane-left { display: none; }
+  .modal-container[data-mobile-detail-pane="overview"] .detail-skeleton-layout .split-pane-left { display: grid; }
+  .detail-skeleton-tabs { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-skeleton-avatar, .detail-skeleton-line, .detail-skeleton-section-title, .detail-skeleton-close, .detail-skeleton-mobile-switch > span { animation: none; }
 }
 
 .modal-container.new-process-modal { width: min(960px, calc(100vw - 32px)); height: auto; max-height: 92vh; }

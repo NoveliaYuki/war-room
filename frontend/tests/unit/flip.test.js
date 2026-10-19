@@ -1,97 +1,43 @@
-
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { openWithFlip, closeWithFlip, cancelPendingFlipClose } from '../../public/js/flip.js';
 
-describe('flip', () => {
-  let sourceEl, targetEl;
+describe('modal visibility without card transitions', () => {
+  let source, modal, backdrop;
   beforeEach(() => {
-    sourceEl = document.createElement('div');
-    targetEl = document.createElement('div');
-    document.body.appendChild(sourceEl);
-    document.body.appendChild(targetEl);
+    document.body.innerHTML = '<div id="source"></div><div id="backdrop"><div id="modal"></div></div>';
+    source = document.querySelector('#source');
+    modal = document.querySelector('#modal');
+    backdrop = document.querySelector('#backdrop');
     vi.useFakeTimers();
-    vi.stubGlobal('requestAnimationFrame', (callback) => callback());
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('shows the modal immediately without scheduling a transform animation', () => {
+    openWithFlip(source, modal, backdrop);
+    expect(backdrop.classList.contains('active')).toBe(true);
+    expect(modal.style.transform).toBe('');
+    expect(modal.classList.contains('modal-animating')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('openWithFlip executes flow', () => {
-    sourceEl.getBoundingClientRect = vi.fn(() => ({ top: 10, left: 10, width: 100, height: 100 }));
-    targetEl.getBoundingClientRect = vi.fn(() => ({ top: 20, left: 20, width: 200, height: 200 }));
-    const onComplete = vi.fn();
-
-    openWithFlip(sourceEl, targetEl, document.createElement('div'));
-    vi.advanceTimersByTime(400);
-
-    expect(targetEl.classList.contains('modal-animating')).toBe(false);
-  });
-
-  it('closeWithFlip executes flow', () => {
-    sourceEl.getBoundingClientRect = vi.fn(() => ({ top: 20, left: 20, width: 200, height: 200 }));
-    targetEl.getBoundingClientRect = vi.fn(() => ({ top: 10, left: 10, width: 100, height: 100 }));
-    const onComplete = vi.fn();
-
-    const backdrop = document.createElement('div');
-    openWithFlip(sourceEl, targetEl, backdrop);
-    closeWithFlip(targetEl, backdrop, onComplete);
-    vi.advanceTimersByTime(300);
-
-    expect(onComplete).toHaveBeenCalled();
-  });
-
-  it('uses the fallback close when the source card is gone and cancels pending closes', () => {
-    const backdrop = document.createElement('div');
+  it('finishes closing immediately even if the source card was removed', () => {
+    openWithFlip(source, modal, backdrop);
+    source.remove();
     const complete = vi.fn();
-    openWithFlip(sourceEl, targetEl, backdrop);
-    sourceEl.remove();
-    closeWithFlip(targetEl, backdrop, complete);
+    closeWithFlip(modal, backdrop, complete);
     expect(backdrop.classList.contains('active')).toBe(false);
-    expect(targetEl.style.opacity).toBe('0');
-    cancelPendingFlipClose(true);
-    vi.advanceTimersByTime(201);
-    expect(complete).not.toHaveBeenCalled();
-    closeWithFlip(targetEl, backdrop, complete);
-    vi.advanceTimersByTime(201);
     expect(complete).toHaveBeenCalledOnce();
-    expect(targetEl.style.opacity).toBe('');
+    expect(modal.style.transform).toBe('');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('clears the previous source when cancelling a pending close', () => {
-    const backdrop = document.createElement('div');
-    const complete = vi.fn();
-    openWithFlip(sourceEl, targetEl, backdrop);
-    closeWithFlip(targetEl, backdrop, vi.fn());
-
+  it('keeps a newly opened modal visible after closing the previous one', () => {
+    openWithFlip(source, modal, backdrop);
+    closeWithFlip(modal, backdrop);
     cancelPendingFlipClose(true);
-    closeWithFlip(targetEl, backdrop, complete);
-    expect(targetEl.style.transform).toBe('scale(0.95)');
-    vi.advanceTimersByTime(201);
-    expect(complete).toHaveBeenCalledOnce();
-  });
-
-  it('completes a fallback close when no callback is supplied', () => {
-    sourceEl.getBoundingClientRect = vi.fn(() => ({ top: 0, left: 0, width: 80, height: 60 }));
-    targetEl.getBoundingClientRect = vi.fn(() => ({ top: 10, left: 10, width: 160, height: 120 }));
-    const backdrop = document.createElement('div');
-    openWithFlip(sourceEl, targetEl, backdrop);
-    sourceEl.remove();
-
-    closeWithFlip(targetEl, backdrop);
-    vi.advanceTimersByTime(201);
-
-    expect(backdrop.classList.contains('active')).toBe(false);
-    expect(targetEl.style.transition).toBe('');
-    expect(targetEl.style.opacity).toBe('');
-  });
-
-  it('completes an animated close when no callback is supplied', () => {
-    sourceEl.getBoundingClientRect = vi.fn(() => ({ top: 10, left: 10, width: 80, height: 60 }));
-    targetEl.getBoundingClientRect = vi.fn(() => ({ top: 20, left: 20, width: 160, height: 120 }));
-    const backdrop = document.createElement('div');
-    openWithFlip(sourceEl, targetEl, backdrop);
-
-    closeWithFlip(targetEl, backdrop);
-    vi.advanceTimersByTime(300);
-
-    expect(targetEl.classList.contains('modal-animating')).toBe(false);
-    expect(targetEl.style.opacity).toBe('');
+    openWithFlip(source, modal, backdrop);
+    vi.runAllTimers();
+    expect(backdrop.classList.contains('active')).toBe(true);
+    expect(modal.style.opacity).toBe('');
   });
 });

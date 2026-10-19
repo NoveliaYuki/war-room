@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { activateModal, focusModalContents, restoreModalFocus, trapModalTab } from '../../public/js/modalA11y.js';
+import { activateModal, focusModalContents, restoreModalFocus, setModalBackgroundScrollPosition, trapModalTab } from '../../public/js/modalA11y.js';
 
 describe('modal accessibility helpers', () => {
   afterEach(() => {
@@ -95,4 +95,23 @@ describe('modal accessibility helpers', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('ignores background scroll updates without an active dialog or a usable position', () => {
+    document.body.innerHTML = '<main class="app-container"></main><div id="modal" tabindex="-1"></div>';
+    setModalBackgroundScrollPosition(120);
+    expect(document.body.style.top).toBe('');
+    activateModal(document.querySelector('#modal'));
+    expect(document.body.style.top).toBe('0px');
+    setModalBackgroundScrollPosition(Number.NaN);
+    setModalBackgroundScrollPosition(-10);
+    expect(document.body.style.top).toBe('0px');
+    restoreModalFocus();
+  });
+
+  it('restores the background position behind a reopened dialog', () => {
+    document.body.innerHTML = '<main class="app-container"></main><div id="modal" tabindex="-1"></div>';
+    activateModal(document.querySelector('#modal'));
+    setModalBackgroundScrollPosition(120);
+    expect(document.body.style.top).toBe('-120px');
+    restoreModalFocus();
+  });
 });
