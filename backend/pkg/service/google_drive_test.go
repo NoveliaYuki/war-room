@@ -313,7 +313,7 @@ func TestDriveBackupSerializesTokenAndFolderUpdates(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{DataDir: dir, GoogleClientID: "id", GoogleClientSecret: "secret", GoogleBackupEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", GoogleDrivePath: filepath.Join(dir, "g.json")}
 	drive := NewDriveBackupService(cfg, func(w io.Writer) error { _, err := io.WriteString(w, "zip"); return err }).
-		WithEndpoints(DriveEndpoints{TokenURL: server.URL + "/token", UploadBase: server.URL + "/upload"})
+		WithEndpoints(DriveEndpoints{TokenURL: server.URL + "/token", DriveBase: server.URL, UploadBase: server.URL + "/upload"})
 	mustNoErr(t, drive.save(driveStore{Email: "person@example.com", RefreshToken: "rt"}))
 
 	backupDone := make(chan error, 1)
