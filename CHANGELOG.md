@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.13.0 — 2026-10-23
+
+## Highlights
+- Protect downloaded War Room backups with the same authenticated encryption used for Drive backups.
+- Connect one Google account and back up War Room to Google Drive automatically.
+
+## What changed
+- Export encrypted `.wrbackup` files and decrypt them automatically on import when the matching local key is configured.
+- Reject plaintext ZIP imports and keep older encrypted Drive backups importable.
+- Preserve saved activity timestamps during archive imports and local snapshot recovery, including processes with stages and questions.
+- Disable backup transfer in the browser-only demo, which has no secure local key.
+- Remove the bottom Settings & data section; open Data & Backups from the account menu.
+- Back up when a job card is created or its status changes; this includes the first interview stage when it moves a job to Ongoing. Role-description edits and interview-question changes do not trigger a backup.
+- Start an encrypted Google Drive upload from Data & Backups as well as using automatic backups; when disconnected, the action opens Google sign-in.
+- Choose or change the Google Drive destination folder directly in Data & Backups, and see the active folder before uploading.
+- Open the Google Drive Picker directly from either folder action without exposing a second inline folder panel.
+- Use Google Picker with the narrow `drive.file` scope to grant access only to the folder the user selects.
+- Add optional Picker API key and Cloud project number settings for folder selection.
+- Encrypt versioned Drive archives with AES-256-GCM and allow them to be restored through the backup import flow; retain the previous archive until the replacement is stored successfully.
+- Save the connected account in the app data volume so it persists across restarts; add the account and theme menu at the top right and move New Process into the board toolbar.
+- Move the existing Drive backup file when the backup folder changes instead of leaving an orphaned copy behind.
+- Revoke Google authorization when disconnecting; if Google is unreachable, clear local tokens and report that access may need to be revoked in Google Account settings.
+- Treat `%` and `_` in job search as literal text instead of SQL wildcards.
+- Related PR: [#10](https://github.com/NoveliaYuki/war-room/pull/10).
+
+## Upgrade notes
+- Configure `GOOGLE_BACKUP_ENCRYPTION_KEY` with a base64-encoded 32-byte key before exporting or importing backups. Preserve the same key securely for every installation that restores them.
+- Plain ZIP imports and exports are removed. New downloads and Drive uploads use encrypted `.wrbackup` files; older encrypted Drive backups remain readable with their original key.
+- Browser demo backup transfer is disabled because the demo has no backend encryption key.
+
 ## 1.12.0 — 2026-10-19
 
 ## Highlights

@@ -37,3 +37,9 @@
 **/*.pfx
 **/*.jks
 **/*.keystore
+
+# Encrypted backup files contain private application data.
+*.wrbackup
+*.zip.enc
+**/*.wrbackup
+**/*.zip.enc

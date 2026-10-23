@@ -101,10 +101,15 @@ const scheduleButton = document.querySelector("#tab-schedule");
 const newProcessButtons = document.querySelectorAll(".new-process-trigger");
 const menuToggle = document.querySelector("#btn-menu-toggle");
 const headerControls = document.querySelector("#header-controls");
-const dataManagementButton = document.querySelector("#btn-data-management");
+const dataManagementButton = document.querySelector("#btn-data-management-menu");
 
 const technologyLibraryButton = document.querySelector("#btn-technology-library");
 const themeToggle = document.querySelector("#btn-theme-toggle");
+const accountMenuButton = document.querySelector("#btn-account-menu");
+const accountMenuPanel = document.querySelector("#account-menu-panel");
+const accountAvatar = document.querySelector("#account-avatar");
+const googleAccountSection = document.querySelector("#google-account-section");
+const themeCurrentLabel = document.querySelector("#theme-current-label");
 const processFilterTrigger = document.querySelector("#process-filter-trigger");
 const searchPeriodFilter = document.querySelector("#search-period-filter");
 const searchPeriodTrigger = document.querySelector("#search-period-trigger");
@@ -175,6 +180,7 @@ function updateThemeToggle() {
   const label = `Switch to ${nextTheme} theme`;
   themeToggle.setAttribute("aria-label", label);
   themeToggle.title = label;
+  if (themeCurrentLabel) themeCurrentLabel.textContent = getActiveTheme() === "dark" ? "Dark" : "Light";
 }
 
 themeToggle?.addEventListener("click", () => {
@@ -194,6 +200,264 @@ themeToggle?.addEventListener("click", () => {
 
 window.matchMedia?.("(prefers-color-scheme: light)").addEventListener?.("change", updateThemeToggle);
 updateThemeToggle();
+
+const isDemoMode = document.body?.dataset?.demo === "true";
+let googleStatus = null;
+
+function setAccountMenuOpen(open) {
+  if (!accountMenuPanel || !accountMenuButton) return;
+  accountMenuPanel.hidden = !open;
+  accountMenuButton.setAttribute("aria-expanded", String(open));
+}
+
+accountMenuButton?.addEventListener("click", () => {
+  const open = accountMenuPanel?.hidden === false;
+  setAccountMenuOpen(!open);
+  if (!open) void refreshGoogleStatus();
+});
+document.addEventListener("click", (event) => {
+  if (!accountMenuPanel || accountMenuPanel.hidden) return;
+  if (!event.target.closest?.(".account-menu")) setAccountMenuOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setAccountMenuOpen(false);
+});
+document.querySelector("#btn-data-management-menu")?.addEventListener("click", () => {
+  setAccountMenuOpen(false);
+  openDataModal();
+});
+
+/** Renders the Google account section of the account menu. */
+function renderGoogleAccount() {
+  if (!googleAccountSection) return;
+  if (isDemoMode) {
+    googleAccountSection.innerHTML = `<p class="account-note">Google Drive backup is not available in the browser demo.</p>`;
+    return;
+  }
+  if (!googleStatus) {
+    googleAccountSection.innerHTML = `<p class="account-note">Loading Google Drive status…</p>`;
+    return;
+  }
+  if (accountAvatar) accountAvatar.textContent = googleStatus.connected && googleStatus.email ? googleStatus.email.charAt(0).toUpperCase() : "?";
+  if (!googleStatus.configured) {
+    googleAccountSection.innerHTML = `<p class="account-heading">${icon("cloud", 15)} Google Drive backup</p>
+      <p class="account-note">Not configured. Add the Google OAuth client and GOOGLE_BACKUP_ENCRYPTION_KEY to .env, then restart the app.</p>`;
+    return;
+  }
+  if (!googleStatus.connected) {
+    googleAccountSection.innerHTML = `<p class="account-heading">${icon("cloud", 15)} Google Drive backup</p>
+      <p class="account-note">Backs up automatically when a job card is created or its status changes.</p>
+      <a class="btn-primary account-connect" href="/api/google/connect">Connect Google account</a>`;
+    return;
+  }
+  renderConnectedGoogleAccount();
+}
+
+/** Renders the connected Google account with folder and backup actions. */
+function renderConnectedGoogleAccount() {
+  const folder = googleStatus.folder_name || "My Drive (root)";
+  const last = googleStatus.last_backup_at ? `Last backup: ${new Date(googleStatus.last_backup_at).toLocaleString()}` : "No backup yet";
+  const failed = googleStatus.last_status === "error" ? `<p class="account-note account-error">Last backup failed. Use Backup now to retry.</p>` : "";
+  const cleanupPending = googleStatus.last_status === "cleanup_pending" ? `<p class="account-note">Backup succeeded; Drive could not remove an older copy yet. Use Backup now to retry cleanup.</p>` : "";
+  googleAccountSection.innerHTML = `<p class="account-heading">${icon("cloud", 15)} Google Drive backup</p>
+    <p class="account-email">${escapeHtml(googleStatus.email || "")}</p>
+    <p class="account-note">${icon("folder", 13)} ${escapeHtml(folder)} · encrypted versioned backups</p>
+    <p class="account-note">${escapeHtml(last)}</p>${failed}${cleanupPending}
+    <div class="account-actions">
+      <button class="account-menu-item" id="google-choose-folder" type="button">Choose folder</button>
+      <button class="account-menu-item" id="google-backup-now" type="button">Backup now</button>
+      <button class="account-menu-item" id="google-disconnect" type="button">Disconnect</button>
+    </div>
+    <p id="google-folder-status" class="account-note account-error" role="status" aria-live="polite" hidden></p>`;
+  googleAccountSection.querySelector("#google-choose-folder")?.addEventListener("click", (event) => {
+    void openFolderPicker(event.currentTarget, googleAccountSection.querySelector("#google-folder-status"));
+  });
+  googleAccountSection.querySelector("#google-backup-now")?.addEventListener("click", () => void runGoogleBackupNow());
+  googleAccountSection.querySelector("#google-disconnect")?.addEventListener("click", () => void disconnectGoogleAccount());
+}
+
+async function refreshGoogleStatus() {
+  if (isDemoMode) { renderGoogleAccount(); return; }
+  try {
+    googleStatus = await api.getGoogleStatus();
+  } catch { googleStatus = null; }
+  renderGoogleAccount();
+}
+
+async function openFolderPicker(button, message) {
+  if (!googleStatus?.picker_api_key) {
+    setFolderPickerMessage(message, "Google Picker is not configured. Add a restricted Google Picker API key to .env and restart War Room.");
+    showToast("Google Drive folder selection needs a Google Picker API key.", "error");
+    return;
+  }
+  if (!googleStatus?.picker_app_id) {
+    setFolderPickerMessage(message, "Google Picker cannot identify the Cloud project. Set GOOGLE_CLOUD_PROJECT_NUMBER in .env and restart War Room.");
+    return;
+  }
+  setFolderPickerMessage(message, "");
+  await showGoogleDrivePicker(button, message);
+}
+
+function setFolderPickerMessage(element, text) {
+  if (!element) return;
+  element.textContent = text;
+  element.hidden = !text;
+}
+
+let pickerScriptPromise;
+function loadGooglePicker() {
+  if (window.gapi?.load) return Promise.resolve();
+  if (!pickerScriptPromise) pickerScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://apis.google.com/js/api.js";
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Google Drive folder picker failed to load"));
+    document.head.append(script);
+  });
+  return pickerScriptPromise;
+}
+
+function handleGooglePickerResult(data) {
+  if (data.action !== window.google.picker.Action.PICKED) return;
+  const folder = data.docs?.[0];
+  if (folder?.id) void chooseGoogleFolder(folder.id, folder.name || "Drive folder");
+}
+
+async function showGoogleDrivePicker(button, message) {
+  if (!button || !googleStatus?.picker_api_key || !googleStatus?.picker_app_id) return;
+  button.disabled = true;
+  setFolderPickerMessage(message, "Opening Google Drive folder picker…");
+  try {
+    await loadGooglePicker();
+    await new Promise((resolve, reject) => window.gapi.load("picker", { callback: resolve, onerror: reject }));
+    const { access_token: accessToken } = await api.getGooglePickerToken();
+    const view = new window.google.picker.DocsView(window.google.picker.ViewId.FOLDERS)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(true)
+      .setMimeTypes("application/vnd.google-apps.folder");
+    const picker = new window.google.picker.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(accessToken)
+      .setDeveloperKey(googleStatus.picker_api_key)
+      .setAppId(googleStatus.picker_app_id)
+      .setOrigin(window.location.origin)
+      .setCallback(handleGooglePickerResult)
+      .build();
+    picker.setVisible(true);
+    setFolderPickerMessage(message, "");
+  } catch (err) {
+    setFolderPickerMessage(message, err?.message || "Could not open the Drive folder picker.");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function chooseGoogleFolder(id, name) {
+  try {
+    googleStatus = await api.setGoogleFolder(id || "", name || "");
+    renderGoogleAccount();
+    renderGoogleBackupOption();
+    showToast(id ? `Drive backup folder set to ${name}` : "Drive backups will be saved in My Drive", "success");
+  } catch (err) {
+    showToast(err.message || "Failed to save Drive folder", "error");
+  }
+}
+
+async function runGoogleBackupNow() {
+  try {
+    googleStatus = await api.backupNowGoogle();
+    renderGoogleAccount();
+    const status = modalEl.querySelector("#google-drive-backup-status");
+    if (status) status.textContent = "Google Drive backup uploaded.";
+    showToast("Drive backup uploaded", "success");
+  } catch (err) {
+    const status = modalEl.querySelector("#google-drive-backup-status");
+    if (status) status.textContent = err.message || "Google Drive backup failed";
+    showToast(err.message || "Drive backup failed", "error");
+    void refreshGoogleStatus();
+  }
+}
+
+function renderGoogleBackupOption() {
+  const option = modalEl.querySelector("#google-drive-backup-option");
+  if (!option) return;
+  if (isDemoMode) {
+    option.innerHTML = "<p>Google Drive backup is unavailable in the browser demo.</p>";
+    return;
+  }
+  if (!googleStatus) {
+    option.innerHTML = "<p>Checking Google Drive connection…</p>";
+    return;
+  }
+  if (!googleStatus.configured) {
+    option.innerHTML = "<p>Google Drive backup is not configured. Add the OAuth client and encryption key to .env, then restart War Room.</p>";
+    return;
+  }
+  if (!googleStatus.connected) {
+    option.innerHTML = '<p>Sign in to upload an encrypted backup to your Google Drive.</p><a class="btn-primary" id="btn-google-drive-backup" href="/api/google/connect">Connect Google Drive</a>';
+    return;
+  }
+  const folder = escapeHtml(googleStatus.folder_name || "My Drive (root)");
+  option.innerHTML = `<p>Backup folder: <strong id="google-drive-backup-folder">${folder}</strong></p>
+    <button class="btn-secondary" id="btn-google-drive-choose-folder" type="button">Choose Drive folder</button>
+    <div class="data-transfer-status" id="google-drive-folder-status" role="status" aria-live="polite"></div>
+    <p>Upload an encrypted backup to Google Drive now.</p>
+    <button class="btn-primary" id="btn-google-drive-backup" type="button">Back up to Google Drive</button>
+    <div class="data-transfer-status" id="google-drive-backup-status" role="status" aria-live="polite"></div>`;
+  option.querySelector("#btn-google-drive-choose-folder").addEventListener("click", (event) => {
+    void openFolderPicker(event.currentTarget, option.querySelector("#google-drive-folder-status"));
+  });
+  option.querySelector("#btn-google-drive-backup").addEventListener("click", () => {
+    const button = option.querySelector("#btn-google-drive-backup");
+    button.disabled = true;
+    button.textContent = "Uploading…";
+    void runGoogleBackupNow().finally(() => {
+      if (!button.isConnected) return;
+      button.disabled = false;
+      button.textContent = "Back up to Google Drive";
+    });
+  });
+}
+
+async function refreshDataGoogleStatus() {
+  renderGoogleBackupOption();
+  if (isDemoMode) return;
+  try {
+    googleStatus = await api.getGoogleStatus();
+  } catch {
+    googleStatus = null;
+    const option = modalEl.querySelector("#google-drive-backup-option");
+    if (option) option.innerHTML = "<p>Could not check Google Drive status. Close and reopen this dialog to try again.</p>";
+    return;
+  }
+  renderGoogleBackupOption();
+}
+
+async function disconnectGoogleAccount() {
+  const confirmed = await confirmAction({ title: "Disconnect Google account?", message: "Automatic Drive backups will stop. Backups already in Drive stay there.", confirmLabel: "Disconnect", danger: true });
+  if (!confirmed) return;
+  try {
+    await api.disconnectGoogle();
+    googleStatus = await api.getGoogleStatus();
+    renderGoogleAccount();
+    showToast("Google account disconnected", "success");
+  } catch (err) {
+    await refreshGoogleStatus();
+    showToast(err.message || "Failed to disconnect", "error");
+  }
+}
+
+(function handleGoogleReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("google");
+  if (!result) { void refreshGoogleStatus(); return; }
+  params.delete("google");
+  const rest = params.toString();
+  window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
+  showToast(result === "connected" ? "Google account connected" : "Google sign-in failed", result === "connected" ? "success" : "error");
+  void refreshGoogleStatus();
+})();
 
 /** Closes the compact navigation menu after choosing an action. */
 function closeMobileMenu() {
@@ -836,7 +1100,7 @@ function closeManagementModal(focusTarget) {
 
 /** Closes the data transfer dialog and returns focus to its trigger. */
 function closeDataModal() {
-  closeManagementModal(dataManagementButton);
+  closeManagementModal(accountMenuButton || dataManagementButton);
 }
 
 function defaultSearchPeriodName(startDate, endDate) {
@@ -1043,26 +1307,31 @@ function openDataModal() {
     <div class="data-transfer-content">
       <section class="data-transfer-section">
         <h3>Export backup</h3>
-        <p>Download your processes, technology catalog, company logos, and uploaded files in one portable ZIP archive.</p>
-        <button class="btn-primary" id="btn-export-backup" type="button">${icon("download", 15)} Export ZIP backup</button>
+        <p>${isDemoMode ? "Encrypted backup transfer is available in the local War Room app, not in the browser demo." : "Download an encrypted War Room backup. Import decrypts it automatically when this installation has the matching backup key."}</p>
+        <button class="btn-primary" id="btn-export-backup" type="button" ${isDemoMode ? "disabled" : ""}>${icon("download", 15)} Export encrypted backup</button>
+      </section>
+      <section class="data-transfer-section">
+        <h3>Google Drive backup</h3>
+        <div id="google-drive-backup-option" aria-live="polite"></div>
       </section>
       <section class="data-transfer-section">
         <h3>Import backup</h3>
-        <p>Choose a War Room ZIP backup created with Export backup.</p>
-        <label class="data-transfer-file-label" for="backup-import-file">Backup ZIP file</label>
+        <p>${isDemoMode ? "Encrypted backup import is unavailable in the browser demo." : "Choose an encrypted War Room backup (.wrbackup). Plain ZIP files are not accepted."}</p>
+        <label class="data-transfer-file-label" for="backup-import-file">Backup file</label>
         <div class="data-transfer-file-picker">
-          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".zip,application/zip" aria-label="Choose backup file" tabindex="-1" />
-          <button id="backup-import-choose" class="data-transfer-choose" type="button">Choose file</button>
+          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".wrbackup,application/octet-stream" aria-label="Choose encrypted backup file" tabindex="-1" ${isDemoMode ? "disabled" : ""} />
+          <button id="backup-import-choose" class="data-transfer-choose" type="button" ${isDemoMode ? "disabled" : ""}>Choose file</button>
           <span id="backup-import-file-name" class="data-transfer-file-name" role="status" aria-live="polite" aria-atomic="true">No file selected</span>
         </div>
         <div class="data-transfer-warning">Import replaces all processes, the technology catalog, company logos, and uploaded files currently saved in this War Room.</div>
-        <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" /> I understand this replaces the current data</label>
+        <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" ${isDemoMode ? "disabled" : ""} /> I understand this replaces the current data</label>
         <button class="btn-danger" id="btn-import-backup" type="button" disabled>Import and replace data</button>
         <div class="data-transfer-status" id="backup-import-status" aria-live="polite"></div>
       </section>
     </div>`;
   backdropEl.classList.add("active");
   activateModal(modalEl, "#btn-close-data-modal");
+  void refreshDataGoogleStatus();
   modalEl.querySelector("#btn-close-data-modal").addEventListener("click", closeDataModal);
   modalEl.querySelector("#btn-export-backup").addEventListener("click", downloadBackup);
   const fileInput = modalEl.querySelector("#backup-import-file");
@@ -1101,7 +1370,7 @@ function openTechnologyLibraryModal(event) {
   openTechnologyLibrary(modalEl, closeTechnologyLibraryModal);
 }
 
-/** Downloads the generated ZIP archive. */
+/** Downloads the encrypted portable backup. */
 async function downloadBackup(event) {
   const button = event.currentTarget;
   button.disabled = true;
@@ -1110,7 +1379,7 @@ async function downloadBackup(event) {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `war-room-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+    anchor.download = `war-room-backup-${new Date().toISOString().slice(0, 10)}.wrbackup`;
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
@@ -1693,7 +1962,6 @@ appLoadRetryButton?.addEventListener("click", () => {
 });
 
 newProcessButtons.forEach((button) => button.addEventListener("click", openNewProcessModal));
-dataManagementButton?.addEventListener("click", openDataModal);
 technologyLibraryButton?.addEventListener("click", openTechnologyLibraryModal);
 window.addEventListener("war-room:open-cv-library", openCvLibraryModal);
 window.addEventListener("war-room:open-technology-library", openTechnologyLibraryModal);

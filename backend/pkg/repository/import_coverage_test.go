@@ -6,6 +6,168 @@ import (
 	"war-room/backend/pkg/models"
 )
 
+func TestImportCleanupReturnsDeleteFailures(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		setup  string
+		insert string
+	}{
+		{name: "technology catalog", setup: `CREATE TRIGGER reject_technology_delete BEFORE DELETE ON technologies BEGIN SELECT RAISE(ABORT, 'rejected technology delete'); END`, insert: `INSERT INTO technologies (id, name, normalized_name) VALUES ('tech', 'Go', 'go')`},
+		{name: "search periods", setup: `CREATE TRIGGER reject_period_delete BEFORE DELETE ON search_periods BEGIN SELECT RAISE(ABORT, 'rejected period delete'); END`, insert: `INSERT INTO search_periods (id, name, start_date, end_date) VALUES ('period', 'March', '2026-03-01', '2026-03-31')`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newImportRepositoryFixture(t)
+			if _, err := repo.db.Exec(test.setup); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.db.Exec(test.insert); err != nil {
+				t.Fatal(err)
+			}
+			tx, err := repo.db.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = tx.Rollback() }()
+			if err := clearImportedData(tx); err == nil {
+				t.Fatal("import cleanup ignored a rejected delete")
+			}
+		})
+	}
+}
+
+func TestReplaceImportedCVLibraryReturnsDeleteFailure(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	version := &models.CVVersion{ID: "existing-cv", OriginalName: "resume.pdf", StoredFilename: "hash", FileSize: 4, SHA256: "hash"}
+	if err := repo.InsertCVVersion(version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER reject_cv_delete BEFORE DELETE ON cv_versions BEGIN SELECT RAISE(ABORT, 'rejected CV delete'); END`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := repo.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := replaceImportedCVLibrary(tx, nil, 1); err == nil {
+		t.Fatal("CV library replacement ignored a rejected delete")
+	}
+}
+
+func TestReorderQuestionsReturnsUpdateFailure(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "question-reorder")
+	if _, err := repo.db.Exec(`INSERT INTO stages (id, job_id, order_index, stage_type) VALUES ('stage', 'question-reorder', 0, 'HR')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`INSERT INTO stage_questions (id, stage_id, order_index, question) VALUES ('question', 'stage', 0, 'Question')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER reject_question_reorder BEFORE UPDATE OF order_index ON stage_questions BEGIN SELECT RAISE(ABORT, 'rejected reorder'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReorderQuestions("stage", []string{"question"}); err == nil {
+		t.Fatal("question reorder ignored a rejected update")
+	}
+}
+
+func TestLegacyCVMigrationRollsBackEachRejectedWrite(t *testing.T) {
+	for _, test := range []struct{ name, trigger string }{
+		{name: "version insert", trigger: `CREATE TRIGGER reject_cv_insert BEFORE INSERT ON cv_versions BEGIN SELECT RAISE(ABORT, 'rejected CV insert'); END`},
+		{name: "job assignment", trigger: `CREATE TRIGGER reject_cv_assignment BEFORE UPDATE OF cv_version_id ON jobs BEGIN SELECT RAISE(ABORT, 'rejected CV assignment'); END`},
+		{name: "attachment delete", trigger: `CREATE TRIGGER reject_legacy_attachment_delete BEFORE DELETE ON attachments BEGIN SELECT RAISE(ABORT, 'rejected attachment delete'); END`},
+		{name: "sequence update", trigger: `CREATE TRIGGER reject_cv_sequence BEFORE UPDATE OF next_version ON cv_version_sequence BEGIN SELECT RAISE(ABORT, 'rejected CV sequence'); END`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newImportRepositoryFixture(t)
+			insertRepositoryTestJob(t, repo, "legacy-cv-job")
+			if test.name == "attachment delete" {
+				if _, err := repo.db.Exec(`INSERT INTO attachments (id, job_id, original_name, stored_filename, absolute_path, file_size, mime_type) VALUES ('legacy-attachment', 'legacy-cv-job', 'resume.pdf', 'legacy-file', '/tmp/legacy-file', 4, 'application/pdf')`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := repo.db.Exec(test.trigger); err != nil {
+				t.Fatal(err)
+			}
+			attachments := []models.Attachment(nil)
+			if test.name == "attachment delete" {
+				attachments = []models.Attachment{{ID: "legacy-attachment"}}
+			}
+			_, err := repo.MigrateLegacyCVAttachments(&models.CVVersion{ID: "migrated-cv", OriginalName: "resume.pdf", StoredFilename: "legacy-file", FileSize: 4, SHA256: "hash"}, attachments, []string{"legacy-cv-job"})
+			if err == nil {
+				t.Fatal("legacy CV migration ignored a rejected write")
+			}
+		})
+	}
+}
+
+func TestAttachmentReadRejectsMalformedStoredSize(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "malformed-attachment-job")
+	if _, err := repo.db.Exec(`INSERT INTO attachments (id, job_id, original_name, stored_filename, absolute_path, file_size, mime_type) VALUES ('bad-size', 'malformed-attachment-job', 'resume.pdf', 'bad-file', '/tmp/bad-file', 'invalid', 'application/pdf')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.GetAllAttachments(); err == nil {
+		t.Fatal("attachment list accepted a malformed file size")
+	}
+}
+
+func TestReorderJobsReturnsUpdateFailure(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "reorder-failure")
+	if _, err := repo.db.Exec(`CREATE TRIGGER reject_job_reorder BEFORE UPDATE OF order_index ON jobs BEGIN SELECT RAISE(ABORT, 'rejected reorder'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReorderJobs([]string{"reorder-failure"}); err == nil {
+		t.Fatal("job reorder ignored a rejected update")
+	}
+}
+
+func TestReorderOperationsRejectMissingRows(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	if err := repo.ReorderJobs([]string{"missing-job"}); err == nil {
+		t.Fatal("job reorder accepted a missing job")
+	}
+	if err := repo.ReorderStages("missing-job", []string{"missing-stage"}); err == nil {
+		t.Fatal("stage reorder accepted a missing stage")
+	}
+	if err := repo.ReorderQuestions("missing-stage", []string{"missing-question"}); err == nil {
+		t.Fatal("question reorder accepted a missing question")
+	}
+}
+
+func TestStageReadRejectsMalformedStoredTimestamp(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "malformed-stage-job")
+	if _, err := repo.db.Exec(`INSERT INTO stages (id, job_id, order_index, stage_type, created_at) VALUES ('bad-stage', 'malformed-stage-job', 0, 'HR', 'invalid')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.GetStagesByJobID("malformed-stage-job"); err == nil {
+		t.Fatal("stage list accepted a malformed timestamp")
+	}
+}
+
+func TestSetCurrentStageReturnsUpdateFailure(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "current-stage-failure")
+	if _, err := repo.db.Exec(`INSERT INTO stages (id, job_id, order_index, stage_type) VALUES ('current-stage', 'current-stage-failure', 0, 'HR')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`CREATE TRIGGER reject_current_stage BEFORE UPDATE ON stages BEGIN SELECT RAISE(ABORT, 'rejected current stage'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.SetCurrentStage("current-stage"); err == nil {
+		t.Fatal("current stage update ignored a rejected write")
+	}
+}
+
+func TestNormalizeJobUpdateValueClearsBlankOptionalDates(t *testing.T) {
+	blank := "  \t"
+	if got := normalizeJobUpdateValue("application_sent_date", &blank); got != nil {
+		t.Fatalf("blank optional date was not cleared: %#v", got)
+	}
+}
+
 func TestReplaceAllJobsRollsBackWhenImportedRecordCannotBeInserted(t *testing.T) {
 	repo := newImportRepositoryFixture(t)
 	insertRepositoryTestJob(t, repo, "kept-job")

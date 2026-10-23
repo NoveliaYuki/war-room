@@ -7,7 +7,7 @@ import { resolveLocalImport } from "./moduleResolution.js";
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const roots = ["public/js", "tests", "scripts", "../scripts"].map((directory) => path.join(frontendRoot, directory));
 const root = frontendRoot;
-const standaloneSourceModules = ["demo/inactiveWaiting.js", "demo/zipWriter.js"];
+const standaloneSourceModules = ["demo/inactiveWaiting.js"];
 const resolutionOnlyModules = ["demo/demoStore.js", "demo/data/jobs.js", "demo/data/meetingDates.js", "demo/data/technologies.js"];
 const MAX_COMPLEXITY = 10;
 const FUNCTION_TYPES = new Set([

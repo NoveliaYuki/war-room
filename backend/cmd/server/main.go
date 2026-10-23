@@ -36,13 +36,16 @@ func main() {
 	repo := repository.New(db)
 	schedulerContext, stopScheduler := context.WithCancel(context.Background())
 	defer stopScheduler()
-	service.StartInactiveWaitingScheduler(schedulerContext, repo, 24*time.Hour)
 	jobSvc := service.NewJobService(repo, cfg)
 	if err := jobSvc.MigrateLegacyCVAttachments(); err != nil {
 		log.Fatalf("Fatal: Failed to migrate legacy CV attachments: %v", err)
 	}
 	logoSvc := service.NewLogoService(cfg)
+	driveSvc := service.NewDriveBackupService(cfg, jobSvc.ExportArchive)
+	jobSvc.SetDriveTrigger(driveSvc.Trigger)
+	service.StartInactiveWaitingSchedulerWithCallback(schedulerContext, repo, 24*time.Hour, driveSvc.Trigger)
 	h := handlers.NewHandler(jobSvc, logoSvc, cfg)
+	h.SetDriveService(driveSvc)
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)

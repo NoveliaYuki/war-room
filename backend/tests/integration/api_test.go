@@ -36,15 +36,16 @@ func setupTestServer(t *testing.T) (*httptest.Server, *config.Config, func()) {
 	}
 
 	cfg := &config.Config{
-		Port:           0,
-		Host:           "127.0.0.1",
-		DataDir:        tmpDir,
-		DBPath:         filepath.Join(tmpDir, "test_jobs.db"),
-		BackupPath:     filepath.Join(tmpDir, "test_backup.json"),
-		AttachmentsDir: filepath.Join(tmpDir, "attachments"),
-		CVDir:          filepath.Join(tmpDir, "cvs"),
-		LogosDir:       filepath.Join(tmpDir, "logos"),
-		CORSAllowed:    "*",
+		Port:                      0,
+		Host:                      "127.0.0.1",
+		DataDir:                   tmpDir,
+		DBPath:                    filepath.Join(tmpDir, "test_jobs.db"),
+		BackupPath:                filepath.Join(tmpDir, "test_backup.json"),
+		AttachmentsDir:            filepath.Join(tmpDir, "attachments"),
+		CVDir:                     filepath.Join(tmpDir, "cvs"),
+		LogosDir:                  filepath.Join(tmpDir, "logos"),
+		CORSAllowed:               "*",
+		GoogleBackupEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
 	}
 	for _, directory := range []string{cfg.AttachmentsDir, cfg.CVDir, cfg.LogosDir} {
 		if err := os.MkdirAll(directory, 0700); err != nil {
@@ -61,6 +62,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *config.Config, func()) {
 	jobSvc := service.NewJobService(repo, cfg)
 	logoSvc := service.NewLogoService(cfg)
 	h := handlers.NewHandler(jobSvc, logoSvc, cfg)
+	h.SetDriveService(service.NewDriveBackupService(cfg, jobSvc.ExportArchive))
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -756,11 +758,11 @@ func TestAPI_BackupArchiveRoundTripAndMalformedImportRollback(t *testing.T) {
 	archiveResponse := mustRequest(t, sourceClient, http.MethodGet, source.URL+"/api/backup/export", "")
 	t.Cleanup(func() { closeIntegrationResource(t, archiveResponse.Body) })
 	requireStatus(t, archiveResponse, http.StatusOK)
-	if archiveResponse.Header.Get("Content-Type") != "application/zip" {
+	if archiveResponse.Header.Get("Content-Type") != "application/octet-stream" {
 		t.Fatalf("backup content type=%q", archiveResponse.Header.Get("Content-Type"))
 	}
 	archive, err := io.ReadAll(archiveResponse.Body)
-	if err != nil || len(archive) < 4 || string(archive[:2]) != "PK" {
+	if err != nil || len(archive) < len("WRBACKUP\x01") || string(archive[:len("WRBACKUP\x01")]) != "WRBACKUP\x01" {
 		t.Fatalf("exported archive length=%d signature=%q err=%v", len(archive), archive[:min(len(archive), 4)], err)
 	}
 
@@ -786,7 +788,7 @@ func postBackup(t *testing.T, client *http.Client, serverURL string, archive []b
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	file, err := writer.CreateFormFile("backup", "backup.zip")
+	file, err := writer.CreateFormFile("backup", "backup.wrbackup")
 	if err != nil {
 		t.Fatal(err)
 	}

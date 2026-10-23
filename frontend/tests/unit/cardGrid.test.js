@@ -227,13 +227,19 @@ describe('cardGrid', () => {
     expect(cards[1].querySelector('.card-avatar').classList.contains('card-avatar-wide-logo')).toBe(false);
   });
 
-  it('ignores synthetic touch pointer events and multi-touch card gestures', () => {
+  it('supports held touch pointer events and ignores multi-touch gestures', () => {
     vi.useFakeTimers();
     const { card } = setup();
+    const handle = card.querySelector('.btn-card-drag');
 
-    card.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch' }));
-    card.dispatchEvent(touchEvent('touchstart', { touchCount: 2 }));
-    vi.advanceTimersByTime(180);
+    handle.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', target: handle }));
+    vi.advanceTimersByTime(500);
+    expect(card.classList.contains('is-dragging')).toBe(true);
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    expect(card.classList.contains('is-dragging')).toBe(false);
+
+    handle.dispatchEvent(touchEvent('touchstart', { touchCount: 2 }));
+    vi.advanceTimersByTime(500);
 
     expect(card.classList.contains('is-holding')).toBe(false);
     expect(card.classList.contains('is-dragging')).toBe(false);

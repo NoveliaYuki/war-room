@@ -23,12 +23,17 @@ import (
 
 // Handler groups services and configuration used by HTTP route handlers.
 type Handler struct {
-	jobs  *service.JobService
-	logos *service.LogoService
-	cfg   *config.Config
+	jobs           *service.JobService
+	logos          *service.LogoService
+	cfg            *config.Config
+	drive          *service.DriveBackupService
+	backupMaxBytes int64
 }
 
-var errBackupExportTooLarge = errors.New("backup ZIP exceeds the 500 MiB limit")
+// SetDriveService enables the Google Drive backup endpoints.
+func (h *Handler) SetDriveService(drive *service.DriveBackupService) { h.drive = drive }
+
+var errBackupExportTooLarge = errors.New("backup archive exceeds the 500 MiB limit")
 
 type boundedWriter struct {
 	writer  io.Writer
@@ -135,6 +140,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/meetings", h.handleGetMeetings)
 	mux.HandleFunc("GET /api/backup/export", h.handleExportBackup)
 	mux.HandleFunc("POST /api/backup/import", h.handleImportBackup)
+	mux.HandleFunc("GET /api/google/status", h.handleGoogleStatus)
+	mux.HandleFunc("GET /api/google/connect", h.handleGoogleConnect)
+	mux.HandleFunc("GET /api/google/callback", h.handleGoogleCallback)
+	mux.HandleFunc("POST /api/google/disconnect", h.handleGoogleDisconnect)
+	mux.HandleFunc("GET /api/google/folders", h.handleGoogleFolders)
+	mux.HandleFunc("GET /api/google/picker-token", h.handleGooglePickerToken)
+	mux.HandleFunc("PUT /api/google/folder", h.handleGoogleSetFolder)
+	mux.HandleFunc("POST /api/google/backup", h.handleGoogleBackupNow)
 
 	mux.HandleFunc("POST /api/attachments", h.handleUploadAttachment)
 	mux.HandleFunc("GET /api/attachments/{id}/download", h.handleDownloadAttachment)
@@ -424,7 +437,7 @@ func (h *Handler) handleExportBackup(w http.ResponseWriter, _ *http.Request) {
 	}
 	defer func() { _ = os.Remove(archive.Name()) }()
 	defer func() { _ = archive.Close() }()
-	if err := h.jobs.ExportArchive(&boundedWriter{writer: archive, limit: 500 << 20}); err != nil {
+	if err := h.jobs.ExportArchive(&boundedWriter{writer: archive, limit: h.backupExportLimit()}); err != nil {
 		if errors.Is(err, errBackupExportTooLarge) {
 			ErrorJSON(w, http.StatusRequestEntityTooLarge, errBackupExportTooLarge.Error())
 			return
@@ -432,45 +445,62 @@ func (h *Handler) handleExportBackup(w http.ResponseWriter, _ *http.Request) {
 		ErrorJSON(w, http.StatusInternalServerError, "Failed to create backup archive")
 		return
 	}
-	info, err := archive.Stat()
-	if err != nil || archive.Sync() != nil {
-		ErrorJSON(w, http.StatusInternalServerError, "Failed to finish backup archive")
-		return
-	}
-	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+	archiveBytes, err := readExportArchive(archive, h.backupExportLimit())
+	if err != nil {
 		ErrorJSON(w, http.StatusInternalServerError, "Failed to read backup archive")
 		return
 	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="war-room-backup.zip"`)
+	if h.drive == nil {
+		ErrorJSON(w, http.StatusServiceUnavailable, "Encrypted backup is unavailable")
+		return
+	}
+	encrypted, err := h.drive.EncryptBackup(archiveBytes)
+	if errors.Is(err, service.ErrGoogleBackupKeyMissing) {
+		ErrorJSON(w, http.StatusServiceUnavailable, "Encrypted backups need a valid GOOGLE_BACKUP_ENCRYPTION_KEY in .env")
+		return
+	}
+	if err != nil {
+		ErrorJSON(w, http.StatusInternalServerError, "Failed to encrypt backup archive")
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="war-room-backup.wrbackup"`)
 	w.Header().Set("Cache-Control", "no-store, must-revalidate")
-	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-	_, _ = io.Copy(w, archive)
+	w.Header().Set("Content-Length", strconv.Itoa(len(encrypted)))
+	_, _ = w.Write(encrypted)
+}
+
+func readExportArchive(archive *os.File, limit int64) ([]byte, error) {
+	if err := archive.Sync(); err != nil {
+		return nil, err
+	}
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(archive, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, errBackupExportTooLarge
+	}
+	return data, nil
+}
+
+func (h *Handler) backupExportLimit() int64 {
+	if h.backupMaxBytes > 0 {
+		return h.backupMaxBytes
+	}
+	return 500 << 20
 }
 
 func (h *Handler) handleImportBackup(w http.ResponseWriter, r *http.Request) {
-	const maxArchiveBytes = (500 << 20) + (1 << 20)
-	r.Body = http.MaxBytesReader(w, r.Body, maxArchiveBytes)
-	// #nosec G120 -- MaxBytesReader bounds the entire multipart request above.
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Upload a valid ZIP backup no larger than 500 MiB")
-		return
-	}
-	if r.MultipartForm != nil {
-		defer func() { _ = r.MultipartForm.RemoveAll() }()
-	}
-	file, header, err := r.FormFile("backup")
-	if err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Choose a War Room ZIP backup to import")
-		return
-	}
-	defer func() { _ = file.Close() }()
-	if header.Size > 500<<20 {
-		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup ZIP exceeds the 500 MiB limit")
+	archiveBytes, ok := h.readBackupUpload(w, r)
+	if !ok {
 		return
 	}
 	allowEmpty := r.FormValue("allow_empty") == "true"
-	if err := h.jobs.ImportArchive(file, header.Size, allowEmpty); err != nil {
+	if err := h.jobs.ImportArchive(bytes.NewReader(archiveBytes), int64(len(archiveBytes)), allowEmpty); err != nil {
 		if errors.Is(err, service.ErrEmptyBackupRequiresConfirmation) {
 			JSON(w, http.StatusConflict, map[string]interface{}{
 				"error":                 "This backup contains no saved processes.",
@@ -482,6 +512,67 @@ func (h *Handler) handleImportBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (h *Handler) readBackupUpload(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	const maxArchiveBytes = (500 << 20) + (1 << 20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxArchiveBytes)
+	// #nosec G120 -- MaxBytesReader bounds the entire multipart request above.
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Upload an encrypted War Room backup no larger than 500 MiB")
+		return nil, false
+	}
+	if r.MultipartForm != nil {
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
+	}
+	files := r.MultipartForm.File["backup"]
+	if len(files) == 0 {
+		ErrorJSON(w, http.StatusBadRequest, "Choose an encrypted War Room backup to import")
+		return nil, false
+	}
+	header := files[0]
+	if header.Size > (500<<20)+(1<<20) {
+		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Encrypted backup exceeds the 500 MiB limit")
+		return nil, false
+	}
+	file, err := header.Open()
+	if err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Choose a readable War Room backup to import")
+		return nil, false
+	}
+	defer func() { _ = file.Close() }()
+	archiveBytes, err := io.ReadAll(io.LimitReader(file, (500<<20)+(1<<20)+1))
+	if err != nil || len(archiveBytes) > (500<<20)+(1<<20) {
+		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup exceeds the 500 MiB limit")
+		return nil, false
+	}
+	return h.decryptUploadedBackup(w, archiveBytes)
+}
+
+func (h *Handler) decryptUploadedBackup(w http.ResponseWriter, archiveBytes []byte) ([]byte, bool) {
+	if !strings.HasPrefix(string(archiveBytes), "WRBACKUP\x01") {
+		ErrorJSON(w, http.StatusBadRequest, "Only encrypted War Room backups can be imported")
+		return nil, false
+	}
+	if h.drive == nil {
+		ErrorJSON(w, http.StatusServiceUnavailable, "Encrypted backup restore is unavailable")
+		return nil, false
+	}
+	decrypted, err := h.drive.DecryptBackup(archiveBytes)
+	if errors.Is(err, service.ErrGoogleBackupKeyMissing) {
+		ErrorJSON(w, http.StatusServiceUnavailable, "Encrypted backup restore needs the matching GOOGLE_BACKUP_ENCRYPTION_KEY in .env")
+		return nil, false
+	}
+	if err != nil {
+		ErrorJSON(w, http.StatusBadRequest, "Encrypted backup could not be unlocked with this installation's key")
+		return nil, false
+	}
+	archiveBytes = decrypted
+	if len(archiveBytes) > 500<<20 {
+		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Decrypted backup archive exceeds the 500 MiB limit")
+		return nil, false
+	}
+	return archiveBytes, true
 }
 
 // handleHealthCheck returns a 200 OK status to indicate the service is running.

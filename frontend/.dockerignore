@@ -30,3 +30,9 @@
 **/*.keystore
 node_modules/
 npm-debug.log*
+
+# Encrypted backup files contain private application data.
+*.wrbackup
+*.zip.enc
+**/*.wrbackup
+**/*.zip.enc

@@ -28,7 +28,8 @@ docker compose down
 - Searchable selection-process board with status filters.
 - Interview stages, questions, interviewers, meetings, and schedule view.
 - Notes, salary details, company information, and attachments.
-- Portable ZIP backup export and restore, including uploaded files.
+- Portable encrypted `.wrbackup` export and restore, including uploaded files.
+- Optional Google Drive backup: connect one Google account from the top-right account menu or **Data & Backups**, choose a Drive folder with Google Picker, and War Room uploads a uniquely named encrypted backup when a job card is created or its status changes. Data & Backups also shows the selected destination and lets you change it before starting an upload. Drive requires Google OAuth credentials and `GOOGLE_BACKUP_ENCRYPTION_KEY`, plus optional Picker settings in `.env` (see `.env.example`). Portable encrypted export and import require only `GOOGLE_BACKUP_ENCRYPTION_KEY`. Keep the encryption key in a password manager or another safe place; without the same key, backups cannot be restored. War Room decrypts encrypted backups during import. Plain ZIP imports are rejected.
 - SQLite storage, schema migrations, and a recovery snapshot in a Docker volume.
 
 ## Static browser demo
@@ -63,7 +64,7 @@ Copy `.env.example` to `.env`. Compose uses these local settings:
 
 Compose uses the bind address and host ports for published-port mappings. It passes backend and test settings into the appropriate containers. A fresh `warroom-data` volume starts with an empty database. The backend stores its SQLite database, generated backup, company logos, and attachments in that local Docker volume. Workspace `data/` and `backend/data/` folders are ignored by Git and excluded from Docker build contexts; they are for local state only. Protect the volume and backups as private data.
 
-Use **Data** in the app header to export a portable ZIP backup or import one on another machine. Import replaces all processes and uploaded files currently stored in that War Room. The archive includes a versioned JSON manifest and the uploaded files; keep it private because it may contain interview notes and other personal information.
+Use **Data & Backups** in the app header to download an encrypted `.wrbackup` file or import one on another machine. Import decrypts the file automatically and replaces all processes and uploaded files currently stored in that War Room. The encrypted payload contains the versioned backup archive and uploaded files. Set the same `GOOGLE_BACKUP_ENCRYPTION_KEY` on each installation that needs to export or import backups; keep the key in a password manager. Plain `.zip` imports are not supported.
 
 ## Development and tests
 

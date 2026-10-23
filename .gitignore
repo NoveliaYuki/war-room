@@ -95,3 +95,7 @@ secrets/
 *~
 .system_generated/
 scratch/
+
+# Encrypted backup files contain private application data.
+*.wrbackup
+*.zip.enc

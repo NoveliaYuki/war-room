@@ -37,7 +37,7 @@ describe('application entry point', () => {
         <div id="process-filter-chips"></div><div id="process-filter-panel-footer" hidden><button id="process-filter-clear"></button></div><span id="process-filter-summary"></span><div class="toolbar-view-controls"><div class="process-sort-control"><button id="process-sort-trigger"><span id="process-sort-current"></span></button><div id="process-sort-menu" hidden><button data-sort-mode="added-newest"></button><button data-sort-mode="added-oldest"></button><button data-sort-mode="status-newest"></button><button data-sort-mode="status-oldest"></button><button data-sort-mode="advanced"></button><button data-sort-mode="early"></button><button data-sort-mode="manual"></button></div></div></div>
       </div>
       <div id="header-controls"><div class="search-wrapper"><button class="search-focus"></button><input id="search-input"></div>
-      <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management" role="menuitem"></button></div></div>
+      <div class="more-actions-menu"><button id="toolbar-more-trigger" aria-expanded="false"></button><div id="toolbar-more-options" role="menu" hidden><button id="btn-cv-library" role="menuitem"></button><button id="btn-data-management-menu" role="menuitem"></button></div></div>
       <nav class="board-view-switch"><button id="tab-board" class="board-view-option" aria-pressed="true">Board</button>
       <button id="tab-schedule" class="board-view-option" data-filter="schedule" aria-pressed="false"><span>Schedule</span><span class="tab-count" id="count-meetings"></span></button></nav>
       <span id="count-all"></span><span id="count-waiting"></span><span id="count-ongoing"></span><span id="count-accepted"></span><span id="count-rejected"></span></div>
@@ -601,7 +601,7 @@ describe('application entry point', () => {
 
     const menuToggle = document.querySelector('#btn-menu-toggle');
     const headerControls = document.querySelector('#header-controls');
-    const dataButton = document.querySelector('#btn-data-management');
+    const dataButton = document.querySelector('#btn-data-management-menu');
     menuToggle.click();
 
     expect(menuToggle.getAttribute('aria-expanded')).toBe('true');
@@ -675,12 +675,12 @@ describe('application entry point', () => {
     expect(document.querySelector('.modal-title')).toBeNull();
 
 
-    // Export and import use the same ZIP dialog and confirmation regardless of data adapter.
+    // Encrypted export and import use the same dialog and confirmation regardless of data adapter.
     dataButton.click();
-    expect(document.querySelector('#btn-export-backup').textContent).toContain('ZIP backup');
+    expect(document.querySelector('#btn-export-backup').textContent).toContain('encrypted backup');
     expect(document.querySelector('#btn-import-backup').disabled).toBe(true);
     const fileInput = document.querySelector('#backup-import-file');
-    const backupFile = new File(['zip'], 'backup.zip', { type: 'application/zip' });
+    const backupFile = new File(['encrypted'], 'backup.wrbackup', { type: 'application/octet-stream' });
     Object.defineProperty(fileInput, 'files', { configurable: true, value: [backupFile] });
     fileInput.dispatchEvent(new Event('change'));
     expect(document.querySelector('#btn-import-backup').disabled).toBe(true);
@@ -695,7 +695,7 @@ describe('application entry point', () => {
     dataButton.click();
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:backup'), revokeObjectURL: vi.fn() }));
-    mocks.api.exportBackup.mockResolvedValueOnce(new Blob(['zip']));
+    mocks.api.exportBackup.mockResolvedValueOnce(new Blob(['encrypted'], { type: 'application/octet-stream' }));
     document.querySelector('#btn-export-backup').click();
     await flush();
     expect(anchorClick).toHaveBeenCalled();

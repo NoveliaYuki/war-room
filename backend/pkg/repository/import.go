@@ -168,6 +168,16 @@ func insertImportedJobs(tx *sql.Tx, statements *importStatements, jobs []models.
 			}
 		}
 	}
+	return restoreImportedActivity(tx, jobs)
+}
+
+func restoreImportedActivity(tx *sql.Tx, jobs []models.Job) error {
+	// Child-row insert triggers count as activity; restore the snapshot timestamp last.
+	for _, job := range jobs {
+		if _, err := tx.Exec(`UPDATE jobs SET last_activity_at = ? WHERE id = ?`, importedJobActivityTimestamp(job), job.ID); err != nil {
+			return fmt.Errorf("restore process activity %q: %w", job.ID, err)
+		}
+	}
 	return nil
 }
 

@@ -511,6 +511,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let previousTouchY = 0;
   let isTouchScrolling = false;
   let activePointerType = "mouse";
+  let lastTouchPointerDown = Number.NEGATIVE_INFINITY;
   let initialOrder = [];
 
   function beginHold(e, holdDelay) {
@@ -532,12 +533,12 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
   function onPointerDown(e) {
     if (e.button !== 0) return;
-    if (e.pointerType === "touch") return;
     const isDragHandle = e.target.closest(".btn-card-drag");
     if (e.target.closest("button, a, input, textarea, .btn-card-delete") && !isDragHandle) return;
 
     activePointerType = e.pointerType;
-    beginHold(e, MOUSE_HOLD_DELAY_MS);
+    if (e.pointerType === "touch") lastTouchPointerDown = Date.now();
+    beginHold(e, e.pointerType === "touch" ? TOUCH_HOLD_DELAY_MS : MOUSE_HOLD_DELAY_MS);
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -545,6 +546,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   function onTouchStart(e) {
+    if (Date.now() - lastTouchPointerDown < 100) return;
     if (e.touches.length !== 1 || !e.target.closest(".btn-card-drag")) return;
 
     const touch = e.touches[0];

@@ -12,7 +12,7 @@ const backendApi = {
   getCompanyLogoUrl(companyName, companyDomain, jobId) {
     return `/api/company-logo?company=${encodeURIComponent(companyName)}&domain=${encodeURIComponent(companyDomain || "")}&job_id=${encodeURIComponent(jobId || "")}`;
   },
-  /** Downloads a portable ZIP backup. */
+  /** Downloads an encrypted portable backup. */
   async exportBackup() {
     const res = await fetch("/api/backup/export");
     if (!res.ok) {
@@ -22,7 +22,7 @@ const backendApi = {
     return res.blob();
   },
 
-  /** Imports a portable ZIP backup, replacing the current saved processes. */
+  /** Imports an encrypted backup, decrypting it before replacing saved processes. */
   async importBackup(file, allowEmpty = false) {
     const form = new FormData();
     form.append("backup", file);
@@ -33,6 +33,63 @@ const backendApi = {
       const exception = new Error(error.error || "Failed to import backup");
       exception.requiresEmptyConfirmation = error.requires_confirmation === true;
       throw exception;
+    }
+    return res.json();
+  },
+
+  /** Returns the Google Drive connection status (no tokens). */
+  async getGoogleStatus() {
+    const res = await fetch("/api/google/status");
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.json();
+  },
+
+  /** Lists Drive folders the user can choose as the backup destination. */
+  async getGoogleFolders(query = "") {
+    const res = await fetch(`/api/google/folders?q=${encodeURIComponent(query)}`);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to list Drive folders" }));
+      throw new Error(error.error || "Failed to list Drive folders");
+    }
+    return res.json();
+  },
+
+  /** Returns a short-lived Drive token for the user-invoked Google Picker. */
+  async getGooglePickerToken() {
+    const res = await fetch("/api/google/picker-token", { cache: "no-store" });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to open Drive folder picker" }));
+      throw new Error(error.error || "Failed to open Drive folder picker");
+    }
+    return res.json();
+  },
+
+  /** Saves the chosen Drive backup folder (empty id means Drive root). */
+  async setGoogleFolder(folderId, folderName) {
+    const res = await fetch("/api/google/folder", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_id: folderId, folder_name: folderName }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Failed to save Drive folder" }));
+      throw new Error(error.error || "Failed to save Drive folder");
+    }
+    return res.json();
+  },
+
+  /** Disconnects the single connected Google account. */
+  async disconnectGoogle() {
+    const res = await fetch("/api/google/disconnect", { method: "POST" });
+    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+    return res.json();
+  },
+
+  /** Uploads a Drive backup immediately. */
+  async backupNowGoogle() {
+    const res = await fetch("/api/google/backup", { method: "POST" });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Drive backup failed" }));
+      throw new Error(error.error || "Drive backup failed");
     }
     return res.json();
   },

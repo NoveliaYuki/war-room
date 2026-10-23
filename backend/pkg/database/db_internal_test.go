@@ -410,6 +410,50 @@ func TestConfigureJournalModeRejectsUnexpectedFallback(t *testing.T) {
 	}
 }
 
+func TestFinalMigrationReportsInspectionAndExecutionFailures(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY, status_changed_at INTEGER, updated_at INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(&secondQueryFailureExecutor{migrationTestExecutor: migrationTestExecutor{db: db}, failAt: 2}); err == nil {
+		t.Fatal("failed updated_at inspection should abort the migration")
+	}
+	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failExec: "UPDATE jobs SET status_changed_at"}); err == nil {
+		t.Fatal("failed status timestamp initialization should abort the migration")
+	}
+	if err := migrateSearchPeriods(migrationTestExecutor{db: db, failExec: "CREATE TABLE search_periods"}); err == nil {
+		t.Fatal("failed search period migration statement should abort the migration")
+	}
+
+	closedDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "closed.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closedDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOpenEndedSearchPeriodMigration(closedDB, 15); err == nil {
+		t.Fatal("closed database should fail to start the open-ended period migration")
+	}
+	if err := applyWaitingStatusMigration(closedDB, 16); err == nil {
+		t.Fatal("closed database should fail to start the waiting status migration")
+	}
+}
+
+type secondQueryFailureExecutor struct {
+	migrationTestExecutor
+	failAt int
+	calls  int
+}
+
+func (executor *secondQueryFailureExecutor) Query(query string, args ...any) (*sql.Rows, error) {
+	executor.calls++
+	if executor.calls == executor.failAt {
+		return nil, errors.New("injected second query failure")
+	}
+	return executor.migrationTestExecutor.Query(query, args...)
+}
+
 func TestInitDBReturnsSchemaExecutionErrors(t *testing.T) {
 	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "readonly.db")}
 	setup, err := sql.Open("sqlite", sqliteDataSource(cfg.DBPath))
@@ -495,6 +539,21 @@ func TestRestoreRecoveryCVSnapshotRollsBackFailedWrites(t *testing.T) {
 	}
 	if err := restoreRecoverySnapshot(sequenceDB, models.RecoverySnapshot{Jobs: []models.Job{}}, t.TempDir(), directory); err == nil {
 		t.Fatal("missing sequence table should fail restore")
+	}
+}
+
+func TestRestoreRecoverySnapshotRollsBackInvalidSearchPeriod(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	snapshot := models.RecoverySnapshot{
+		Jobs:          []models.Job{},
+		SearchPeriods: []models.SearchPeriod{{ID: "invalid-period", Name: "", StartDate: "2026-01-01", EndDate: ""}},
+	}
+	if err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), directory); err == nil {
+		t.Fatal("invalid search period should abort snapshot restoration")
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM search_periods").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("search period count after failed restore=%d err=%v", count, err)
 	}
 }
 
@@ -1424,6 +1483,36 @@ func TestJobActivityTimestampUsesStoredThenLegacyTimestamps(t *testing.T) {
 	}
 	if got := jobActivityTimestamp(models.Job{}); got < time.Now().Unix()-2 {
 		t.Fatalf("empty activity timestamp=%d, want current time", got)
+	}
+}
+
+func TestRecoveryPreservesActivityAfterRestoringChildRecords(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	job := models.Job{ID: "activity-recovery", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		CreatedAt: 100, UpdatedAt: 200, LastActivityAt: 300,
+		Stages: []models.Stage{{ID: "recovered-stage", StageType: "HR", Status: models.StageStatusCurrent,
+			Questions: []models.Question{{ID: "recovered-question", Question: "Example question"}}}}}
+	if err := restoreJobs(db, []models.Job{job}, directory); err != nil {
+		t.Fatal(err)
+	}
+	var activity int64
+	if err := db.QueryRow(`SELECT last_activity_at FROM jobs WHERE id = ?`, job.ID).Scan(&activity); err != nil || activity != job.LastActivityAt {
+		t.Fatalf("recovery changed last activity: got=%d err=%v", activity, err)
+	}
+}
+
+func TestActivityRestorationFailureRollsBackRecovery(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	if _, err := db.Exec(`CREATE TRIGGER reject_recovery_activity BEFORE UPDATE OF last_activity_at ON jobs WHEN NEW.last_activity_at = 300 BEGIN SELECT RAISE(ABORT, 'rejected activity restoration'); END`); err != nil {
+		t.Fatal(err)
+	}
+	job := models.Job{ID: "failed-activity", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing, LastActivityAt: 300}
+	if err := restoreJobs(db, []models.Job{job}, directory); err == nil {
+		t.Fatal("activity restoration failure must abort recovery")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed recovery left partial records: count=%d err=%v", count, err)
 	}
 }
 

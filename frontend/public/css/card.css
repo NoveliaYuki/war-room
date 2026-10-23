@@ -128,6 +128,7 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
 
 .process-filter-control { position: static; display: flex; align-items: center; gap: 5px; min-width: 0; }
 .toolbar-view-controls { position: relative; display: contents; }
+.process-toolbar #btn-new-process { justify-self: end; width: auto; }
 .process-toolbar[hidden] { display: none; }
 .search-period-control { position: relative; display: flex; flex-direction: column; align-items: stretch; width: 100%; min-width: 0; }
 .search-period-control[hidden] { display: none; }
@@ -302,11 +303,6 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
   .process-sort-control { grid-column: 3; grid-row: 1; justify-self: end; }
 }
 .process-manage-technologies { min-height: 30px; padding: 5px 8px; font-size: 12px; }
-.settings-data-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 14px 0 4px; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); }
-.settings-data-footer > div { display: grid; gap: 3px; }
-.settings-data-footer strong { color: var(--text-primary); font-size: 12px; }
-.settings-data-footer span { color: var(--text-muted); font-size: 11px; }
-.settings-data-footer .btn-secondary { flex: 0 0 auto; }
 .process-sort-trigger { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 6px 8px; border: 0; background: transparent; color: var(--text-muted); font: 500 13px var(--font-sans); cursor: pointer; }
 .process-sort-trigger:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
 .process-sort-trigger:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
@@ -446,7 +442,6 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
   .process-filter-arrangements label,
   .process-filter-referral label { gap: 5px; padding-inline: 4px; font-size: 12px; }
   .process-filter-technology-options label { min-height: 44px; }
-  .settings-data-footer { align-items: flex-start; }
 
   .search-period-manager { gap: 16px; padding: 14px 12px 18px; }
   .search-period-form { gap: 14px; padding: 14px; }

@@ -123,8 +123,8 @@ describe('api', () => {
     });
   }
 
-  it('exports a ZIP and reports an export error', async () => {
-    const archive = new Blob(['zip'], { type: 'application/zip' });
+  it('downloads an encrypted backup and reports an export error', async () => {
+    const archive = new Blob(['encrypted'], { type: 'application/octet-stream' });
     global.fetch.mockResolvedValueOnce({ ok: true, blob: async () => archive });
     expect(await api.exportBackup()).toBe(archive);
     expect(global.fetch).toHaveBeenLastCalledWith('/api/backup/export');
@@ -136,8 +136,8 @@ describe('api', () => {
     await expect(api.exportBackup()).rejects.toThrow('Failed to create backup');
   });
 
-  it('sends the selected ZIP and surfaces empty-backup confirmation', async () => {
-    const archive = new File(['zip'], 'backup.zip', { type: 'application/zip' });
+  it('sends the selected encrypted backup and surfaces empty-backup confirmation', async () => {
+    const archive = new File(['encrypted'], 'backup.wrbackup', { type: 'application/octet-stream' });
     global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
     expect(await api.importBackup(archive)).toEqual({ success: true });
     const request = global.fetch.mock.lastCall[1];
@@ -213,6 +213,52 @@ describe('api', () => {
 
   it('uses a shared logo URL contract for the avatar component', () => {
     expect(api.getCompanyLogoUrl('Acme & Sons', 'acme.test', 'job/1')).toBe('/api/company-logo?company=Acme%20%26%20Sons&domain=acme.test&job_id=job%2F1');
+  });
+
+  it('covers the Google Drive backup API', async () => {
+    mockResponse({ configured: true, connected: true, email: 'a@example.com' });
+    await expect(api.getGoogleStatus()).resolves.toEqual({ configured: true, connected: true, email: 'a@example.com' });
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/google/status');
+
+    mockResponse({ access_token: 'short-lived-token' });
+    await expect(api.getGooglePickerToken()).resolves.toEqual({ access_token: 'short-lived-token' });
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/google/picker-token', { cache: 'no-store' });
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({ error: 'Drive unavailable' }) });
+    await expect(api.getGooglePickerToken()).rejects.toThrow('Drive unavailable');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) });
+    await expect(api.getGooglePickerToken()).rejects.toThrow('Failed to open Drive folder picker');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: () => Promise.reject(new Error('bad json')) });
+    await expect(api.getGooglePickerToken()).rejects.toThrow('Failed to open Drive folder picker');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: () => Promise.reject(new Error('bad json')) });
+    await expect(api.getGoogleFolders('')).rejects.toThrow('Failed to list Drive folders');
+
+    mockResponse([{ id: 'folder-1', name: 'Backups' }]);
+    await expect(api.getGoogleFolders('Back')).resolves.toEqual([{ id: 'folder-1', name: 'Backups' }]);
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/google/folders?q=Back');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+    await expect(api.getGoogleFolders()).rejects.toThrow('Failed to list Drive folders');
+
+    mockResponse({ connected: true, folder_id: 'folder-1' });
+    await expect(api.setGoogleFolder('folder-1', 'Backups')).resolves.toEqual({ connected: true, folder_id: 'folder-1' });
+    expect(global.fetch.mock.lastCall[0]).toBe('/api/google/folder');
+    expect(global.fetch.mock.lastCall[1].body).toBe(JSON.stringify({ folder_id: 'folder-1', folder_name: 'Backups' }));
+
+    mockResponse({ success: true });
+    await expect(api.disconnectGoogle()).resolves.toEqual({ success: true });
+
+    mockResponse({ connected: true, last_status: 'ok' });
+    await expect(api.backupNowGoogle()).resolves.toEqual({ connected: true, last_status: 'ok' });
+
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: 'no google account connected' }) });
+    await expect(api.getGoogleFolders()).rejects.toThrow('no google account connected');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+    await expect(api.setGoogleFolder('', '')).rejects.toThrow('Failed to save Drive folder');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) });
+    await expect(api.backupNowGoogle()).rejects.toThrow('Drive backup failed');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+    await expect(api.getGoogleStatus()).rejects.toThrow('HTTP error: 503');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+    await expect(api.disconnectGoogle()).rejects.toThrow('HTTP error: 503');
   });
 
   it('gives attachment rows a download URL from the selected data source', async () => {

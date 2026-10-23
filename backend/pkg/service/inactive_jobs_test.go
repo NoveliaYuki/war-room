@@ -16,7 +16,7 @@ func TestInactiveWaitingSchedulerChecksOnStartup(t *testing.T) {
 	if err := fixture.repo.InsertJob(job); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	now := time.Now()
 	if _, err := fixture.db.Exec(`UPDATE jobs SET last_activity_at = ? WHERE id = ?`, now.Add(-30*24*time.Hour).Unix(), job.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -27,6 +27,33 @@ func TestInactiveWaitingSchedulerChecksOnStartup(t *testing.T) {
 	if err != nil || stored.Status != models.StatusRejected {
 		t.Fatalf("startup sweep status=%q err=%v, want rejected", stored.Status, err)
 	}
+}
+
+func TestInactiveWaitingSchedulerTriggersBackupAfterAutomaticRejection(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	job := &models.Job{ID: "scheduler-backup", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}
+	if err := fixture.repo.InsertJob(job); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	if _, err := fixture.db.Exec(`UPDATE jobs SET last_activity_at = ? WHERE id = ?`, now.Add(-30*24*time.Hour).Unix(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	StartInactiveWaitingSchedulerWithCallback(ctx, fixture.repo, time.Hour, func() { calls++ })
+	if calls != 1 {
+		t.Fatalf("automatic status change backup calls=%d, want 1", calls)
+	}
+}
+
+func TestInactiveWaitingSchedulerPublicEntry(t *testing.T) {
+	fixture := newAttachmentOwnerFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	StartInactiveWaitingScheduler(ctx, fixture.repo, time.Hour)
 }
 
 func TestInactiveWaitingSchedulerRepeatsAfterInterval(t *testing.T) {
