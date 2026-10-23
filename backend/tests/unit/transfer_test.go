@@ -352,7 +352,7 @@ func sendBackupImport(t *testing.T, mux *http.ServeMux, archive []byte, allowEmp
 	t.Helper()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	file, err := form.CreateFormFile("backup", "backup.zip")
+	file, err := form.CreateFormFile("backup", "backup.wrbackup")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,14 +375,14 @@ func sendBackupImport(t *testing.T, mux *http.ServeMux, archive []byte, allowEmp
 }
 
 func TestBackupHandlers(t *testing.T) {
-	mux, jobs, _, _ := newCoverageApp(t)
+	mux, jobs, _, cfg := newCoverageApp(t)
 	if _, err := jobs.CreateJob(models.CreateJobInput{CompanyName: "Example", PositionTitle: "Engineer"}); err != nil {
 		t.Fatal(err)
 	}
 	exportRequest := httptest.NewRequest(http.MethodGet, "/api/backup/export", nil)
 	exportResponse := httptest.NewRecorder()
 	mux.ServeHTTP(exportResponse, exportRequest)
-	if exportResponse.Code != http.StatusOK || exportResponse.Header().Get("Content-Type") != "application/zip" {
+	if exportResponse.Code != http.StatusOK || exportResponse.Header().Get("Content-Type") != "application/octet-stream" || !bytes.HasPrefix(exportResponse.Body.Bytes(), []byte("WRBACKUP\x01")) {
 		t.Fatalf("export status = %d", exportResponse.Code)
 	}
 	if response := sendBackupImport(t, mux, exportResponse.Body.Bytes(), false); response.Code != http.StatusOK {
@@ -397,7 +397,16 @@ func TestBackupHandlers(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid form status = %d", response.Code)
 	}
+	checkEmptyBackupImport(t, mux, cfg)
+}
+
+func checkEmptyBackupImport(t *testing.T, mux *http.ServeMux, cfg *config.Config) {
+	t.Helper()
 	empty := makeTestArchive(t, testArchiveEntry{"manifest.json", testManifest(t, []models.Job{})})
+	empty, err := service.NewDriveBackupService(cfg, nil).EncryptBackup(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if response := sendBackupImport(t, mux, empty, false); response.Code != http.StatusConflict {
 		t.Fatalf("unconfirmed empty import = %d", response.Code)
 	}

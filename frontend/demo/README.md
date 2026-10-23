@@ -6,4 +6,4 @@ For Cloudflare Pages, set the project root to `frontend`, build command to `npm 
 
 Company logos used by the sample records are bundled in `assets/logos`, so they load as static assets with no external image requests. Demo processes and imported logos are saved in local storage, while uploaded files are saved in IndexedDB. Clear `war-room-demo-data-v13` and `war-room-demo-company-logos-v1` in local storage and `war-room-demo-files-v1` in IndexedDB to restore the initial sample data.
 
-The static demo uses the same ZIP backup format and Data dialog as the local app. Backups include processes, company icons, and uploaded files. Sample edits remain in the current browser until exported or cleared.
+The static demo keeps sample edits in the current browser and does not offer backup import or export. Encrypted backup transfer is available only in the local War Room app, which has the configured encryption key.

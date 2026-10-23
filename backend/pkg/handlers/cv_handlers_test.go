@@ -28,7 +28,8 @@ func newCVHandlerFixture(t *testing.T) cvHandlerFixture {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{DataDir: dir, DBPath: filepath.Join(dir, "db.sqlite"), BackupPath: filepath.Join(dir, "backup.json"),
-		AttachmentsDir: filepath.Join(dir, "attachments"), CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos")}
+		AttachmentsDir: filepath.Join(dir, "attachments"), CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos"),
+		GoogleBackupEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="}
 	db, err := database.InitDB(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +46,9 @@ func newCVHandlerFixture(t *testing.T) cvHandlerFixture {
 	if err := repo.InsertJob(job); err != nil {
 		t.Fatal(err)
 	}
-	return cvHandlerFixture{handler: NewHandler(service.NewJobService(repo, cfg), nil, cfg), repo: repo, db: db}
+	handler := NewHandler(service.NewJobService(repo, cfg), nil, cfg)
+	handler.SetDriveService(service.NewDriveBackupService(cfg, nil))
+	return cvHandlerFixture{handler: handler, repo: repo, db: db}
 }
 
 func TestCVVersionHandlersListUploadDownloadAssignDelete(t *testing.T) {

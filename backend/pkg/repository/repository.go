@@ -151,14 +151,19 @@ func buildJobsQuery(status, search string) (string, []interface{}) {
 	}
 
 	if searchTrim := strings.TrimSpace(search); searchTrim != "" {
-		wildcard := "%" + searchTrim + "%"
-		query += " AND (company_name LIKE ? OR position_title LIKE ? OR keyword_note LIKE ? OR recruiter_name LIKE ? OR (is_referral = 1 AND 'referral' LIKE ?))"
+		wildcard := "%" + escapeLikeLiteral(searchTrim) + "%"
+		query += " AND (company_name LIKE ? ESCAPE '\\' OR position_title LIKE ? ESCAPE '\\' OR keyword_note LIKE ? ESCAPE '\\' OR recruiter_name LIKE ? ESCAPE '\\' OR (is_referral = 1 AND 'referral' LIKE ? ESCAPE '\\'))"
 		args = append(args, wildcard, wildcard, wildcard, wildcard, wildcard)
 	}
 
 	query += " ORDER BY jobs.status_changed_at DESC, jobs.created_at DESC, jobs.order_index DESC"
 
 	return query, args
+}
+
+// escapeLikeLiteral neutralizes LIKE wildcards in user search text.
+func escapeLikeLiteral(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
 }
 
 func scanJobs(rows *sql.Rows, repo *Repository) ([]models.Job, error) {

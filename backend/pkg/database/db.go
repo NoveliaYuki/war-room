@@ -1113,7 +1113,20 @@ func restoreRecoverySnapshot(db *sql.DB, snapshot models.RecoverySnapshot, attac
 			return err
 		}
 	}
+	if err := restoreRecoveryActivity(tx, snapshot.Jobs); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func restoreRecoveryActivity(tx *sql.Tx, jobs []models.Job) error {
+	// Child-row insert triggers count as activity; restore the snapshot timestamp last.
+	for _, job := range jobs {
+		if _, err := tx.Exec(`UPDATE jobs SET last_activity_at = ? WHERE id = ?`, jobActivityTimestamp(job), job.ID); err != nil {
+			return fmt.Errorf("restore job activity %q: %w", job.ID, err)
+		}
+	}
+	return nil
 }
 
 func restoreTechnologyCatalog(tx *sql.Tx, technologies []models.Technology) error {

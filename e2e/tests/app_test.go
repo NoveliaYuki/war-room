@@ -274,6 +274,7 @@ type toolbarLayout struct {
 	Header               layoutBox `json:"header"`
 	Theme                layoutBox `json:"theme"`
 	Add                  layoutBox `json:"add"`
+	Account              layoutBox `json:"account"`
 	FilterHeight         float64   `json:"filterHeight"`
 	SortHeight           float64   `json:"sortHeight"`
 	PeriodInToolbar      bool      `json:"periodInToolbar"`
@@ -1171,6 +1172,7 @@ func readToolbarLayout(t *testing.T, page playwright.Page, width int) toolbarLay
 	    toolbar: box(".process-toolbar"),
 	    header: box(".header-inner"),
 	    theme: box("#btn-theme-toggle"),
+	    account: box("#btn-account-menu"),
 	    add: box("#btn-new-process"),
 	    filterHeight: box("#process-filter-trigger").height,
 		sortHeight: box("#process-sort-trigger").height,
@@ -1269,8 +1271,11 @@ func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertHeaderActionAlignment(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	if width > 1000 && abs(layout.Header.Right-layout.Add.Right) > 2 {
-		t.Errorf("desktop Add action should align to the header's right inset (header %.1fpx, Add %.1fpx)", layout.Header.Right, layout.Add.Right)
+	if width > 1000 && abs(layout.Header.Right-layout.Account.Right) > 2 {
+		t.Errorf("desktop account menu should align to the header's right inset (header %.1fpx, account %.1fpx)", layout.Header.Right, layout.Account.Right)
+	}
+	if width > 1000 && (layout.Add.X < layout.Toolbar.X-1 || layout.Add.Right > layout.Toolbar.Right+1) {
+		t.Errorf("desktop Add action should stay inside the board toolbar (toolbar %.1f-%.1fpx, Add %.1f-%.1fpx)", layout.Toolbar.X, layout.Toolbar.Right, layout.Add.X, layout.Add.Right)
 	}
 }
 
@@ -1518,7 +1523,7 @@ func TestPhoneViewportsDoNotClipCardsOrControls(t *testing.T) {
 		valid, err := page.Evaluate(`() => {
 			const card = document.querySelector(".process-card");
 			const menu = document.querySelector("#btn-menu-toggle");
-			const dataManagement = document.querySelector("#btn-data-management");
+			const dataManagement = document.querySelector("#btn-account-menu");
 			const cardRect = card?.getBoundingClientRect();
 			const overflowingControl = card && [...card.querySelectorAll("button, a, input, select")].some(control => {
 				const rect = control.getBoundingClientRect();
@@ -1857,8 +1862,15 @@ func TestSecurityHeadersBlockExternalImages(t *testing.T) {
 		}
 	}()
 	policy := response.Header.Get("Content-Security-Policy")
-	if !strings.Contains(policy, "img-src 'self' data:") || strings.Contains(policy, "https:") {
-		t.Fatalf("image policy allows unneeded external requests: %q", policy)
+	imagePolicy := ""
+	for _, directive := range strings.Split(policy, ";") {
+		if strings.HasPrefix(strings.TrimSpace(directive), "img-src ") {
+			imagePolicy = strings.TrimSpace(directive)
+			break
+		}
+	}
+	if imagePolicy != "img-src 'self' data: https://*.googleusercontent.com" {
+		t.Fatalf("image policy should allow only required Google Picker thumbnails: %q", policy)
 	}
 }
 
@@ -2208,7 +2220,10 @@ func reopenBackupDuringDetailClose(t *testing.T, page playwright.Page, card play
 
 func openBackupDialog(t *testing.T, page playwright.Page) playwright.Locator {
 	t.Helper()
-	if err := page.Locator("#btn-data-management").Click(); err != nil {
+	if err := page.Locator("#btn-account-menu").Click(); err != nil {
+		t.Fatalf("open account menu: %v", err)
+	}
+	if err := page.Locator("#btn-data-management-menu").Click(); err != nil {
 		t.Fatalf("open data and backups: %v", err)
 	}
 	importButton := page.Locator("#btn-import-backup")

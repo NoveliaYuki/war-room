@@ -30,6 +30,38 @@ func TestImportedJobActivityTimestampUsesAvailableTimestamp(t *testing.T) {
 	}
 }
 
+func TestArchiveImportPreservesActivityAfterRestoringChildRecords(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	job := models.Job{ID: "activity-restore", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, RecruiterType: models.RecruiterNone, CreatedAt: 100, UpdatedAt: 200, LastActivityAt: 300,
+		Stages: []models.Stage{{ID: "activity-stage", StageType: "HR", Status: models.StageStatusCurrent,
+			Questions: []models.Question{{ID: "activity-question", Question: "Example question"}}}}}
+	if err := repo.ReplaceAllJobs([]models.Job{job}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := repo.GetJobByID(job.ID)
+	if err != nil || loaded.LastActivityAt != job.LastActivityAt || loaded.UpdatedAt != job.UpdatedAt {
+		t.Fatalf("import changed activity timestamps: err=%v", err)
+	}
+}
+
+func TestActivityRestorationFailureRollsBackArchiveImport(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "kept-job")
+	if _, err := repo.db.Exec(`CREATE TRIGGER reject_activity_restore BEFORE UPDATE OF last_activity_at ON jobs WHEN NEW.last_activity_at = 300 BEGIN SELECT RAISE(ABORT, 'rejected activity restoration'); END`); err != nil {
+		t.Fatal(err)
+	}
+	job := models.Job{ID: "incoming-job", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, RecruiterType: models.RecruiterNone, LastActivityAt: 300}
+	if err := repo.ReplaceAllJobs([]models.Job{job}); err == nil {
+		t.Fatal("activity restoration failure must abort import")
+	}
+	jobs, err := repo.GetAllJobs("", "")
+	if err != nil || len(jobs) != 1 || jobs[0].ID != "kept-job" {
+		t.Fatalf("failed activity restore replaced saved records: count=%d err=%v", len(jobs), err)
+	}
+}
+
 func TestReplaceAllJobsWithCVRestoresGappedSequenceAndSelection(t *testing.T) {
 	repo := newImportRepositoryFixture(t)
 	versions := []models.CVVersion{{ID: "cv-1", Version: 1, OriginalName: "old.pdf", StoredFilename: "hash-1", FileSize: 3, SHA256: "hash-1"},
@@ -70,6 +102,17 @@ func TestHistoryReadFailuresAreReturnedForListsAndDetails(t *testing.T) {
 	}
 	if _, err := repo.GetJobByID("history-read-error"); err == nil {
 		t.Fatal("job details ignored unavailable history")
+	}
+}
+
+func TestJobHistoryReadRejectsMalformedTimestamp(t *testing.T) {
+	repo := newImportRepositoryFixture(t)
+	insertRepositoryTestJob(t, repo, "malformed-history-job")
+	if _, err := repo.db.Exec(`INSERT INTO job_history (job_id, occurred_at, action) VALUES ('malformed-history-job', 'invalid', 'created')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.GetJobByID("malformed-history-job"); err == nil {
+		t.Fatal("job detail read accepted a malformed history timestamp")
 	}
 }
 

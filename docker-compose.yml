@@ -12,6 +12,13 @@ services:
       WARROOM_DATA_DIR: /data
       LOGO_LOOKUP_ENABLED: "${LOGO_LOOKUP_ENABLED:-false}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      GOOGLE_BACKUP_ENCRYPTION_KEY: "${GOOGLE_BACKUP_ENCRYPTION_KEY:-}"
+      GOOGLE_PICKER_API_KEY: "${GOOGLE_PICKER_API_KEY:-}"
+      GOOGLE_CLOUD_PROJECT_NUMBER: "${GOOGLE_CLOUD_PROJECT_NUMBER:-}"
+      GOOGLE_REDIRECT_URI: "${GOOGLE_REDIRECT_URI:-http://localhost:4040/api/google/callback}"
+      GOOGLE_FRONTEND_URL: "${GOOGLE_FRONTEND_URL:-http://localhost:3000}"
     volumes:
       - warroom-data:/data
     healthcheck:

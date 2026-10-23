@@ -42,6 +42,7 @@ func newCoverageDB(t *testing.T) (*http.ServeMux, *service.JobService, *reposito
 	cfg := &config.Config{
 		DataDir: dir, DBPath: filepath.Join(dir, "coverage.db"), BackupPath: filepath.Join(dir, "backup.json"),
 		AttachmentsDir: filepath.Join(dir, "attachments"), LogosDir: filepath.Join(dir, "logos"),
+		GoogleBackupEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
 	}
 	for _, path := range []string{cfg.AttachmentsDir, cfg.LogosDir} {
 		if err := os.MkdirAll(path, 0700); err != nil {
@@ -57,7 +58,9 @@ func newCoverageDB(t *testing.T) (*http.ServeMux, *service.JobService, *reposito
 	jobs := service.NewJobService(repo, cfg)
 	logos := service.NewLogoService(cfg)
 	mux := http.NewServeMux()
-	handlers.NewHandler(jobs, logos, cfg).RegisterRoutes(mux)
+	handler := handlers.NewHandler(jobs, logos, cfg)
+	handler.SetDriveService(service.NewDriveBackupService(cfg, jobs.ExportArchive))
+	handler.RegisterRoutes(mux)
 	return mux, jobs, repo, cfg, db
 }
 
@@ -313,6 +316,27 @@ func TestWaitingStatusFilteringAndCounts(t *testing.T) {
 	counts, err := repo.GetJobCounts()
 	if err != nil || counts.Waiting != 1 || counts.All != 1 {
 		t.Fatalf("counts=%+v err=%v", counts, err)
+	}
+}
+
+func TestSearchTreatsWildcardsAsLiterals(t *testing.T) {
+	_, _, repo, _, db := newCoverageDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	for _, job := range []*models.Job{
+		{ID: "percent-job", CompanyName: "100% Remote Co", PositionTitle: "Engineer", Status: models.StatusOngoing, SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone},
+		{ID: "plain-job", CompanyName: "Plain Co", PositionTitle: "Designer", Status: models.StatusOngoing, SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone},
+	} {
+		if err := repo.InsertJob(job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	jobs, err := repo.GetAllJobs("", "100%")
+	if err != nil || len(jobs) != 1 || jobs[0].ID != "percent-job" {
+		t.Fatalf("literal percent search=%+v err=%v", jobs, err)
+	}
+	jobs, err = repo.GetAllJobs("", "_")
+	if err != nil || len(jobs) != 0 {
+		t.Fatalf("literal underscore search=%+v err=%v", jobs, err)
 	}
 }
 

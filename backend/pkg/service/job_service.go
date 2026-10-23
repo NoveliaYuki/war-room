@@ -22,9 +22,19 @@ import (
 
 // JobService applies business rules to jobs, stages, questions, and attachments.
 type JobService struct {
-	repo       *repository.Repository
-	cfg        *config.Config
-	mirrorLock sync.Mutex
+	repo         *repository.Repository
+	cfg          *config.Config
+	mirrorLock   sync.Mutex
+	driveTrigger func()
+}
+
+// SetDriveTrigger registers the backup hook for job creation and status changes.
+func (s *JobService) SetDriveTrigger(trigger func()) { s.driveTrigger = trigger }
+
+func (s *JobService) notifyDriveBackup() {
+	if s.driveTrigger != nil {
+		s.driveTrigger()
+	}
 }
 
 // ErrInvalidAttachmentOwner indicates that an attachment references a missing or unrelated job or stage.
@@ -132,6 +142,7 @@ func (s *JobService) CreateJob(input models.CreateJobInput) (*models.Job, error)
 		return nil, err
 	}
 	s.mirrorAfterMutation()
+	s.notifyDriveBackup()
 	return s.GetFullJobDetails(job.ID)
 }
 
@@ -401,14 +412,30 @@ func (s *JobService) UpdateJob(id string, input models.UpdateJobInput) (*models.
 	if err := s.repo.UpdateJob(id, fields); err != nil {
 		return nil, err
 	}
-	if input.TechnologyIDs != nil {
-		if err := s.repo.SetJobTechnologies(id, input.TechnologyIDs); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidField, err)
-		}
+	statusChanged := input.Status != nil && *input.Status != current.Status
+	if err := s.updateJobTechnologies(id, input.TechnologyIDs, statusChanged); err != nil {
+		return nil, err
 	}
 
 	s.mirrorAfterMutation()
+	if statusChanged {
+		s.notifyDriveBackup()
+	}
 	return s.GetFullJobDetails(id)
+}
+
+func (s *JobService) updateJobTechnologies(id string, technologyIDs []string, statusChanged bool) error {
+	if technologyIDs == nil {
+		return nil
+	}
+	if err := s.repo.SetJobTechnologies(id, technologyIDs); err != nil {
+		if statusChanged {
+			s.mirrorAfterMutation()
+			s.notifyDriveBackup()
+		}
+		return fmt.Errorf("%w: %v", ErrInvalidField, err)
+	}
+	return nil
 }
 
 func (s *JobService) validateJobUpdate(input models.UpdateJobInput) error {
@@ -868,6 +895,9 @@ func (s *JobService) CreateStage(input models.CreateStageInput) (*models.Stage, 
 		return nil, err
 	}
 	s.mirrorAfterMutation()
+	if orderIdx == 0 {
+		s.notifyDriveBackup()
+	}
 	return s.repo.GetStageByID(stg.ID)
 }
 
