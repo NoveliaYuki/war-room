@@ -1,0 +1,815 @@
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  api: {
+    getCompanyLogoUrl: vi.fn((company) => `/api/company-logo?company=${encodeURIComponent(company)}`),
+    updateJob: vi.fn(),
+    deleteJob: vi.fn(),
+    reorderJobs: vi.fn(),
+  },
+  openWithFlip: vi.fn(),
+  openDetailModal: vi.fn(),
+  confirmAction: vi.fn(),
+  inlineEditors: [],
+  toast: vi.fn(),
+}));
+
+vi.mock('../../public/js/api.js', () => ({ api: mocks.api }));
+vi.mock('../../public/js/flip.js', () => ({ openWithFlip: mocks.openWithFlip }));
+vi.mock('../../public/js/components/detailModal.js', () => ({ openDetailModal: mocks.openDetailModal }));
+vi.mock('../../public/js/utils/toast.js', () => ({ showToast: mocks.toast }));
+vi.mock('../../public/js/utils/confirmDialog.js', () => ({ confirmAction: mocks.confirmAction }));
+vi.mock('../../public/js/inlineEdit.js', () => ({
+  makeInlineEditable: (element, options) => mocks.inlineEditors.push({ element, options }),
+  parseSalaryInput: (value) => ({ salary_input: value }),
+}));
+
+import { formatSalaryShort, renderCardGrid } from '../../public/js/components/cardGrid.js';
+
+const makeJob = (overrides = {}) => ({
+  id: 'job-1',
+  company_name: 'Acme',
+  avatar_seed: 'acme',
+  company_domain: 'acme.test',
+  position_title: 'Engineer',
+  status: 'active',
+  salary_type: 'limited',
+  salary_min: 37000,
+  salary_max: 90000,
+  salary_currency: 'EUR',
+  is_referral: false,
+  recruiter_type: 'none',
+  keyword_note: 'Platform',
+  current_stage_title: '',
+  current_stage_index: 0,
+  total_stages_count: 0,
+  ...overrides,
+});
+
+function setup(jobs = [makeJob()], options = {}) {
+  const container = document.createElement('main');
+  const modal = document.createElement('section');
+  const backdrop = document.createElement('div');
+  modal.id = 'detail-modal';
+  backdrop.id = 'modal-backdrop';
+  document.body.append(container, modal, backdrop);
+  renderCardGrid(
+    container,
+    jobs,
+    Object.hasOwn(options, 'modal') ? options.modal : modal,
+    Object.hasOwn(options, 'backdrop') ? options.backdrop : backdrop,
+    options.refresh ?? null,
+    options.sortMode ?? 'manual',
+    { groupByStatus: options.groupByStatus ?? false },
+  );
+  return { container, card: container.querySelector('.process-card'), modal, backdrop };
+}
+
+describe('status-grouped process cards', () => {
+  it('renders selected statuses in accepted, ongoing, waiting, rejected order', () => {
+    const { container } = setup([
+      makeJob({ id: 'waiting', status: 'waiting' }),
+      makeJob({ id: 'rejected', status: 'rejected' }),
+      makeJob({ id: 'accepted', status: 'accepted' }),
+      makeJob({ id: 'ongoing', status: 'ongoing' }),
+    ], { groupByStatus: true });
+
+    expect([...container.querySelectorAll('.process-status-group-heading')].map((item) => item.dataset.status))
+      .toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
+    expect([...container.querySelectorAll('.process-card .status-pill')].map((item) => item.textContent))
+      .toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
+    expect(container.querySelectorAll('.quick-add-card')).toHaveLength(4);
+    const children = [...container.children];
+    const headingIndexes = children.map((item, index) => item.matches('.process-status-group-heading') ? index : -1).filter((index) => index >= 0);
+    headingIndexes.forEach((index, groupIndex) => {
+      const nextHeadingIndex = headingIndexes[groupIndex + 1] ?? children.length;
+      expect(children.slice(index + 1, nextHeadingIndex).at(-1)).toMatchObject({ className: 'quick-add-card' });
+    });
+  });
+});
+
+function pointerEvent(type, { x = 10, y = 10, button = 0, pointerType = 'mouse', target } = {}) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    clientX: { value: x },
+    clientY: { value: y },
+    button: { value: button },
+    pointerType: { value: pointerType },
+    pointerId: { value: 1 },
+  });
+  if (target) target.dispatchEvent(event);
+  return event;
+}
+
+function touchEvent(type, { x = 10, y = 10, touchCount = 1 } = {}) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  const touch = { clientX: x, clientY: y };
+  Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : Array.from({ length: touchCount }, () => touch) });
+  return event;
+}
+
+describe('cardGrid', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    mocks.api.updateJob.mockReset();
+    mocks.api.deleteJob.mockReset();
+    mocks.api.reorderJobs.mockReset();
+    mocks.api.reorderJobs.mockResolvedValue(undefined);
+    mocks.openWithFlip.mockReset();
+    mocks.openDetailModal.mockReset();
+    mocks.toast.mockReset();
+    mocks.confirmAction.mockReset().mockResolvedValue(true);
+    mocks.inlineEditors.length = 0;
+    vi.useRealTimers();
+    window.showToast = undefined;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete window.showToast;
+  });
+
+  it('shows every canonical technology as an individually readable card chip', () => {
+    const { card } = setup([makeJob({ technologies: [
+      { id: 'react', name: 'React' },
+      { id: 'kubernetes', name: 'Kubernetes' },
+      { id: 'typescript', name: 'TypeScript' },
+    ] })]);
+    expect(card.querySelector('.card-summary-label').textContent).toContain('Role highlights');
+    expect([...card.querySelectorAll('.card-technology-chip')].map((chip) => chip.textContent)).toEqual(['React', 'Kubernetes', 'TypeScript']);
+    expect(card.querySelector('.card-tech-count').textContent).toBe('3');
+  });
+
+  it('explains automatic inactivity rejection in the demo card', () => {
+    const { card } = setup([makeJob({
+      status: 'rejected',
+      automatic_rejection_reason: 'Automatically rejected after 30 days without saved activity.',
+    })]);
+    expect(card.querySelector('.card-automatic-rejection').textContent)
+      .toContain('Demo: Automatically rejected after 30 days');
+  });
+
+  it('omits the technology preview when no technologies are recorded', () => {
+    const { card } = setup([makeJob({ technologies: [] })]);
+
+    expect(card.querySelector('.card-tech-stack')).toBeNull();
+  });
+
+  it('limits card technology previews and points to the full stack in process details', () => {
+    const { card } = setup([makeJob({ technologies: [
+      { id: 'react', name: 'React' },
+      { id: 'kubernetes', name: 'Kubernetes' },
+      { id: 'typescript', name: 'TypeScript' },
+      { id: 'go', name: 'Go' },
+      { id: 'docker', name: 'Docker' },
+      { id: 'terraform', name: 'Terraform' },
+    ] })]);
+
+    expect([...card.querySelectorAll('.card-technology-chip')].map((chip) => chip.textContent))
+      .toEqual(['React', 'Kubernetes', 'TypeScript', 'Go']);
+    expect(card.querySelector('.card-technology-more').textContent).toBe('+2 more');
+    expect(card.querySelector('.card-tech-stack').getAttribute('aria-label'))
+      .toBe('Technology stack preview: 4 shown, 2 more in process details.');
+    expect(card.querySelector('.card-tech-count').textContent).toBe('6');
+  });
+
+  it('shows concise technology aliases and combines same-day added and CV dates', () => {
+    const { card } = setup([makeJob({
+      technologies: [{ id: 'mcp', name: 'Model Context Protocol', aliases: ['MCP'] }],
+      created_at: '2026-10-10',
+      application_sent_date: '2026-10-10',
+      recruiter_first_contact_date: '2026-10-12',
+    })]);
+
+    const technology = card.querySelector('.card-technology-chip');
+    expect(technology.textContent).toBe('MCP');
+    expect(technology.title).toBe('Model Context Protocol');
+    expect([...card.querySelectorAll('.card-process-dates strong')].map((label) => label.textContent))
+      .toEqual(['Added & CV sent', 'Recruiter']);
+  });
+
+  it('keeps card content scrollable while reserving the drag handle for reordering', () => {
+    const { card } = setup();
+
+    expect(card.style.touchAction).toBe('pan-y');
+    expect(card.querySelector('.btn-card-drag').style.touchAction).toBe('none');
+  });
+
+  it('keeps cards natively scrollable when automatic ordering is active', () => {
+    const container = document.createElement('main');
+    renderCardGrid(container, [makeJob()], null, null, null, 'added-newest');
+
+    expect(container.querySelector('.process-card').style.touchAction).toBe('pan-y');
+  });
+
+  it('expands landscape logos while keeping square logos in the compact frame', () => {
+    const { container } = setup([
+      makeJob({ id: 'wide-logo', company_name: 'Wide Logo' }),
+      makeJob({ id: 'square-logo', company_name: 'Square Logo' }),
+    ]);
+    const cards = container.querySelectorAll('.process-card');
+    const [wideLogo, squareLogo] = [...cards].map((card) => card.querySelector('.company-logo-img'));
+    Object.defineProperties(wideLogo, {
+      naturalWidth: { configurable: true, value: 600 },
+      naturalHeight: { configurable: true, value: 400 },
+      complete: { configurable: true, value: true },
+    });
+    Object.defineProperties(squareLogo, {
+      naturalWidth: { configurable: true, value: 112 },
+      naturalHeight: { configurable: true, value: 112 },
+      complete: { configurable: true, value: true },
+    });
+    wideLogo.dispatchEvent(new Event('load'));
+    squareLogo.dispatchEvent(new Event('load'));
+
+    expect(cards[0].querySelector('.card-avatar').classList.contains('card-avatar-wide-logo')).toBe(true);
+    expect(cards[0].querySelector('.card-header').classList.contains('has-wide-logo')).toBe(true);
+    expect(cards[1].querySelector('.card-avatar').classList.contains('card-avatar-wide-logo')).toBe(false);
+  });
+
+  it('supports held touch pointer events and ignores multi-touch gestures', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    const handle = card.querySelector('.btn-card-drag');
+
+    handle.dispatchEvent(pointerEvent('pointerdown', { pointerType: 'touch', target: handle }));
+    vi.advanceTimersByTime(500);
+    expect(card.classList.contains('is-dragging')).toBe(true);
+    window.dispatchEvent(pointerEvent('pointerup', { pointerType: 'touch' }));
+    expect(card.classList.contains('is-dragging')).toBe(false);
+
+    handle.dispatchEvent(touchEvent('touchstart', { touchCount: 2 }));
+    vi.advanceTimersByTime(500);
+
+    expect(card.classList.contains('is-holding')).toBe(false);
+    expect(card.classList.contains('is-dragging')).toBe(false);
+  });
+
+  it("renders employment type from each job record", () => {
+    const container = document.createElement("div");
+    const jobs = [
+      makeJob({ id: "job-1", company_name: "Example Company One", employment_type: "permanent_b2b" }),
+      makeJob({ id: "job-2", company_name: "Example Company Two", employment_type: "permanent" }),
+      makeJob({ id: "job-3", company_name: "Example Company Three", employment_type: "b2b" }),
+    ];
+    renderCardGrid(container, jobs);
+
+    expect([...container.querySelectorAll(".employment-type-tag")].map((tag) => tag.textContent)).toEqual([
+      "Permanent / B2B", "Permanent", "B2B",
+    ]);
+  });
+  it("does not add an employment type tag when the type is unknown", () => {
+    const { card } = setup([makeJob({ employment_type: "unknown" })]);
+    expect(card.querySelector(".employment-type-tag")).toBeNull();
+  });
+  it('shows known work arrangements on preview cards and omits unknown values', () => {
+    const container = document.createElement('main');
+    renderCardGrid(container, [
+      makeJob({ id: 'remote', work_arrangement: 'remote', keyword_note: 'Remote' }),
+      makeJob({ id: 'hybrid', work_arrangement: 'hybrid' }),
+      makeJob({ id: 'onsite', work_arrangement: 'on_site' }),
+      makeJob({ id: 'unknown', work_arrangement: 'unknown' }),
+    ]);
+
+    expect([...container.querySelectorAll('.work-arrangement-tag')].map((tag) => tag.textContent)).toEqual([
+      'Remote', 'Hybrid', 'On-site',
+    ]);
+    expect(container.querySelector('[data-id="unknown"] .work-arrangement-tag')).toBeNull();
+    expect(container.querySelector('[data-id="remote"] .card-summary')).toBeNull();
+  });
+
+  it('renders unknown companies and stage summaries while filtering salary highlights', () => {
+    const { card } = setup([makeJob({
+      company_name: 'Unknown',
+      current_stage_title: 'Technical interview',
+      current_stage_index: 2,
+      total_stages_count: 4,
+      keyword_note: 'Platform • €80k • 20k',
+    })]);
+
+    expect(card.querySelector('.card-company').textContent).toContain('Unknown Company');
+    expect(card.querySelector('.card-stage-indicator').textContent).toContain('Step 2/4: Technical interview');
+    expect(card.querySelector('.card-stage-summary').getAttribute('style')).toBeNull();
+    expect(card.querySelector('.keyword-note').textContent).toBe('Platform');
+  });
+
+  describe("salary labels", () => {
+    it("formats ranges and bounds", () => {
+      expect(formatSalaryShort("limited", 37000, 83000, "EUR")).toBe("€37k-83k");
+      expect(formatSalaryShort("limited", 37000, 83000, "USD")).toBe("$37k-83k");
+      expect(formatSalaryShort("limited", 37000, 83000, "GBP")).toBe("£37k-83k");
+      expect(formatSalaryShort("no_min", null, 83000, "USD")).toBe("Up to $83k");
+      expect(formatSalaryShort("no_max", 37000, null, "USD")).toBe("From $37k");
+    });
+    it("handles undisclosed and equal amounts", () => {
+      expect(formatSalaryShort("unknown", null, null, "USD")).toBe("Salary undisclosed");
+      expect(formatSalaryShort("limited", 37000, 37000, "USD")).toBe("$37k");
+      expect(formatSalaryShort("limited", 900, 900, "USD")).toBe("$900");
+      expect(formatSalaryShort("limited", 1000, 1000, "USD")).toBe("$1k");
+      expect(formatSalaryShort("limited", 1500, 1500, "USD")).toBe("$1.5k");
+    });
+  });
+
+  it('renders the empty state and quick create action', () => {
+    const { container } = setup([]);
+    expect(container.querySelector('.empty-state').textContent).toContain('No selection processes found');
+    expect(container.querySelector('.btn-create-first-process').textContent).toContain('Create First Selection Process');
+    expect(container.querySelector('.btn-create-first-process').getAttribute('onclick')).toBeNull();
+  });
+
+  it.each([
+    ['waiting', 'No waiting processes yet'],
+    ['ongoing', 'No ongoing processes yet'],
+    ['accepted', 'No accepted processes yet'],
+    ['rejected', 'No rejected processes yet'],
+  ])('explains an empty %s tab when other processes exist', (filter, heading) => {
+    const container = document.createElement('main');
+    renderCardGrid(container, [], null, null, null, 'added-newest', {
+      filter,
+      totalCount: 4,
+      statusCount: 0,
+    });
+
+    expect(container.querySelector('.empty-state h3').textContent).toBe(heading);
+    expect(container.querySelector('.empty-state p').textContent).toContain(`Processes you mark as ${filter} will appear here.`);
+    expect(container.querySelector('.btn-create-first-process').textContent).toContain('Create Selection Process');
+    expect(container.querySelector('.btn-create-first-process').textContent).not.toContain('Create First Selection Process');
+  });
+
+  it('shows a filtered-results message when the selected status has processes', () => {
+    const container = document.createElement('main');
+    renderCardGrid(container, [], null, null, null, 'added-newest', {
+      filter: 'accepted',
+      totalCount: 4,
+      statusCount: 1,
+    });
+
+    expect(container.querySelector('.empty-state h3').textContent).toBe('No selection processes match your current search or filters');
+    expect(container.querySelector('.btn-create-first-process').textContent).toContain('Create Selection Process');
+  });
+
+  it("removes duplicated metadata from role highlights", () => {
+    const { card } = setup([makeJob({
+      company_name: "Example Company",
+      recruiter_name: "Casey Example",
+      keyword_note: "Example Company • Casey Example • Platform security • Spain • Permanent",
+    })]);
+
+    expect(card.querySelector(".card-summary").textContent).toContain("Platform security • Spain");
+    expect(card.querySelector(".card-summary").textContent).not.toContain("Example Company");
+    expect(card.querySelector(".card-summary").textContent).not.toContain("Casey Example");
+  });
+  it('does not repeat referral in the card summary', () => {
+    const { card } = setup([makeJob({ is_referral: true, keyword_note: 'Referral' })]);
+    expect(card.querySelector('.referral-tag').textContent).toContain('Referral');
+    expect(card.querySelector('.card-summary')).toBeNull();
+  });
+
+  it('renders the count stage label without showing a job-level recruiter', () => {
+    const { card } = setup([makeJob({ total_stages_count: 2, recruiter_type: 'internal' })]);
+    expect(card.querySelector('.card-stage-indicator').textContent).toContain('2 interview stages');
+    expect(card.querySelector('.recruiter-badge')).toBeNull();
+  });
+
+  it('uses an icon-only details button with an accessible label', () => {
+    const { card } = setup();
+    const openButton = card.querySelector('.btn-card-open-details');
+
+    expect(openButton.textContent.trim()).toBe('');
+    expect(openButton.getAttribute('aria-label')).toBe('Open details for Engineer at Acme');
+    openButton.click();
+    expect(mocks.openDetailModal).toHaveBeenCalledOnce();
+  });
+
+  it('gives the icon-only delete button an accessible name', () => {
+    const { card } = setup();
+    const deleteButton = card.querySelector('.btn-card-delete');
+
+    expect(deleteButton.textContent.trim()).toBe('');
+    expect(deleteButton.getAttribute('aria-label')).toBe('Delete selection process for Engineer at Acme');
+  });
+
+  it('keeps role highlights at the top and stage navigation in the bottom footer', () => {
+    const { card } = setup();
+    const content = card.querySelector('.card-content');
+    const footer = card.querySelector('.card-footer');
+
+    expect(content.querySelector('.card-summary')).not.toBeNull();
+    expect(content.querySelector('.card-stage-indicator')).toBeNull();
+    expect(footer.querySelector('.card-stage-indicator')).not.toBeNull();
+    expect(footer.querySelector('.keyword-note')).toBeNull();
+  });
+
+  it('skips optional editors when their editable elements are absent', () => {
+    const originalQuery = Element.prototype.querySelector;
+    for (const missingSelector of [
+      '.editable-card-company', '.editable-card-position', '.editable-card-salary',
+      '.editable-card-keyword', '.editable-card-referral',
+    ]) {
+      const query = vi.spyOn(Element.prototype, 'querySelector').mockImplementation(function (selector) {
+        if (this.classList?.contains('process-card') && selector === missingSelector) return null;
+        return originalQuery.call(this, selector);
+      });
+      const container = document.createElement('main');
+      renderCardGrid(container, [makeJob()]);
+      expect(container.querySelector('.process-card')).not.toBeNull();
+      query.mockRestore();
+    }
+  });
+
+  it('wires all inline saves and refreshes only when appropriate', async () => {
+    const refresh = vi.fn();
+    setup([makeJob()], { refresh });
+    const [company, position, salary, keyword] = mocks.inlineEditors;
+    await company.options.onSave('');
+    await position.options.onSave('');
+    await position.options.onSave('Architect');
+    await salary.options.onSave('75k');
+    await keyword.options.onSave('Go');
+    expect(mocks.api.updateJob.mock.calls).toEqual([
+      ['job-1', { company_name: 'Unknown' }],
+      ['job-1', { position_title: 'Architect' }],
+      ['job-1', { salary_input: '75k' }],
+      ['job-1', { keyword_note: 'Go' }],
+    ]);
+    expect(refresh).toHaveBeenCalledTimes(4);
+  });
+
+  it('runs inline saves without a refresh callback', async () => {
+    setup([makeJob()]);
+    for (const { options } of mocks.inlineEditors) await options.onSave('value');
+    expect(mocks.api.updateJob).toHaveBeenCalledTimes(4);
+  });
+
+  it('handles referral toggles, delete confirmation, and their error paths', async () => {
+    const refresh = vi.fn();
+    const { card } = setup([makeJob()], { refresh });
+    const referral = card.querySelector('.editable-card-referral');
+    const event = new Event('click', { bubbles: true, cancelable: true });
+    const stop = vi.spyOn(event, 'stopPropagation');
+    referral.dispatchEvent(event);
+    await Promise.resolve();
+    expect(event.defaultPrevented).toBe(true);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(mocks.api.updateJob).toHaveBeenCalledWith('job-1', { is_referral: true });
+    expect(refresh).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(referral.disabled).toBe(false));
+
+    const showToast = vi.fn();
+    window.showToast = showToast;
+    mocks.api.updateJob.mockRejectedValueOnce(new Error('toggle failed'));
+    referral.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('toggle failed', 'error'));
+    expect(showToast).not.toHaveBeenCalled();
+
+    mocks.api.deleteJob.mockResolvedValueOnce();
+    card.querySelector('.btn-card-delete').click();
+    await vi.waitFor(() => expect(mocks.api.deleteJob).toHaveBeenCalledWith('job-1'));
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    mocks.confirmAction.mockResolvedValueOnce(false);
+    card.querySelector('.btn-card-delete').click();
+    expect(mocks.api.deleteJob).toHaveBeenCalledOnce();
+    mocks.api.deleteJob.mockRejectedValueOnce(new Error('delete failed'));
+    card.querySelector('.btn-card-delete').click();
+    await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('delete failed', 'error'));
+  });
+
+  it('shows referral success feedback and tolerates missing refresh callbacks', async () => {
+    const { card } = setup([makeJob({ is_referral: true })]);
+    const showToast = vi.fn();
+    window.showToast = showToast;
+    card.querySelector('.editable-card-referral').dispatchEvent(new Event('click', { bubbles: true }));
+    await Promise.resolve();
+    expect(mocks.api.updateJob).toHaveBeenCalledWith('job-1', { is_referral: false });
+    expect(showToast).toHaveBeenCalledWith('Marked as Non-referral', 'success', 1200);
+    mocks.api.deleteJob.mockResolvedValueOnce();
+    card.querySelector('.btn-card-delete').click();
+    await Promise.resolve();
+    expect(mocks.api.deleteJob).toHaveBeenCalledWith('job-1');
+  });
+
+  it('shows the referral success message when a referral is added', async () => {
+    const { card } = setup([makeJob()]);
+    const showToast = vi.fn();
+    window.showToast = showToast;
+    card.querySelector('.editable-card-referral').dispatchEvent(new Event('click', { bubbles: true }));
+    await Promise.resolve();
+    expect(showToast).toHaveBeenCalledWith('Marked as Referral', 'success', 1200);
+  });
+
+  it('opens details from cards, delays editable clicks, and suppresses control clicks', async () => {
+    vi.useFakeTimers();
+    const createButton = document.createElement('button');
+    createButton.id = 'btn-new-process';
+    const created = vi.fn();
+    createButton.addEventListener('click', created);
+    document.body.append(createButton);
+    const { container, card, modal, backdrop } = setup([makeJob()]);
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await Promise.resolve();
+    expect(mocks.openWithFlip).not.toHaveBeenCalled();
+    expect(mocks.openDetailModal).toHaveBeenCalledWith(modal, backdrop, 'job-1', null);
+    const count = mocks.openDetailModal.mock.calls.length;
+    card.querySelector('.btn-card-delete').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const buttonCalls = mocks.openDetailModal.mock.calls.length;
+    expect(buttonCalls).toBe(count);
+    card.querySelector('.editable-card-company').classList.add('editable-text');
+    card.querySelector('.editable-card-company').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    card.querySelector('.editable-card-company').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    vi.advanceTimersByTime(219);
+    expect(mocks.openDetailModal).toHaveBeenCalledTimes(buttonCalls);
+    card.querySelector('.editable-card-company').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    vi.advanceTimersByTime(2);
+    expect(mocks.openDetailModal).toHaveBeenCalledTimes(buttonCalls);
+    card.querySelector('.editable-card-company').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    vi.advanceTimersByTime(500);
+    await Promise.resolve();
+    expect(mocks.openDetailModal).toHaveBeenCalledTimes(buttonCalls + 1);
+    const callsBeforeDrag = mocks.openDetailModal.mock.calls.length;
+    card.dispatchEvent(pointerEvent('pointerdown'));
+    vi.advanceTimersByTime(180);
+    window.dispatchEvent(pointerEvent('pointerup'));
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    vi.advanceTimersByTime(220);
+    expect(mocks.openDetailModal).toHaveBeenCalledTimes(callsBeforeDrag);
+    card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    container.querySelector('.quick-add-card').click();
+    expect(created).toHaveBeenCalledOnce();
+  });
+
+  it('ignores clicks on buttons, links, inputs, and textareas inside cards', () => {
+    const { card } = setup();
+    const controls = ['button', 'a', 'input', 'textarea'].map((tag) => {
+      const control = document.createElement(tag);
+      card.append(control);
+      control.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      return control;
+    });
+    expect(controls).toHaveLength(4);
+    expect(mocks.openDetailModal).not.toHaveBeenCalled();
+  });
+
+  it('does not open details when no modal pair exists and supports document fallbacks', async () => {
+    const { container, card } = setup([makeJob()], { modal: null, backdrop: null });
+    document.querySelector('#detail-modal').remove();
+    document.querySelector('#modal-backdrop').remove();
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await Promise.resolve();
+    expect(mocks.openWithFlip).not.toHaveBeenCalled();
+    expect(mocks.openDetailModal).toHaveBeenCalledWith(null, null, 'job-1', null);
+    container.querySelector('.quick-add-card').click();
+  });
+
+  it('cancels a pending hold when the pointer moves too far and ignores non-left or control presses', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    card.dispatchEvent(pointerEvent('pointerdown'));
+    expect(card.classList.contains('is-holding')).toBe(true);
+    window.dispatchEvent(pointerEvent('pointermove', { x: 50, y: 50 }));
+    expect(card.classList.contains('is-holding')).toBe(false);
+    window.dispatchEvent(pointerEvent('pointerup'));
+    card.dispatchEvent(pointerEvent('pointerdown', { button: 2 }));
+    card.querySelector('.btn-card-delete').dispatchEvent(pointerEvent('pointerdown'));
+    card.dispatchEvent(pointerEvent('pointerdown'));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 12, y: 13 }));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 50, y: 50 }));
+    vi.advanceTimersByTime(200);
+    expect(card.classList.contains('is-holding')).toBe(false);
+    expect(card.classList.contains('is-dragging')).toBe(false);
+    window.dispatchEvent(pointerEvent('pointerup'));
+    window.dispatchEvent(pointerEvent('pointercancel'));
+  });
+
+  it('reorders cards by dragging before and after targets and onto quick add', async () => {
+    vi.useFakeTimers();
+    const { container, card } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b' }), makeJob({ id: 'c' })]);
+    const cards = [...container.querySelectorAll('.process-card')];
+    cards.forEach((item, index) => vi.spyOn(item, 'getBoundingClientRect').mockReturnValue({
+      left: index * 110, top: 0, width: 100, height: 100,
+    }));
+    const second = cards[1];
+    const third = cards[2];
+    vi.spyOn(document, 'elementFromPoint').mockImplementation((x) => (x < 100 ? card : x < 220 ? second : third));
+    card.dispatchEvent(pointerEvent('pointerdown', { x: 10, y: 10 }));
+    vi.advanceTimersByTime(180);
+    expect(card.classList.contains('is-dragging')).toBe(true);
+    expect(document.body.classList.contains('is-reordering-cards')).toBe(true);
+    window.dispatchEvent(pointerEvent('pointermove', { x: 150, y: 10 }));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 190, y: 40 }));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 180, y: 40 }));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 210, y: 90 }));
+    window.dispatchEvent(pointerEvent('pointermove', { x: 310, y: 90 }));
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(mocks.openDetailModal).not.toHaveBeenCalled();
+    window.dispatchEvent(pointerEvent('pointerup'));
+    await Promise.resolve();
+    expect(card.classList.contains('is-dragging')).toBe(false);
+    expect(document.body.classList.contains('is-reordering-cards')).toBe(false);
+    expect(mocks.api.reorderJobs).toHaveBeenCalledOnce();
+    expect(mocks.api.reorderJobs.mock.calls[0][0]).toHaveLength(3);
+  });
+
+  it('moves held touch cards in every direction without scrolling', async () => {
+    vi.useFakeTimers();
+    const { container, card } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b' })]);
+    const second = container.querySelectorAll('.process-card')[1];
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 });
+    vi.spyOn(second, 'getBoundingClientRect').mockReturnValue({ left: 110, top: 0, width: 100, height: 100 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(second);
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    const contextMenuBeforeHold = new Event('contextmenu', { bubbles: true, cancelable: true });
+    card.dispatchEvent(contextMenuBeforeHold);
+    expect(contextMenuBeforeHold.defaultPrevented).toBe(false);
+
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart'));
+    const touchMoveBeforeHold = touchEvent('touchmove', { x: 10, y: 10 });
+    window.dispatchEvent(touchMoveBeforeHold);
+    expect(touchMoveBeforeHold.defaultPrevented).toBe(false);
+    vi.advanceTimersByTime(500);
+    expect(card.classList.contains('is-dragging')).toBe(true);
+
+    const touchMoveDuringDrag = touchEvent('touchmove', { x: 150, y: 80 });
+    window.dispatchEvent(touchMoveDuringDrag);
+    expect(touchMoveDuringDrag.defaultPrevented).toBe(true);
+
+    expect(card.style.top).toBe('70px');
+    window.dispatchEvent(touchEvent('touchmove', { x: 150, y: -20 }));
+    expect(card.style.top).toBe('-30px');
+    window.dispatchEvent(touchEvent('touchmove', { x: 150, y: 120 }));
+    expect(card.style.top).toBe('110px');
+    expect(scrollBy).not.toHaveBeenCalled();
+    const contextMenuDuringDrag = new Event('contextmenu', { bubbles: true, cancelable: true });
+    card.dispatchEvent(contextMenuDuringDrag);
+    expect(contextMenuDuringDrag.defaultPrevented).toBe(true);
+
+    window.dispatchEvent(touchEvent('touchend'));
+    await Promise.resolve();
+    expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['b', 'a']);
+    expect(card.classList.contains('is-dragging')).toBe(false);
+  });
+
+  it('starts a touch drag on the first move after the hold delay, even if the timer callback is late', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 });
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
+    vi.advanceTimersByTime(499);
+    vi.setSystemTime(Date.now() + 2);
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 30 }));
+
+    expect(card.classList.contains('is-dragging')).toBe(true);
+    expect(card.style.top).toBe('20px');
+    expect(scrollBy).not.toHaveBeenCalled();
+    window.dispatchEvent(touchEvent('touchend'));
+  });
+
+  it('treats a slow initial touch movement as page scrolling before the long-press delay', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 10, y: 10 }));
+    vi.advanceTimersByTime(50);
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 18 }));
+    vi.advanceTimersByTime(180);
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 130 }));
+
+    expect(card.classList.contains('is-dragging')).toBe(false);
+    expect(scrollBy).toHaveBeenCalledWith(0, -120);
+    window.dispatchEvent(touchEvent('touchend'));
+    expect(card.classList.contains('is-holding')).toBe(false);
+  });
+
+  it('reorders a card upward in a single-column touch layout', async () => {
+    vi.useFakeTimers();
+    const jobs = [makeJob({ id: 'top' }), makeJob({ id: 'bottom' })];
+    const { container } = setup(jobs);
+    const [top, bottom] = container.querySelectorAll('.process-card');
+    vi.spyOn(top, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 320, height: 230 });
+    vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(top);
+
+    bottom.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 20, y: 270 }));
+    vi.advanceTimersByTime(500);
+    window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 10 }));
+    window.dispatchEvent(touchEvent('touchend'));
+    await Promise.resolve();
+
+    expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
+  });
+
+  it('reorders a card downward in a single-column touch layout', async () => {
+    vi.useFakeTimers();
+    const jobs = [makeJob({ id: 'top' }), makeJob({ id: 'bottom' })];
+    const { container } = setup(jobs);
+    const [top, bottom] = container.querySelectorAll('.process-card');
+    vi.spyOn(top, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 320, height: 230 });
+    vi.spyOn(bottom, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(bottom);
+
+    top.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 20, y: 10 }));
+    vi.advanceTimersByTime(500);
+    window.dispatchEvent(touchEvent('touchmove', { x: 20, y: 470 }));
+    window.dispatchEvent(touchEvent('touchend'));
+    await Promise.resolve();
+
+    expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
+  });
+
+  it('reorders cards with the keyboard and announces the saved position', async () => {
+    const announcer = document.createElement('p');
+    announcer.id = 'card-reorder-announcer';
+    document.body.append(announcer);
+    const { container } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b', company_name: 'Beta' })]);
+    const firstHandle = container.querySelector('[data-id="a"] .btn-card-drag');
+    firstHandle.focus();
+    const blockedMove = new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true });
+    firstHandle.dispatchEvent(blockedMove);
+    expect(blockedMove.defaultPrevented).toBe(false);
+    expect([...container.querySelectorAll('.process-card')].map((card) => card.dataset.id)).toEqual(['a', 'b']);
+
+    firstHandle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['b', 'a']));
+    await vi.waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-id="a"] .btn-card-drag')));
+    expect(announcer.textContent).toBe('Engineer at Acme moved to position 2 of 2.');
+  });
+
+  it('forwards vertical movement to page scrolling until the hold becomes a drag', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 10, y: 100 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 80 }));
+    expect(scrollBy).not.toHaveBeenCalled();
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 50 }));
+    window.dispatchEvent(touchEvent('touchmove', { x: 10, y: 40 }));
+    expect(scrollBy).toHaveBeenNthCalledWith(1, 0, 50);
+    expect(scrollBy).toHaveBeenNthCalledWith(2, 0, 10);
+    window.dispatchEvent(touchEvent('touchend'));
+  });
+
+  it('cancels a touch hold when movement begins before the hold delay', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+
+    card.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart'));
+    window.dispatchEvent(touchEvent('touchmove', { x: 60, y: 10 }));
+    vi.advanceTimersByTime(180);
+
+    expect(card.classList.contains('is-holding')).toBe(false);
+    expect(card.classList.contains('is-dragging')).toBe(false);
+    window.dispatchEvent(touchEvent('touchend'));
+  });
+
+  it('ignores touch drags that start on card controls', () => {
+    vi.useFakeTimers();
+    const { card } = setup();
+    const button = card.querySelector('.btn-card-delete');
+
+    button.dispatchEvent(touchEvent('touchstart'));
+    vi.advanceTimersByTime(180);
+
+    expect(card.classList.contains('is-holding')).toBe(false);
+    expect(card.classList.contains('is-dragging')).toBe(false);
+  });
+
+  it('does not persist an unchanged drag and suppresses the click after a drag', async () => {
+    vi.useFakeTimers();
+    const { container, card } = setup([makeJob()]);
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 80 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(card);
+    card.dispatchEvent(pointerEvent('pointerdown'));
+    vi.advanceTimersByTime(180);
+    container.querySelector('.card-drop-placeholder').remove();
+    window.dispatchEvent(pointerEvent('pointerup'));
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(mocks.api.reorderJobs).not.toHaveBeenCalled();
+    expect(mocks.openDetailModal).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('.card-drop-placeholder')).toHaveLength(0);
+  });
+
+  it('handles empty drop targets, detached targets, and drops on the quick-add card', async () => {
+    vi.useFakeTimers();
+    const { container, card } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b' })]);
+    const other = container.querySelectorAll('.process-card')[1];
+    const detachedQuickAdd = document.createElement('div');
+    detachedQuickAdd.className = 'quick-add-card';
+    const detachedCard = document.createElement('div');
+    detachedCard.className = 'process-card';
+    detachedCard.setAttribute('data-id', 'detached');
+    const targets = [null, detachedQuickAdd, detachedCard, card, container.querySelector('.quick-add-card')];
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 80 });
+    vi.spyOn(other, 'getBoundingClientRect').mockReturnValue({ left: 110, top: 0, width: 100, height: 80 });
+    vi.spyOn(document, 'elementFromPoint').mockImplementation(() => targets.shift());
+    card.dispatchEvent(pointerEvent('pointerdown'));
+    vi.advanceTimersByTime(180);
+    for (let i = 0; i < 5; i += 1) window.dispatchEvent(pointerEvent('pointermove', { x: 120, y: 70 }));
+    window.dispatchEvent(pointerEvent('pointerup'));
+    await Promise.resolve();
+    expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['b', 'a']);
+    expect(container.lastElementChild.classList.contains('quick-add-card')).toBe(true);
+  });
+});

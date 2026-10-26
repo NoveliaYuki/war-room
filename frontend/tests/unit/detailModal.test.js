@@ -1,0 +1,1383 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { api, calls } = vi.hoisted(() => {
+  const calls = {};
+  const api = new Proxy({}, { get: (_, key) => (calls[key] ||= vi.fn().mockResolvedValue({})) });
+  return { api, calls };
+});
+const toast = vi.hoisted(() => vi.fn());
+const confirmAction = vi.hoisted(() => vi.fn());
+vi.mock('../../public/js/api.js', () => ({ api }));
+vi.mock('../../public/js/flip.js', () => ({ closeWithFlip: vi.fn((modal, backdrop, done) => { backdrop.classList.remove('active'); done?.(); }), cancelPendingFlipClose: vi.fn() }));
+vi.mock('../../public/js/components/questionList.js', () => ({ enableQuestionReordering: vi.fn() }));
+vi.mock('../../public/js/utils/toast.js', () => ({ showToast: toast }));
+vi.mock('../../public/js/utils/confirmDialog.js', () => ({ confirmAction }));
+
+import { openDetailModal } from '../../public/js/components/detailModal.js';
+import { closeWithFlip } from '../../public/js/flip.js';
+
+const tick = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+async function editInline(modal, selector, value) {
+  const target = modal.querySelector(selector);
+  const eventName = selector === '.editable-salary' ? 'click' : 'dblclick';
+  target.dispatchEvent(new MouseEvent(eventName, { bubbles: true, cancelable: true }));
+  const editor = target.parentElement.querySelector('.inline-edit-input, .inline-edit-textarea');
+  editor.value = value;
+  editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await tick();
+}
+
+async function editMarkdown(modal, field, value) {
+  modal.querySelector(`[data-markdown-field="${field}"]`).click();
+  const input = modal.querySelector('.markdown-field-input');
+  input.value = value;
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await tick();
+}
+
+async function submitStageForm(modal, { title, type, description = "" }) {
+  const form = modal.querySelector(".stage-create-form");
+  form.elements.custom_title.value = title;
+  form.elements.stage_type.value = type;
+  form.elements.description.value = description;
+  form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await tick();
+}
+
+const job = (stages = []) => ({
+  id: 'job-1', company_name: 'Acme', position_title: 'Engineer', status: 'ongoing', salary_type: 'limited',
+  salary_min: 80000, salary_max: 100000, salary_currency: 'EUR', is_referral: false,
+  recruiter_type: 'external', recruiter_name: 'Recruiter', recruiter_agency: 'Agency', recruiter_contact: 'r@example.com',
+  keyword_note: 'remote', company_overview: 'Company', reasons_to_change: 'Growth', experience_notes: 'Platform work',
+  expected_salary: '€85k base, flexible', interview_notes: 'Notes',
+  work_arrangement: 'unknown', employment_type: 'unknown',
+  job_post_url: 'https://example.com/job', application_url: 'https://example.com/careers/role', description: 'Original description', avatar_seed: 'seed', company_domain: 'acme.test',
+  attachments: [], interviewers: [], stages,
+});
+
+beforeEach(() => {
+  document.body.innerHTML = '<div id="detail-modal"></div><div id="modal-backdrop"></div>';
+  delete document.body.dataset.demo;
+  window.localStorage.removeItem('war-room-detail-split-ratio');
+  toast.mockClear();
+  confirmAction.mockReset().mockImplementation(async ({ title, message }) => window.confirm(`${title} ${message}`));
+  closeWithFlip.mockClear();
+  Object.values(calls).forEach((fn) => fn.mockReset().mockResolvedValue({}));
+  api.getSearchPeriods.mockResolvedValue([]);
+});
+
+describe('detail modal', () => {
+  it('opens a fast job request with ready content instead of flashing an empty dialog', async () => {
+    const backdrop = document.querySelector('#modal-backdrop');
+    let finishJob;
+    api.getJob.mockImplementationOnce(() => new Promise((resolve) => { finishJob = resolve; }));
+    const pending = openDetailModal('job-1');
+    expect(backdrop.classList.contains('active')).toBe(false);
+    finishJob(job());
+    await pending;
+    expect(backdrop.classList.contains('active')).toBe(true);
+    expect(document.querySelector('.modal-title')).not.toBeNull();
+    expect(document.querySelector('.detail-loading-skeleton')).toBeNull();
+  });
+
+  it('runs the close animation once for each close control', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+
+    await openDetailModal('job-1');
+    expect(modal.querySelector('.modal-close-btn').getAttribute('aria-label')).toBe('Close dialog');
+    modal.querySelector('.modal-close-btn').click();
+    expect(closeWithFlip).toHaveBeenCalledTimes(1);
+
+    closeWithFlip.mockClear();
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-close-modal').click();
+    expect(closeWithFlip).toHaveBeenCalledTimes(1);
+  });
+
+  it('places the job post link before the company and role overview', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+
+    const jobPostSection = modal.querySelector('.editable-job-post-url').closest('.detail-section');
+    const overviewSection = modal.querySelector('#company-overview-display').closest('.detail-section');
+    expect(jobPostSection.compareDocumentPosition(overviewSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows a compact expandable history with relative and dated saved events', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    api.getJob.mockResolvedValue({
+      ...job(),
+      status: 'accepted',
+      created_at: now - 5 * 86400,
+      status_changed_at: now - 3 * 86400,
+      history: [
+        { occurred_at: now, action: 'changed role highlights' },
+        { occurred_at: now - 60, action: 'changed role' },
+        { occurred_at: now - 2 * 3600, action: '<img src=x onerror=alert(1)>' },
+        { occurred_at: now - 3 * 86400, action: 'moved to accepted' },
+      ],
+    });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const history = modal.querySelector('.card-history-section');
+    expect(history.open).toBe(false);
+    expect(history.querySelector('.card-history-toggle').textContent).toContain('5');
+    expect(history.querySelectorAll('.card-history-item')).toHaveLength(5);
+    expect(history.querySelector('.card-history-item > span').textContent).toBe('changed role highlights');
+    expect(history.querySelector('.card-history-item time').textContent).toBe('just now');
+    expect([...history.querySelectorAll('.card-history-item > span')].map((item) => item.textContent)).toContain('moved to approved');
+    expect(history.querySelector('.card-history-item img')).toBeNull();
+    expect([...history.querySelectorAll('.card-history-item time')].some((time) => time.textContent.includes('hour'))).toBe(true);
+    expect([...history.querySelectorAll('.card-history-item time')].some((time) => /\d{2}:\d{2}/.test(time.textContent))).toBe(true);
+    history.querySelector('summary').click();
+    expect(history.open).toBe(true);
+  });
+
+  it('uses only saved legacy creation and status dates when history is absent', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    api.getJob.mockResolvedValue({
+      ...job(),
+      status: 'waiting',
+      created_at: now - 2 * 86400,
+      status_changed_at: now - 86400,
+    });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const history = modal.querySelector('.card-history-section');
+    expect(history.querySelector('.card-history-toggle').textContent).toContain('2');
+    expect([...history.querySelectorAll('.card-history-item > span')].map((item) => item.textContent)).toEqual(['moved to waiting', 'created']);
+    expect(history.querySelectorAll('.card-history-item time')).toHaveLength(2);
+  });
+
+  it('renders the same attachment controls in demo mode', async () => {
+    document.body.dataset.demo = 'true';
+    api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]));
+    await openDetailModal('job-1');
+
+    const attachmentSections = [...document.querySelectorAll('.attachments-grid')];
+    expect(attachmentSections).toHaveLength(2);
+    expect(attachmentSections.every((section) => !section.textContent.includes('Attachments are unavailable'))).toBe(true);
+  });
+
+  it('shows the assigned CV version and lets a job select a saved version', async () => {
+    const selectedJob = { ...job(), selected_cv_version: { id: 'cv-v2', version_number: 2, original_name: 'CV.pdf', uploaded_at: 1_798_080_000 } };
+    api.getJob.mockResolvedValueOnce(job()).mockResolvedValueOnce(selectedJob);
+    api.getCvVersions.mockResolvedValue([{ id: 'cv-v2', version_number: 2, original_name: 'CV.pdf', uploaded_at: 1_798_080_000 }]);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    expect(modal.querySelector('.job-cv-row').textContent).toContain('No CV version selected');
+    expect(modal.querySelector('.job-cv-row').textContent).toContain('Select');
+    expect(modal.querySelector('.job-cv-row input')).toBeNull();
+    modal.querySelector('.job-cv-change').click();
+    await tick();
+    expect(modal.querySelector('#job-cv-version-select').options[1].textContent).toContain('CV v2');
+    modal.querySelector('#job-cv-version-select').value = 'cv-v2';
+    modal.querySelector('.job-cv-save').click();
+    await tick();
+
+    expect(api.setJobCvVersion).toHaveBeenCalledWith('job-1', 'cv-v2');
+    expect(modal.querySelector('.job-cv-row').textContent).toContain('CV v2');
+  });
+
+  it('searches catalog aliases and updates the assigned tech stack without closing the editor', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.getTechnologies.mockResolvedValue([{ id: 'kubernetes', name: 'Kubernetes', aliases: ['K8s'] }]);
+    api.updateJob.mockResolvedValue({ technologies: [{ id: 'kubernetes', name: 'Kubernetes' }] });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    const input = modal.querySelector('#technology-assignment-search');
+    input.value = 'K8s';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    expect(modal.querySelector('#technology-assignment-options').textContent).toContain('Kubernetes');
+    modal.querySelector('[data-technology-id="kubernetes"]').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { technology_ids: ['kubernetes'] });
+    expect(modal.querySelector('.technology-assigned-chip').textContent).toContain('Kubernetes');
+    expect(modal.querySelector('#technology-assignment-search')).toBe(input);
+    api.updateJob.mockResolvedValueOnce({ technologies: [] });
+    modal.querySelector('[data-remove-technology="kubernetes"]').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', { technology_ids: [] });
+    expect(modal.querySelector('.technology-assigned-list').textContent).toContain('No technologies assigned');
+  });
+
+  it('restores selection and reports a failed stack update', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.getTechnologies.mockResolvedValue([{ id: 'react', name: 'React', aliases: [] }]);
+    api.updateJob.mockRejectedValue(new Error('save failed'));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    const input = modal.querySelector('#technology-assignment-search');
+    input.focus();
+    await tick();
+    modal.querySelector('[data-technology-id="react"]').click();
+    await tick();
+    expect(modal.querySelector('.technology-assigned-list').textContent).toContain('No technologies assigned');
+    expect(modal.querySelector('.technology-option').textContent).toContain('Add');
+    expect(toast).toHaveBeenCalledWith('save failed', 'error');
+  });
+
+  it('supports keyboard and pointer resizing and remembers the pane ratio', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const handle = modal.querySelector('.split-pane-resizer');
+    const layout = modal.querySelector('.modal-split-layout');
+    expect(handle.getAttribute('role')).toBe('separator');
+    expect(handle.getAttribute('aria-valuenow')).toBe('47');
+    expect(handle.getAttribute('aria-valuemin')).toBe('20');
+    expect(handle.getAttribute('aria-valuemax')).toBe('80');
+    expect(handle.querySelectorAll('svg')).toHaveLength(2);
+
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(handle.getAttribute('aria-valuenow')).toBe('49');
+    expect(window.localStorage.getItem('war-room-detail-split-ratio')).toBe('49');
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(handle.getAttribute('aria-valuenow')).toBe('47');
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(handle.getAttribute('aria-valuenow')).toBe('20');
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(handle.getAttribute('aria-valuenow')).toBe('80');
+
+    layout.getBoundingClientRect = () => ({ left: 0, width: 1000 });
+    const secondaryPointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(secondaryPointerDown, 'button', { value: 2 });
+    handle.dispatchEvent(secondaryPointerDown);
+    expect(document.body.classList.contains('is-resizing-split')).toBe(false);
+
+    const pointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(pointerDown, 'button', { value: 0 });
+    handle.dispatchEvent(pointerDown);
+    const frames = [];
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    const pointerMove = (clientX) => {
+      const moveEvent = new Event('pointermove');
+      Object.defineProperty(moveEvent, 'clientX', { value: clientX });
+      window.dispatchEvent(moveEvent);
+    };
+    pointerMove(100);
+    pointerMove(150);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem('war-room-detail-split-ratio')).toBe('80');
+    frames[0]();
+    expect(handle.getAttribute('aria-valuemin')).toBe('35');
+    expect(handle.getAttribute('aria-valuemax')).toBe('59');
+    expect(handle.getAttribute('aria-valuenow')).toBe('35');
+    expect(window.localStorage.getItem('war-room-detail-split-ratio')).toBe('80');
+    window.dispatchEvent(new Event('pointerup'));
+    expect(handle.getAttribute('aria-valuenow')).toBe('35');
+    expect(window.localStorage.getItem('war-room-detail-split-ratio')).toBe('35');
+
+    const stationaryPointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(stationaryPointerDown, 'button', { value: 0 });
+    handle.dispatchEvent(stationaryPointerDown);
+    window.dispatchEvent(new Event('pointerup'));
+    expect(document.body.classList.contains('is-resizing-split')).toBe(false);
+    requestFrame.mockRestore();
+    cancelFrame.mockRestore();
+
+    const tinyLayoutPointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(tinyLayoutPointerDown, 'button', { value: 0 });
+    layout.getBoundingClientRect = () => ({ left: 0, width: 10 });
+    handle.dispatchEvent(tinyLayoutPointerDown);
+    const tinyPointerMove = new Event('pointermove');
+    Object.defineProperty(tinyPointerMove, 'clientX', { value: 300 });
+    window.dispatchEvent(tinyPointerMove);
+    window.dispatchEvent(new Event('pointerup'));
+    expect(handle.getAttribute('aria-valuenow')).toBe('35');
+
+    await openDetailModal('job-1');
+    expect(modal.querySelector('.split-pane-resizer').getAttribute('aria-valuenow')).toBe('35');
+  });
+
+  it('uses the default pane ratio for invalid or unavailable browser storage', async () => {
+    api.getJob.mockResolvedValue(job());
+    window.localStorage.setItem('war-room-detail-split-ratio', 'not-a-ratio');
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    expect(modal.querySelector('.split-pane-resizer').getAttribute('aria-valuenow')).toBe('47');
+
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    await openDetailModal('job-1');
+    expect(modal.querySelector('.split-pane-resizer').getAttribute('aria-valuenow')).toBe('47');
+    getItem.mockRestore();
+
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    modal.querySelector('.split-pane-resizer').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(modal.querySelector('.split-pane-resizer').getAttribute('aria-valuenow')).toBe('49');
+    setItem.mockRestore();
+  });
+
+  it('preserves the mobile modal scroll position when refreshing its contents', async () => {
+    const fixture = job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]);
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    modal.querySelector('.modal-split-layout').scrollTop = 2166;
+    modal.querySelector('.questions-list').scrollTop = 24;
+    modal.querySelector('.editable-job-status').click();
+    await tick();
+
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { status: 'rejected' });
+    expect(modal.querySelector('.modal-split-layout').scrollTop).toBe(2166);
+    expect(modal.querySelector('.questions-list').scrollTop).toBe(24);
+  });
+
+  it('restores each mobile pane scroll position and keeps the status pill compact', async () => {
+    api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const layout = modal.querySelector('.modal-split-layout');
+    const overviewButton = modal.querySelector('[data-mobile-pane="overview"]');
+    const stagesButton = modal.querySelector('[data-mobile-pane="stages"]');
+    const statusButton = modal.querySelector('.editable-job-status');
+
+    expect(statusButton.querySelector('.status-pill').textContent).toBe('Ongoing');
+    expect(statusButton.classList.contains('status-pill')).toBe(false);
+
+    overviewButton.click();
+    layout.scrollTop = 320;
+    layout.dispatchEvent(new Event('scroll'));
+    stagesButton.click();
+    expect(layout.scrollTop).toBe(0);
+
+    layout.scrollTop = 140;
+    layout.dispatchEvent(new Event('scroll'));
+    overviewButton.click();
+    expect(layout.scrollTop).toBe(320);
+
+    stagesButton.click();
+    expect(layout.scrollTop).toBe(140);
+  });
+
+  it('renders stages when the API returns null question and interviewer lists', async () => {
+    api.getJob.mockResolvedValue(job([{
+      id: 'stage-1',
+      stage_type: 'HR',
+      status: 'current',
+      custom_title: 'Initial conversation',
+      meeting_type: 'onsite',
+      description: '',
+      questions: null,
+      interviewers: null,
+    }]));
+
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    expect(modal.querySelector('.modal-split-layout')).not.toBeNull();
+    expect(modal.querySelector('.questions-workspace').textContent).toContain('(0)');
+    expect(modal.querySelector('.interviewers-list').textContent).toContain('No interviewers added for this stage yet');
+    expect(modal.querySelector('.stage-schedule-metadata .meeting-format-pill').textContent).toContain('On-Site');
+    expect(modal.querySelector('.interview-mode-tag')).toBeNull();
+    expect(api.updateStage).not.toHaveBeenCalled();
+    expect(api.scheduleMeeting).not.toHaveBeenCalled();
+  });
+
+  it('loads and renders general job details with no stages', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    const backdrop = document.querySelector('#modal-backdrop');
+    await openDetailModal('job-1', vi.fn());
+    expect(backdrop.classList.contains('active')).toBe(true);
+    expect(modal.querySelector('.modal-title').textContent).toContain('Engineer');
+    expect(modal.querySelector('.job-status-picker')).toBeNull();
+    expect(modal.querySelector('.editable-job-status').textContent).toBe('Ongoing');
+    expect(modal.querySelector('#work-arrangement-select')).toBeNull();
+    expect(modal.querySelector('#employment-type-select')).toBeNull();
+    expect(modal.querySelector('.work-arrangement-tag').textContent).toBe('Not specified');
+    expect(modal.querySelector('.employment-type-tag').textContent).toBe('Not specified');
+    expect(modal.querySelector('.stage-empty-state')).not.toBeNull();
+    expect(modal.querySelector('.stage-empty-state-guidance').textContent).toContain('listed in the job posting or confirmed by the employer');
+    const addFirstStageButton = modal.querySelector('#btn-init-first-stage');
+    expect(addFirstStageButton).not.toBeNull();
+    expect(addFirstStageButton.innerHTML).toContain('<svg');
+    expect(addFirstStageButton.textContent).toContain('Add First Stage');
+    expect(addFirstStageButton.textContent).not.toContain('${icon');
+    expect(modal.querySelector('#company-overview-display').textContent).toBe('Company');
+    expect(modal.querySelector('.general-process-group').textContent).toContain('General Selection Process');
+    expect(modal.querySelector('.general-process-group').textContent).toContain('My Notes / Anything Else');
+    expect(modal.querySelector('#interview-notes-display').textContent).toContain('Notes');
+    expect(modal.querySelector('.job-details-group').compareDocumentPosition(modal.querySelector('.my-notes-group')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(modal.querySelector('.editable-experience-notes').textContent).toBe('Platform work');
+    expect(modal.querySelector('.editable-reasons-to-change').textContent).toBe('Growth');
+    expect(modal.querySelector('.editable-expected-salary').textContent).toBe('€85k base, flexible');
+    expect(modal.querySelector('.editable-interview-notes').textContent).toBe('Notes');
+
+    modal.querySelector('.work-arrangement-tag').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { work_arrangement: 'remote' });
+
+    modal.querySelector('.employment-type-tag').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { employment_type: 'permanent' });
+  });
+
+  it('renders and cycles the stored employment type and work arrangement', async () => {
+    const fixture = { ...job(), employment_type: 'permanent_b2b', work_arrangement: 'remote' };
+    api.getJob.mockImplementation(async () => fixture);
+    api.updateJob.mockImplementation(async (_id, updates) => Object.assign(fixture, updates));
+    await openDetailModal('job-1');
+    expect(document.querySelector('.employment-type-tag').textContent).toBe('Permanent / B2B');
+    expect(document.querySelector('.work-arrangement-tag').textContent).toBe('Remote');
+    document.querySelector('.employment-type-tag').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { employment_type: 'permanent' });
+
+    for (const arrangement of ['hybrid', 'on_site', 'remote']) {
+      document.querySelector('.work-arrangement-tag').click();
+      await tick();
+      expect(fixture.work_arrangement).toBe(arrangement);
+    }
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { work_arrangement: 'hybrid' });
+  });
+
+  it('renders active stage questions, changes stage, toggles description, and submits a question', async () => {
+    const stages = [
+      { id: 's1', stage_type: 'HR', custom_title: 'Screen', status: 'completed', description: 'Intro', questions: [{ id: 'q1', question: 'What is the team?', is_asked: 0, answer_notes: '' }] },
+      { id: 's2', stage_type: 'Technical', status: 'current', questions: [] },
+    ];
+    api.getJob.mockResolvedValue(job(stages));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1', vi.fn());
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Technical');
+    modal.querySelector('.stage-tab-item[data-idx="0"]').click();
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Screen');
+    modal.querySelector('.btn-toggle-reachout')?.click();
+    const questionInput = modal.querySelector('#active-add-question-form .add-question-input');
+    questionInput.value = '  Ask about on-call  ';
+    modal.querySelector('#active-add-question-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.createQuestion).toHaveBeenCalledWith({ stage_id: 's1', question: 'Ask about on-call', answer_notes: '' });
+  });
+
+  it('keeps interview stages horizontally scrollable without a back arrow', async () => {
+    const stages = ["HR", "Technical", "Cultural", "Offer"].map((stage_type, index) => ({
+      id: `s${index + 1}`, stage_type, status: index === 0 ? 'current' : 'pending', questions: [],
+    }));
+    api.getJob.mockResolvedValue(job(stages));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    const tabs = modal.querySelector('.stages-tab-bar');
+    expect(modal.querySelector('.stage-tabs-scroll-button')).toBeNull();
+    Object.defineProperties(tabs, {
+      scrollWidth: { configurable: true, value: 700 },
+      clientWidth: { configurable: true, value: 400 },
+      scrollLeft: { configurable: true, writable: true, value: 0 },
+      scrollBy: { configurable: true, value: vi.fn(({ left }) => {
+        tabs.scrollLeft = Math.max(0, Math.min(300, tabs.scrollLeft + left));
+        tabs.dispatchEvent(new Event('scroll'));
+      }) },
+    });
+
+    tabs.dispatchEvent(new Event('scroll'));
+    expect(tabs.scrollLeft).toBe(0);
+    tabs.scrollLeft = 300;
+    tabs.dispatchEvent(new Event('scroll'));
+    expect(tabs.scrollLeft).toBe(300);
+  });
+
+  it('navigates interview stage tabs with the keyboard without wrapping at either end', async () => {
+    const stages = ['Recruiter', 'Technical', 'Leadership'].map((custom_title, index) => ({
+      id: `s${index + 1}`, stage_type: 'Other', custom_title,
+      status: index === 0 ? 'current' : 'pending', questions: [],
+    }));
+    api.getJob.mockResolvedValue(job(stages));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+
+    const firstTab = modal.querySelector('#stage-tab-0');
+    firstTab.focus();
+    const previousAtStart = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
+    firstTab.dispatchEvent(previousAtStart);
+    expect(previousAtStart.defaultPrevented).toBe(false);
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Recruiter');
+
+    const next = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    firstTab.dispatchEvent(next);
+    expect(next.defaultPrevented).toBe(true);
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Technical');
+    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-1'));
+    modal.querySelector('#stage-tab-1').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Recruiter');
+
+    modal.querySelector('#stage-tab-0').dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Leadership');
+    expect(document.activeElement).toBe(modal.querySelector('#stage-tab-2'));
+    const nextAtEnd = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    modal.querySelector('#stage-tab-2').dispatchEvent(nextAtEnd);
+    expect(nextAtEnd.defaultPrevented).toBe(false);
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Leadership');
+  });
+
+  it('keeps the selected stage visible without snapping it to the left edge', async () => {
+    const stages = [
+      { id: 's1', stage_type: 'HR', status: 'completed', questions: [] },
+      { id: 's2', stage_type: 'Technical', status: 'current', questions: [] },
+    ];
+    api.getJob.mockResolvedValue(job(stages));
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this.classList?.contains('stages-tab-bar')) {
+        if (!this.dataset.testScrollSetup) {
+          Object.defineProperties(this, {
+            clientWidth: { configurable: true, value: 290 },
+            scrollWidth: { configurable: true, value: 500 },
+            scrollLeft: { configurable: true, writable: true, value: 0 },
+          });
+          this.dataset.testScrollSetup = 'true';
+        }
+        return { left: 10, right: 300, width: 290, top: 0, bottom: 40, height: 40 };
+      }
+      if (this.classList?.contains('stage-tab-item') && this.classList.contains('active')) {
+        const scrollLeft = this.closest('.stages-tab-bar')?.scrollLeft || 0;
+        return { left: 150 - scrollLeft, right: 390 - scrollLeft, width: 240, top: 0, bottom: 36, height: 36 };
+      }
+      return originalRect.call(this);
+    });
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
+    const resizeCallbacks = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) { resizeCallbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(90);
+
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    modal.querySelector('.stage-tab-item.active').click();
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(90);
+    modal.querySelector('.stages-tab-bar').scrollLeft = 210;
+    resizeCallbacks.forEach((callback) => callback());
+    expect(modal.querySelector('.stages-tab-bar').scrollLeft).toBe(140);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('opens and cancels the edit details form', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    expect(modal.querySelector('.edit-process-form')).not.toBeNull();
+    modal.querySelector('.btn-cancel-edit').click();
+    expect(api.getJob).toHaveBeenCalledWith('job-1');
+  });
+
+  it('saves application and first-contact dates, restoring a date when save fails', async () => {
+    const fixture = { ...job(), application_sent_date: '2026-10-10', recruiter_first_contact_date: '' };
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+
+    const sentDate = modal.querySelector('[data-process-date="application_sent_date"]');
+    expect(sentDate.value).toBe('2026-10-10');
+    sentDate.value = '2026-10-11';
+    sentDate.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { application_sent_date: '2026-10-11' });
+
+    const contactDate = modal.querySelector('[data-process-date="recruiter_first_contact_date"]');
+    contactDate.value = '2026-10-12';
+    api.updateJob.mockRejectedValueOnce(new Error('Could not save process date'));
+    contactDate.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(contactDate.value).toBe('');
+    expect(contactDate.disabled).toBe(false);
+    expect(toast).toHaveBeenCalledWith('Could not save process date', 'error');
+  });
+
+  it('lets a job move into a search period from its edit form', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.getSearchPeriods.mockResolvedValue([{ id: 'period-1', name: 'March 2026', start_date: '2026-03-01', end_date: '' }]);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    expect(modal.querySelector('[name="search_period_id"] option[value="period-1"]').textContent).toContain('Present');
+    modal.querySelector('[name="search_period_id"]').value = 'period-1';
+    modal.querySelector('.edit-process-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', expect.objectContaining({ search_period_id: 'period-1' }));
+  });
+
+  it('logs a missing job and handles request failure', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const modal = document.querySelector('#detail-modal');
+    const backdrop = document.querySelector('#modal-backdrop');
+    api.getJob.mockResolvedValueOnce(null);
+    await openDetailModal('missing', vi.fn());
+    expect(backdrop.classList.contains('active')).toBe(false);
+    expect(modal.innerHTML).toBe('');
+    api.getJob.mockRejectedValueOnce(new Error('network'));
+    await openDetailModal('missing', vi.fn());
+    expect(backdrop.classList.contains('active')).toBe(false);
+    expect(modal.innerHTML).toBe('');
+    expect(error).toHaveBeenCalledTimes(2);
+    error.mockRestore();
+  });
+
+  it('ignores an older job response when a newer modal request completes first', async () => {
+    let resolveOlderRequest;
+    api.getJob
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOlderRequest = resolve; }))
+      .mockResolvedValueOnce({ ...job(), position_title: 'Latest selection' });
+    const modal = document.querySelector('#detail-modal');
+    const olderRequest = openDetailModal('older');
+
+    await openDetailModal('latest');
+    resolveOlderRequest({ ...job(), position_title: 'Stale selection' });
+    await olderRequest;
+
+    expect(modal.querySelector('.modal-title').textContent).toContain('Latest selection');
+    expect(modal.querySelector('.modal-title').textContent).not.toContain('Stale selection');
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(true);
+  });
+
+  it('does not clear the active modal when an older request fails late', async () => {
+    let rejectOlderRequest;
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    api.getJob
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectOlderRequest = reject; }))
+      .mockResolvedValueOnce({ ...job(), position_title: 'Current selection' });
+    const modal = document.querySelector('#detail-modal');
+    const olderRequest = openDetailModal('older');
+
+    await openDetailModal('current');
+    rejectOlderRequest(new Error('stale request failed'));
+    await olderRequest;
+
+    expect(modal.querySelector('.modal-title').textContent).toContain('Current selection');
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('does not reopen a modal after it is closed during a selection switch', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    const backdrop = document.querySelector('#modal-backdrop');
+    await openDetailModal('existing');
+
+    let resolvePendingRequest;
+    api.getJob.mockImplementationOnce(() => new Promise((resolve) => { resolvePendingRequest = resolve; }));
+    const pendingRequest = openDetailModal('next');
+    modal.querySelector('.modal-close-btn').click();
+    resolvePendingRequest({ ...job(), position_title: 'Closed pending selection' });
+    await pendingRequest;
+
+    expect(modal.innerHTML).toBe('');
+    expect(backdrop.classList.contains('active')).toBe(false);
+  });
+
+  it('cycles job status, handles deletion confirmation, and all general inline edits', async () => {
+    const fixture = job();
+    api.getJob.mockImplementation(async () => fixture);
+    api.updateJob.mockImplementation(async (_id, updates) => Object.assign(fixture, updates));
+    vi.stubGlobal('confirm', vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true));
+    const modal = document.querySelector('#detail-modal');
+    const refreshed = vi.fn();
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id, refreshed);
+
+    for (const [label, value] of [['Rejected', 'rejected'], ['Approved', 'accepted'], ['Waiting', 'waiting'], ['Ongoing', 'ongoing']]) {
+      modal.querySelector('.editable-job-status').click();
+      await tick();
+      expect(modal.querySelector('.editable-job-status').textContent).toBe(label);
+      expect(fixture.status).toBe(value);
+    }
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { status: 'accepted' });
+    modal.querySelector('.btn-delete-job').click();
+    await tick();
+    expect(api.deleteJob).not.toHaveBeenCalled();
+    modal.querySelector('.btn-delete-job').click();
+    await tick();
+    expect(api.deleteJob).toHaveBeenCalledWith(fixture.id);
+    expect(refreshed).toHaveBeenCalled();
+
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id, refreshed);
+    const cases = [
+      ['.editable-position-title', 'Principal Engineer', { position_title: 'Principal Engineer' }],
+      ['.editable-company-name', '', { company_name: 'Unknown' }],
+      ['.editable-salary', 'from 95k', { salary_type: 'no_max', salary_min: 95000, salary_max: null }],
+      ['.editable-keywords', 'platform, remote', { keyword_note: 'platform, remote' }],
+      ['.editable-reasons-to-change', 'More scope', { reasons_to_change: 'More scope' }],
+      ['.editable-expected-salary', '€90k plus equity', { expected_salary: '€90k plus equity' }],
+      ['.editable-job-post-url', '', { job_post_url: '' }],
+      ['.editable-application-url', 'https://example.com/apply', { application_url: 'https://example.com/apply' }],
+    ];
+    for (const [selector, value, payload] of cases) {
+      await editInline(modal, selector, value);
+      expect(api.updateJob).toHaveBeenCalledWith(fixture.id, payload);
+    }
+    await editMarkdown(modal, 'experience_notes', 'Platform migration');
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { experience_notes: 'Platform migration' });
+    await editMarkdown(modal, 'interview_notes', 'Hiring team is 8');
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { interview_notes: 'Hiring team is 8' });
+    await editMarkdown(modal, 'description', '## Updated role');
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { description: '## Updated role' });
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    const overviewInput = modal.querySelector('.markdown-field-input');
+    overviewInput.value = '## New overview';
+    overviewInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith(fixture.id, { company_overview: '## New overview' });
+    modal.querySelector('.btn-toggle-reachout').click();
+    expect(modal.querySelector('#reachout-text-container').style.display).toBe('block');
+    modal.querySelector('.btn-toggle-reachout').click();
+    expect(modal.querySelector('#reachout-text-container').style.display).toBe('none');
+  });
+
+  it('previews Markdown and discards overview edits on outside clicks', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    const input = modal.querySelector('.markdown-field-input');
+    input.value = '# Draft';
+    modal.querySelectorAll('.markdown-editor-tab')[1].click();
+    expect(modal.querySelector('.markdown-field-preview h1').textContent).toBe('Draft');
+    document.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    await tick();
+    expect(api.updateJob).not.toHaveBeenCalledWith('job-1', expect.objectContaining({ company_overview: '# Draft' }));
+  });
+
+  it('keeps the overview editor open after save errors and supports multiline and Escape', async () => {
+    api.getJob.mockResolvedValue(job());
+    api.updateJob.mockRejectedValueOnce(new Error('offline'));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    const input = modal.querySelector('.markdown-field-input');
+    input.value = '# Draft';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.markdown-field-editor')).not.toBeNull();
+    modal.querySelector('.markdown-editor-save').click();
+    await tick();
+    expect(modal.querySelector('.markdown-field-input')).not.toBeNull();
+    expect(toast).toHaveBeenCalledWith('offline', 'error');
+    modal.querySelector('.markdown-field-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(modal.querySelector('.markdown-field-editor')).toBeNull();
+    expect(modal.querySelector('.editable-overview').textContent).toBe('Company');
+  });
+
+  it('shows the empty preview and empty overview placeholder', async () => {
+    api.getJob.mockResolvedValue({ ...job(), company_overview: '' });
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="company_overview"]').click();
+    modal.querySelectorAll('.markdown-editor-tab')[1].click();
+    expect(modal.querySelector('.markdown-field-preview').textContent).toBe('Nothing to preview yet.');
+    modal.querySelector('.markdown-editor-cancel').click();
+    expect(modal.querySelector('.editable-overview').textContent).toContain('Summarize what the company does');
+  });
+
+  it('renders Markdown descriptions and lets jobs without one add it', async () => {
+    const fixture = { ...job(), description: '## Responsibilities\n\n- Design controls\n- Review code' };
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-toggle-reachout').click();
+    expect(modal.querySelector('.editable-description h2').textContent).toBe('Responsibilities');
+    expect(modal.querySelectorAll('.editable-description li')).toHaveLength(2);
+
+    api.getJob.mockResolvedValue({ ...fixture, description: '' });
+    await openDetailModal('job-1');
+    modal.querySelector('[data-markdown-field="description"]').click();
+    expect(modal.querySelector('.markdown-field-input')).not.toBeNull();
+    expect(modal.querySelector('#reachout-text-container').style.display).toBe('block');
+    modal.querySelector('.markdown-editor-cancel').click();
+  });
+
+  it('shows unknown job statuses safely and restarts the status cycle at waiting', async () => {
+    const fixture = job();
+    fixture.status = 'archived';
+    api.getJob.mockImplementation(async () => fixture);
+    api.updateJob.mockImplementation(async (_id, updates) => Object.assign(fixture, updates));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+
+    const statusButton = modal.querySelector('.editable-job-status');
+    expect(statusButton.textContent).toBe('archived');
+    expect(statusButton.getAttribute('aria-label')).toContain('Job status: archived');
+    statusButton.click();
+    await tick();
+
+    expect(fixture.status).toBe('waiting');
+    expect(modal.querySelector('.editable-job-status').textContent).toBe('Waiting');
+  });
+
+  it('covers active stage recruiter, interviewer, question, and stage action handlers', async () => {
+    const stages = [
+      { id: 's1', stage_type: 'HR', custom_title: 'Screen', status: 'completed', questions: [] },
+      { id: 's2', stage_type: 'Technical', custom_title: 'Architecture', status: 'current', notes: 'Discuss platform ownership', questions: [{ id: 'q1', question: 'Scale?', is_asked: false, answer_notes: '' }] },
+    ];
+    const fixture = { ...job(stages), interviewers: [{ name: 'Alex', role: 'Engineer', notes: 'Staff' }] };
+    api.getJob.mockResolvedValue(fixture);
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    expect(modal.querySelector('.editable-stage-notes').textContent).toBe('Discuss platform ownership');
+
+    const recruiterSelect = modal.querySelector('.stage-recruiter-source-select');
+    expect(recruiterSelect.getAttribute('aria-label')).toBe('Relationship / Role');
+    recruiterSelect.value = 'internal';
+    recruiterSelect.dispatchEvent(new Event('change'));
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { recruiter_type: 'internal' });
+    await editInline(modal, '.editable-stage-recruiter-name', 'Morgan');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { recruiter_name: 'Morgan' });
+    await editInline(modal, '.editable-stage-recruiter-agency', 'Product');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { recruiter_agency: 'Product' });
+    await editInline(modal, '.editable-stage-recruiter-contact', 'https://example.com/profile');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { recruiter_contact: 'https://example.com/profile' });
+
+    await editInline(modal, '.editable-stage-interviewer-name', 'Taylor');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Taylor', role: 'Engineer', notes: 'Staff' }] });
+    const updatesBeforeEmptyName = api.updateStage.mock.calls.length;
+    await editInline(modal, '.editable-stage-interviewer-name', '   ');
+    expect(api.updateStage).toHaveBeenCalledTimes(updatesBeforeEmptyName);
+    await editInline(modal, '.editable-stage-interviewer-role', 'Director');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Alex', role: 'Director', notes: 'Staff' }] });
+    await editInline(modal, '.editable-stage-interviewer-note', 'Hiring manager');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Alex', role: 'Engineer', notes: 'Hiring manager' }] });
+    modal.querySelector('.btn-add-stage-interviewer').click();
+    const addInterviewerForm = modal.querySelector('.stage-interviewer-form');
+    addInterviewerForm.querySelector('[name="name"]').value = 'Sam';
+    addInterviewerForm.querySelector('[name="role"]').value = 'Lead';
+    addInterviewerForm.querySelector('[name="notes"]').value = 'Panelist';
+    addInterviewerForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [{ name: 'Alex', role: 'Engineer', notes: 'Staff' }, { name: 'Sam', role: 'Lead', notes: 'Panelist' }] });
+    modal.querySelector('.btn-del-stage-interviewer').click();
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { interviewers: [] });
+
+    modal.querySelector('.q-notes').value = 'Discuss failure domains';
+    modal.querySelector('.q-notes').dispatchEvent(new Event('change'));
+    modal.querySelector('.q-del').click();
+    modal.querySelector('#active-add-question-form .add-question-input').value = '   ';
+    modal.querySelector('#active-add-question-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateQuestion).toHaveBeenCalledWith('q1', { answer_notes: 'Discuss failure domains' });
+    expect(api.deleteQuestion).toHaveBeenCalledWith('q1');
+    expect(api.createQuestion).not.toHaveBeenCalled();
+
+    await editInline(modal, '.editable-stage-title', 'System Design');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { custom_title: 'System Design' });
+    const updatesBeforeEmptyTitle = api.updateStage.mock.calls.length;
+    await editInline(modal, '.editable-stage-title', '   ');
+    expect(api.updateStage).toHaveBeenCalledTimes(updatesBeforeEmptyTitle);
+    await editInline(modal, '.editable-stage-notes', 'Discuss architecture and team expectations');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { notes: 'Discuss architecture and team expectations' });
+    await editInline(modal, '.editable-stage-desc', 'Architecture round');
+    expect(api.updateStage).toHaveBeenCalledWith('s2', { description: 'Architecture round' });
+    await editInline(modal, '.editable-question-text', 'How do you scale?');
+    expect(api.updateQuestion).toHaveBeenCalledWith('q1', { question: 'How do you scale?' });
+    const questionUpdatesBeforeEmptyText = api.updateQuestion.mock.calls.length;
+    await editInline(modal, '.editable-question-text', '   ');
+    expect(api.updateQuestion).toHaveBeenCalledTimes(questionUpdatesBeforeEmptyText);
+    modal.querySelector('#file-upload-stage-input').dispatchEvent(new Event('change'));
+
+    modal.querySelector('#btn-toggle-current-stage').click();
+    modal.querySelector('#stage-tab-0').click();
+    await tick();
+    modal.querySelector('#btn-move-stage-down').click();
+    modal.querySelector('#btn-delete-stage').click();
+    await tick();
+    expect(api.setCurrentStage).toHaveBeenCalledWith('s2');
+    expect(api.reorderStages).toHaveBeenCalledWith(fixture.id, ['s2', 's1']);
+    expect(api.deleteStage).toHaveBeenCalledWith('s1');
+  });
+
+  it('adds interviewers with an inline form and keeps it open when saving fails', async () => {
+    const fixture = job([{ id: 's1', stage_type: 'HR', status: 'current', questions: [], interviewers: [] }]);
+    api.getJob.mockResolvedValue(fixture);
+    api.updateStage.mockRejectedValueOnce(new Error('Could not save interviewer'));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+
+    const trigger = modal.querySelector('.btn-add-stage-interviewer');
+    trigger.click();
+    const form = modal.querySelector('.stage-interviewer-form');
+    const name = form.querySelector('[name="name"]');
+    expect(form.hidden).toBe(false);
+    expect(document.activeElement).toBe(name);
+    expect(form.checkValidity()).toBe(false);
+
+    name.value = '   ';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateStage).not.toHaveBeenCalled();
+
+    name.value = 'Sam';
+    form.querySelector('[name="role"]').value = 'Lead';
+    form.querySelector('[name="notes"]').value = 'Panelist';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s1', { interviewers: [{ name: 'Sam', role: 'Lead', notes: 'Panelist' }] });
+    expect(form.hidden).toBe(false);
+    expect(form.querySelector('[type="submit"]').disabled).toBe(false);
+    expect(toast).toHaveBeenCalledWith('Could not save interviewer', 'error');
+  });
+
+  it('supports adding stages and scheduling, clearing, and canceling meetings', async () => {
+    const stages = [{ id: 's1', stage_type: 'HR', status: 'current', questions: [] }];
+    const fixture = job(stages);
+    api.getJob.mockResolvedValue(fixture);
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    modal.querySelector('#btn-add-stage-tab').click();
+    await submitStageForm(modal, { title: 'Culture', type: 'Cultural', description: 'Leadership values' });
+    expect(api.createStage).toHaveBeenCalledWith({ job_id: fixture.id, stage_type: 'Cultural', custom_title: 'Culture', description: 'Leadership values', status: 'pending' });
+    const createdStages = api.createStage.mock.calls.length;
+    modal.querySelector('#btn-add-stage-tab').click();
+    modal.querySelector('.stage-create-cancel').click();
+    expect(api.createStage).toHaveBeenCalledTimes(createdStages);
+
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    modal.querySelector('.btn-edit-meeting-schedule').click();
+    const form = modal.querySelector('#schedule-stage-form');
+    expect(form.querySelector('[name="meeting_date"]').value).toBe(new Date().toISOString().slice(0, 10));
+    expect(form.querySelector('[name="meeting_type"]').value).toBe('video');
+    form.querySelector('[name="meeting_date"]').value = '2026-10-01';
+    form.querySelector('[name="meeting_time"]').value = '11:00';
+    form.querySelector('[name="meeting_type"]').value = 'onsite';
+    form.querySelector('[name="meeting_url"]').value = '';
+    form.querySelector('[name="notes"]').value = 'Bring portfolio';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.scheduleMeeting).toHaveBeenCalledWith('s1', expect.objectContaining({ meeting_date: '2026-10-01', meeting_time: '11:00', meeting_type: 'onsite', notes: 'Bring portfolio' }));
+    Object.assign(fixture.stages[0], { meeting_date: '2026-10-01', meeting_time: '11:00', meeting_type: 'onsite', notes: 'Bring portfolio' });
+
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    modal.querySelector('.btn-edit-meeting-schedule').click();
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    modal.querySelector('.btn-clear-schedule').click();
+    expect(api.scheduleMeeting).toHaveBeenCalledTimes(1);
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    modal.querySelector('.btn-clear-schedule').click();
+    await tick();
+    expect(api.scheduleMeeting).toHaveBeenLastCalledWith('s1', { meeting_date: null, meeting_time: null, meeting_url: null, meeting_type: 'onsite' });
+
+  });
+
+  it('preserves the phone meeting format default in the schedule form', async () => {
+    const modal = document.querySelector('#detail-modal');
+    api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', meeting_type: 'phone', questions: [] }]));
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-meeting-schedule').click();
+    expect(modal.querySelector('#schedule-stage-form [name="meeting_type"]').value).toBe('phone');
+  });
+
+  it('renders stage-level data, inherited interviewer data, and safe meeting fallbacks', async () => {
+    const stages = [
+      { id: 's1', stage_type: 'HR', status: 'completed', questions: [], interviewers: [] },
+      {
+        id: 's2', stage_type: 'Technical', custom_title: 'Architecture', status: 'current',
+        meeting_date: '2026-10-01', meeting_time: '', meeting_type: 'unexpected', meeting_url: 'javascript:alert(1)',
+        questions: [], interviewers: [],
+      },
+    ];
+    const fixture = {
+      ...job(stages),
+      job_post_url: 'javascript:alert(1)',
+      interviewers: [{ name: 'Shared interviewer', role: '', notes: '' }],
+      attachments: [
+        { id: 'general-file', original_name: 'brief.pdf', file_size: 1024, stage_id: null },
+        { id: 'stage-file', original_name: 'notes.pdf', file_size: 2048, stage_id: 's2' },
+      ],
+    };
+    api.getJob.mockResolvedValue(fixture);
+    await openDetailModal('job-1');
+    const modal = document.querySelector('#detail-modal');
+    expect(modal.querySelector('.meeting-format-pill').classList.contains('pill-video')).toBe(true);
+    expect(modal.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(modal.querySelector('.interviewer-name').textContent).toBe('Shared interviewer');
+    expect(modal.querySelector('.attachment-name').textContent).toBe('brief.pdf');
+    expect(modal.querySelectorAll('.attachment-chip')).toHaveLength(2);
+    expect(modal.querySelector('.job-details-group').textContent).toContain('Files (1)');
+    expect(modal.querySelector('.job-details-group').textContent).not.toContain('Additional Files');
+    expect(modal.querySelector('.split-pane-left .stage-focus-group')).toBeNull();
+    expect(modal.querySelector('.split-pane-right .stage-focus-group')).not.toBeNull();
+    const rightPane = modal.querySelector('.split-pane-right');
+    expect(rightPane.querySelector('.stage-hero-banner').compareDocumentPosition(rightPane.querySelector('.stage-focus-group')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(rightPane.querySelector('.stage-focus-group').compareDocumentPosition(rightPane.querySelector('.questions-workspace')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    modal.querySelector('.btn-del-attachment').click();
+    await tick();
+    expect(api.deleteAttachment).not.toHaveBeenCalled();
+
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    modal.querySelector('.btn-del-attachment').click();
+    await tick();
+    expect(api.deleteAttachment).toHaveBeenCalledWith('general-file');
+
+    modal.querySelector('.stage-tab-item[data-idx="0"]').click();
+    expect(modal.querySelector('.interviewer-name')).toBeNull();
+    expect(modal.querySelector('.stage-recruiter-source-select').value).toBe('internal');
+
+    api.getJob.mockResolvedValue({ ...fixture, company_name: 'Unknown', description: '', attachments: [], stages: [] });
+    await openDetailModal('job-1');
+    expect(modal.querySelector('.modal-company').classList.contains('is-unknown')).toBe(true);
+    expect(modal.querySelector('.btn-toggle-reachout')).toBeNull();
+    expect(modal.querySelector('#btn-init-first-stage')).not.toBeNull();
+    expect(modal.querySelector('.attachment-chip')).toBeNull();
+  });
+
+  it('synchronizes stage-one recruiter edits and treats empty uploads as a no-op', async () => {
+    const fixture = job([
+      {
+        id: 's1', stage_type: 'HR', status: 'current', questions: [],
+        interviewers: [{ name: 'Panelist', role: 'Recruiter', notes: 'First call' }],
+      },
+      { id: 's2', stage_type: 'Technical', status: 'pending', questions: [], interviewers: [] },
+    ]);
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    const recruiterType = modal.querySelector('.stage-recruiter-source-select');
+    recruiterType.value = 'internal';
+    recruiterType.dispatchEvent(new Event('change'));
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s1', { recruiter_type: 'internal' });
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { recruiter_type: 'internal' });
+
+    await openDetailModal('job-1');
+    await editInline(modal, '.editable-stage-recruiter-name', '');
+    await editInline(modal, '.editable-stage-recruiter-agency', '');
+    await editInline(modal, '.editable-stage-recruiter-contact', '');
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { recruiter_name: '' });
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { recruiter_agency: '' });
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { recruiter_contact: '' });
+
+    modal.querySelector('#file-upload-general-input').dispatchEvent(new Event('change'));
+    expect(modal.querySelector('#file-upload-stage-input')).toBeNull();
+
+    const file = new File(['resume'], 'resume.pdf', { type: 'application/pdf' });
+    const generalUpload = modal.querySelector('#file-upload-general-input');
+    Object.defineProperty(generalUpload, 'files', { configurable: true, value: [file] });
+    api.uploadAttachment.mockRejectedValueOnce(new Error('general upload failed'));
+    generalUpload.dispatchEvent(new Event('change'));
+    await tick();
+    expect(toast).toHaveBeenCalledWith('general upload failed', 'error');
+
+    const retryUpload = modal.querySelector('#file-upload-general-input');
+    Object.defineProperty(retryUpload, 'files', { configurable: true, value: [file] });
+    retryUpload.dispatchEvent(new Event('change'));
+    await tick();
+    expect(api.uploadAttachment).toHaveBeenCalledTimes(2);
+    expect(api.uploadAttachment.mock.calls[1][0].get('job_id')).toBe('job-1');
+
+    modal.querySelector('.stage-tab-item[data-idx="1"]').click();
+    const stageUpload = modal.querySelector('#file-upload-stage-input');
+    Object.defineProperty(stageUpload, 'files', { configurable: true, value: [file] });
+    stageUpload.dispatchEvent(new Event('change'));
+    await tick();
+    expect(api.uploadAttachment.mock.calls[2][0].get('stage_id')).toBe('s2');
+
+    modal.querySelector('.stage-tab-item[data-idx="0"]').click();
+    modal.querySelector('.btn-add-stage-interviewer').click();
+    const addInterviewerForm = modal.querySelector('.stage-interviewer-form');
+    expect(addInterviewerForm.hidden).toBe(false);
+    addInterviewerForm.querySelector('[data-cancel-interviewer]').click();
+    await tick();
+    expect(api.updateStage).not.toHaveBeenCalledWith('s1', expect.objectContaining({ interviewers: expect.any(Array) }));
+
+    modal.querySelector('.btn-add-stage-interviewer').click();
+    addInterviewerForm.querySelector('[name="name"]').value = 'New panelist';
+    addInterviewerForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s1', {
+      interviewers: [
+        { name: 'Panelist', role: 'Recruiter', notes: 'First call' },
+        { name: 'New panelist', role: '', notes: '' },
+      ],
+    });
+    modal.querySelector('.btn-del-stage-interviewer').click();
+    await tick();
+    expect(api.updateStage).toHaveBeenCalledWith('s1', { interviewers: [] });
+  });
+
+  it('renders undisclosed jobs and optional stage content without unsafe links', async () => {
+    const fixture = {
+      ...job([{
+        id: 's1', stage_type: 'Cultural', custom_title: '', status: 'current', description: '',
+        meeting_date: '2026-10-01', meeting_time: '15:00', meeting_type: 'phone', meeting_url: 'https://meet.example',
+        recruiter_type: 'internal', recruiter_name: 'Stage Contact', recruiter_agency: '', recruiter_contact: '',
+        questions: [{ id: 'q1', question: 'Culture?', is_asked: true, answer_notes: '' }],
+      }]),
+      company_name: 'Unknown',
+      salary_type: 'unknown', salary_min: null, salary_max: null,
+      is_referral: true, job_post_url: '', description: '', keyword_note: '',
+      company_overview: '', reasons_to_change: '', experience_notes: '', expected_salary: '', interview_notes: '',
+      attachments: [],
+    };
+    api.getJob.mockResolvedValue(fixture);
+    const previousToast = window.showToast;
+    const inlineToast = vi.fn();
+    window.showToast = inlineToast;
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(null, null, 'job-1');
+
+    expect(modal.querySelector('.modal-company').classList.contains('is-unknown')).toBe(true);
+    expect(modal.querySelector('.salary-tag').textContent.toLowerCase()).toContain('undisclosed');
+    expect(modal.querySelector('.referral-tag').textContent).toContain('Referral');
+    expect(modal.querySelector('.modal-meta-pills .recruiter-badge')).toBeNull();
+    expect(modal.querySelector('.editable-stage-recruiter-name').textContent).toContain('Stage Contact');
+    expect(modal.querySelector('.editable-job-post-url').textContent).toContain('No LinkedIn post link recorded');
+    expect(modal.querySelector('#reachout-text-container').style.display).toBe('none');
+    expect(modal.querySelector('[data-markdown-field="description"]')).not.toBeNull();
+    expect(modal.querySelector('.editable-keywords').textContent).toContain('No keywords');
+    expect(modal.querySelector('#company-overview-display').textContent).toContain('Summarize what the company does');
+    expect(modal.querySelector('#experience-notes-display').textContent).toContain('Add experience');
+    expect(modal.querySelector('#expected-salary-display').textContent).toContain('Add your target');
+    expect(modal.querySelector('.meeting-format-pill').classList.contains('pill-phone')).toBe(true);
+    expect(modal.querySelector('.btn-join-meeting-inline').getAttribute('href')).toBe('https://meet.example');
+    expect(modal.querySelector('.stage-hero-title').textContent).toBe('Cultural');
+    expect(modal.querySelector('.editable-stage-desc').textContent).toBe('No stage description');
+    expect(modal.querySelector('.q-toggle')).toBeNull();
+    expect(modal.querySelector('.editable-question-text').textContent).toBe('Culture?');
+    expect(modal.querySelector('.meeting-format-pill').textContent).toContain('Phone Call');
+    expect(modal.querySelector('.interview-mode-tag')).toBeNull();
+    expect(modal.querySelector('.questions-workspace-title').textContent).not.toContain('asked');
+    expect(modal.querySelector('.stage-focus-group').textContent).toContain('Screening Documents');
+    expect(modal.querySelector('#file-upload-stage-input')).toBeNull();
+
+    modal.querySelector('.editable-position-title').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    const titleEditor = modal.querySelector('.editable-position-title').parentElement.querySelector('.inline-edit-input');
+    titleEditor.value = '   ';
+    titleEditor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    expect(api.updateJob).not.toHaveBeenCalledWith('job-1', { position_title: '' });
+
+    modal.querySelector('.editable-modal-referral').click();
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', { is_referral: false });
+    expect(inlineToast).toHaveBeenCalledWith('Marked as Non-referral', 'success', 1200);
+
+    api.getJob.mockResolvedValue({ ...fixture, stages: undefined, attachments: undefined });
+    await openDetailModal('job-1');
+    expect(modal.querySelector('#btn-init-first-stage')).not.toBeNull();
+    expect(modal.querySelector('.attachment-chip')).toBeNull();
+    if (previousToast === undefined) delete window.showToast;
+    else window.showToast = previousToast;
+  });
+
+  it('handles custom stage fallbacks, meeting formats, optional links, and canceled destructive actions', async () => {
+    const fixture = {
+      ...job([{
+        id: 'custom-stage', stage_type: 'Custom Round', custom_title: '', status: 'current',
+        meeting_type: 'onsite', meeting_date: '', meeting_time: '',
+        recruiter_type: 'external', recruiter_name: 'Panel contact', recruiter_agency: '',
+        recruiter_contact: 'https://www.linkedin.com/in/panel-contact', questions: [], interviewers: [],
+      }]),
+      attachments: [{ id: 'screening', original_name: 'screening.pdf', file_size: 1024, stage_id: 'custom-stage' }],
+    };
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+    expect(modal.querySelector('.stage-type-badge').classList.contains('HR')).toBe(true);
+    expect(modal.querySelector('.stage-hero-actions .btn-edit-meeting-schedule')).not.toBeNull();
+    expect(modal.querySelector('.editable-stage-recruiter-contact a').textContent).toContain('LinkedIn Profile');
+    expect(modal.querySelector('.attachment-size').textContent).toContain('Screening Document');
+
+    expect(modal.querySelector('.stage-schedule-metadata .meeting-format-pill').textContent).toContain('On-Site');
+    expect(modal.querySelector('.interview-mode-tag')).toBeNull();
+
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    modal.querySelector('.btn-delete-job').click();
+    modal.querySelector('#btn-delete-stage').click();
+    await tick();
+    expect(api.deleteJob).not.toHaveBeenCalled();
+    expect(api.deleteStage).not.toHaveBeenCalled();
+
+    modal.querySelector('#btn-add-stage-tab').click();
+    await submitStageForm(modal, { title: 'Reference Check', type: 'Technical' });
+    expect(api.createStage).toHaveBeenCalledWith({
+      job_id: 'job-1', stage_type: 'Technical', custom_title: 'Reference Check', description: '', status: 'pending',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('deletes a process without an optional refresh callback', async () => {
+    api.getJob.mockResolvedValue(job());
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    await openDetailModal('job-1');
+    document.querySelector('#detail-modal .btn-delete-job').click();
+    await tick();
+    expect(api.deleteJob).toHaveBeenCalledWith('job-1');
+    expect(document.querySelector('#modal-backdrop').classList.contains('active')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('reports failures from stage, question, meeting, and job actions', async () => {
+    const stages = [
+      { id: 's1', stage_type: 'HR', status: 'completed', questions: [] },
+      { id: 's2', stage_type: 'Technical', status: 'current', questions: [{ id: 'q1', question: 'Scale?', is_asked: false, answer_notes: '' }] },
+    ];
+    api.getJob.mockResolvedValue(job(stages));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal('job-1');
+
+    api.updateJob.mockRejectedValueOnce(new Error('status failed'));
+    modal.querySelector('.editable-job-status').click();
+    api.deleteJob.mockRejectedValueOnce(new Error('delete job failed'));
+    modal.querySelector('.btn-delete-job').click();
+    api.updateJob.mockRejectedValueOnce(new Error('referral failed'));
+    modal.querySelector('.editable-modal-referral').click();
+    api.updateJob.mockRejectedValueOnce(new Error('employment type failed'));
+    modal.querySelector('.employment-type-tag').click();
+    api.setCurrentStage.mockRejectedValueOnce(new Error('current stage failed'));
+    modal.querySelector('#btn-toggle-current-stage').click();
+    api.reorderStages.mockRejectedValueOnce(new Error('reorder failed'));
+    modal.querySelector('#stage-tab-0').click();
+    await tick();
+    modal.querySelector('#btn-move-stage-down').click();
+    modal.querySelector('#stage-tab-1').click();
+    await tick();
+    api.updateQuestion.mockRejectedValueOnce(new Error('question notes failed'));
+    modal.querySelector('.q-notes').dispatchEvent(new Event('change'));
+    api.deleteQuestion.mockRejectedValueOnce(new Error('question delete failed'));
+    modal.querySelector('.q-del').click();
+    api.deleteStage.mockRejectedValueOnce(new Error('delete stage failed'));
+    modal.querySelector('#btn-delete-stage').click();
+    await tick();
+    expect(toast).toHaveBeenCalledWith('employment type failed', 'error');
+    expect(toast).toHaveBeenCalledWith('status failed', 'error');
+    expect(toast).toHaveBeenCalledWith('delete job failed', 'error');
+    expect(toast).toHaveBeenCalledWith('referral failed', 'error');
+    expect(toast).toHaveBeenCalledWith('current stage failed', 'error');
+    expect(toast).toHaveBeenCalledWith('reorder failed', 'error');
+    expect(toast).toHaveBeenCalledWith('delete stage failed', 'error');
+    expect(toast).toHaveBeenCalledWith('question notes failed', 'error');
+    expect(toast).toHaveBeenCalledWith('question delete failed', 'error');
+
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-edit-meeting-schedule').click();
+    api.scheduleMeeting.mockRejectedValueOnce(new Error('meeting save failed'));
+    modal.querySelector('#schedule-stage-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(toast).toHaveBeenCalledWith('meeting save failed', 'error');
+
+    await openDetailModal('job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    api.updateJob.mockRejectedValueOnce(new Error('job update failed'));
+    modal.querySelector('.edit-process-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(toast).toHaveBeenCalledWith('job update failed', 'error');
+  });
+
+  it('submits edited details and derives salary fields from entered bounds', async () => {
+    api.getJob.mockResolvedValue(job());
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    const form = modal.querySelector('.edit-process-form');
+    form.querySelector('[name="salary_max"]').value = '';
+    form.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    form.querySelector('[name="salary_min"]').value = '70000';
+    form.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
+    expect(form.querySelector('[name="salary_type"]').value).toBe('no_max');
+    form.querySelector('[name="salary_max"]').value = '90000';
+    form.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    expect(form.querySelector('[name="salary_type"]').value).toBe('limited');
+    form.querySelector('[name="position_title"]').value = 'Staff Engineer';
+    form.querySelector('[name="experience_notes"]').value = 'Distributed systems';
+    form.querySelector('[name="expected_salary"]').value = '€95k depending on scope';
+    form.querySelector('[name="application_url"]').value = 'https://example.com/apply';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenCalledWith('job-1', expect.objectContaining({
+      position_title: 'Staff Engineer', salary_type: 'limited', salary_min: 70000, salary_max: 90000,
+      experience_notes: 'Distributed systems', expected_salary: '€95k depending on scope', application_url: 'https://example.com/apply', is_referral: false,
+    }));
+  });
+
+  it('derives salary bounds for maximum-only and undisclosed ranges in the edit form', async () => {
+    const original = job();
+    api.getJob.mockResolvedValue(original);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    const form = modal.querySelector('.edit-process-form');
+    form.querySelector('[name="salary_min"]').value = '';
+    form.querySelector('[name="salary_max"]').value = '90000';
+    form.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    expect(form.querySelector('[name="salary_type"]').value).toBe('no_min');
+    form.querySelector('[name="position_title"]').value = 'Maximum-only role';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', expect.objectContaining({
+      salary_type: 'no_min', salary_min: null, salary_max: 90000,
+    }));
+
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    const minimumOnlyForm = modal.querySelector('.edit-process-form');
+    minimumOnlyForm.querySelector('[name="salary_min"]').value = '70000';
+    minimumOnlyForm.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
+    minimumOnlyForm.querySelector('[name="salary_max"]').value = '';
+    minimumOnlyForm.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    expect(minimumOnlyForm.querySelector('[name="salary_type"]').value).toBe('no_max');
+    minimumOnlyForm.querySelector('[name="position_title"]').value = 'Minimum-only role';
+    minimumOnlyForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', expect.objectContaining({
+      salary_type: 'no_max', salary_min: 70000, salary_max: null,
+    }));
+
+    api.getJob.mockResolvedValue({ ...original, salary_min: null, salary_max: null, is_referral: true,
+      company_domain: '', job_post_url: '', recruiter_name: '', recruiter_agency: '',
+      keyword_note: '', company_overview: '', reasons_to_change: '', experience_notes: '',
+      expected_salary: '', interview_notes: '' });
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), 'job-1');
+    modal.querySelector('.btn-edit-details').click();
+    await tick();
+    expect(modal.querySelector('[name="is_referral"]')).toHaveProperty('checked', true);
+    expect(modal.querySelector('[name="company_domain"]').value).toBe('');
+    const emptyRangeForm = modal.querySelector('.edit-process-form');
+    emptyRangeForm.querySelector('[name="salary_min"]').dispatchEvent(new Event('input'));
+    emptyRangeForm.querySelector('[name="salary_max"]').dispatchEvent(new Event('input'));
+    emptyRangeForm.querySelector('[name="position_title"]').value = 'Undisclosed role';
+    emptyRangeForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.updateJob).toHaveBeenLastCalledWith('job-1', expect.objectContaining({
+      salary_type: 'limited', salary_min: null, salary_max: null, is_referral: true,
+    }));
+  });
+});

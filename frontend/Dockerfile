@@ -1,0 +1,37 @@
+# Validate assets in the build stage; serve them from the production image.
+FROM node:26-alpine AS assets
+
+WORKDIR /src
+COPY package.json ./package.json
+COPY public ./public
+COPY demo ./demo
+COPY index.html ./index.html
+COPY runtime-config.json ./runtime-config.json
+RUN find public/js demo -type f -name '*.js' -exec node --check {} +
+
+FROM nginxinc/nginx-unprivileged:alpine-slim AS runtime
+
+USER root
+RUN apk upgrade --no-cache
+
+LABEL maintainer="War Room Team" \
+      description="War Room Candidate Selection Process Command Center Frontend"
+
+RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
+
+COPY nginx.conf /etc/nginx/conf.d/war-room.conf
+COPY security-headers.conf /etc/nginx/war-room-security-headers.conf
+
+COPY --from=assets /src/index.html /usr/share/nginx/html/index.html
+COPY --from=assets /src/runtime-config.json /usr/share/nginx/html/runtime-config.json
+COPY --from=assets /src/public /usr/share/nginx/html/public
+COPY --from=assets /src/demo /usr/share/nginx/html/demo
+
+USER 101
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=5s --timeout=2s --start-period=3s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:8080/ > /dev/null || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,1755 @@
+package database
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"database/sql/driver"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	_ "modernc.org/sqlite"
+	"war-room/backend/pkg/config"
+	"war-room/backend/pkg/models"
+)
+
+type migrationTestExecutor struct {
+	db        *sql.DB
+	failQuery string
+	failExec  string
+}
+
+type journalModeFailureDriver struct{}
+
+type journalModeFailureConn struct{}
+
+func init() {
+	sql.Register("journal-mode-failure", journalModeFailureDriver{})
+}
+
+func (journalModeFailureDriver) Open(string) (driver.Conn, error) {
+	return journalModeFailureConn{}, nil
+}
+
+func (journalModeFailureConn) Prepare(string) (driver.Stmt, error) {
+	return nil, errors.New("prepared statements are unavailable")
+}
+
+func (journalModeFailureConn) Close() error { return nil }
+
+func (journalModeFailureConn) Begin() (driver.Tx, error) {
+	return nil, errors.New("transactions are unavailable")
+}
+
+func (journalModeFailureConn) Ping(context.Context) error { return nil }
+
+func (journalModeFailureConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+	return nil, errors.New("journal mode is unavailable")
+}
+
+func TestAddCVVersionJobReferenceLeavesExistingColumnUntouched(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE jobs ADD COLUMN cv_version_id TEXT NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := addCVVersionJobReference(db); err != nil {
+		t.Fatalf("existing jobs.cv_version_id should be accepted: %v", err)
+	}
+}
+
+func TestSearchPeriodMigrationPreservesExistingJobsAsUnassigned(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	// Apply the real version 1-11 migrations (not a fabricated schema_migrations
+	// row set) so later migrations see the columns and triggers a genuine
+	// version-11 database actually has.
+	for version := 1; version <= 11; version++ {
+		if err := applySchemaMigration(db, version); err != nil {
+			t.Fatalf("apply schema migration %d: %v", version, err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateSchema(db); err != nil {
+		t.Fatalf("apply search period migration: %v", err)
+	}
+	var periodID sql.NullString
+	if err := db.QueryRow("SELECT search_period_id FROM jobs WHERE id = 'legacy-job'").Scan(&periodID); err != nil {
+		t.Fatal(err)
+	}
+	if periodID.Valid {
+		t.Fatalf("legacy job should remain unassigned, got %q", periodID.String)
+	}
+}
+
+func TestApplicationURLMigrationPreservesJobsAndTracksChanges(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustMigrationExec(t, db, schemaSQL)
+	mustMigrationSchema(t, db)
+	mustMigrationExec(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, last_activity_at) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed', 1)`)
+	mustMigrationExec(t, db, "DROP TRIGGER touch_job_activity; ALTER TABLE jobs DROP COLUMN application_url; DELETE FROM schema_migrations WHERE version = 15")
+	mustMigrationSchema(t, db)
+	if err := migrateJobApplicationURL(db); err != nil {
+		t.Fatalf("rerun application URL migration: %v", err)
+	}
+	var applicationURL sql.NullString
+	if err := db.QueryRow("SELECT application_url FROM jobs WHERE id = 'legacy-job'").Scan(&applicationURL); err != nil {
+		t.Fatal(err)
+	}
+	if applicationURL.Valid {
+		t.Fatalf("legacy application URL should be empty, got %q", applicationURL.String)
+	}
+	assertApplicationURLUpdatesActivity(t, db)
+}
+
+func TestApplicationURLMigrationReportsFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		failQuery string
+		failExec  string
+	}{
+		{name: "inspect column", failQuery: "pragma_table_info"},
+		{name: "add column", failExec: "ALTER TABLE jobs ADD COLUMN application_url"},
+		{name: "refresh trigger", failExec: "DROP TRIGGER IF EXISTS touch_job_activity"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			mustMigrationExec(t, db, schemaSQL)
+			err := migrateJobApplicationURL(migrationTestExecutor{db: db, failQuery: test.failQuery, failExec: test.failExec})
+			if err == nil {
+				t.Fatal("migration should report the injected failure")
+			}
+		})
+	}
+}
+
+func TestUserAvatarMigrationAddsColumnsAndDefaultsExistingRowsToEmpty(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustMigrationExec(t, db, schemaSQL)
+	mustMigrationSchema(t, db)
+	mustMigrationExec(t, db, "ALTER TABLE users DROP COLUMN avatar_path; ALTER TABLE users DROP COLUMN avatar_updated_at; DELETE FROM schema_migrations WHERE version = 23")
+	mustMigrationExec(t, db, `INSERT INTO users (id, google_sub, email, name, picture_url, created_at, updated_at) VALUES ('legacy-user', 'sub-1', 'legacy@example.com', 'Legacy User', 'https://example.com/p.png', 100, 100)`)
+
+	if err := migrateUserAvatarColumn(db); err != nil {
+		t.Fatalf("apply avatar column migration: %v", err)
+	}
+	for _, column := range []string{"avatar_path", "avatar_updated_at"} {
+		exists, err := hasColumn(db, "users", column)
+		if err != nil {
+			t.Fatalf("inspect users.%s: %v", column, err)
+		}
+		if !exists {
+			t.Fatalf("users.%s should exist after migration", column)
+		}
+	}
+	var email, avatarPath string
+	var avatarUpdatedAt int64
+	if err := db.QueryRow("SELECT email, avatar_path, avatar_updated_at FROM users WHERE id = 'legacy-user'").
+		Scan(&email, &avatarPath, &avatarUpdatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if email != "legacy@example.com" {
+		t.Fatalf("migration should not touch existing columns, email=%q", email)
+	}
+	if avatarPath != "" || avatarUpdatedAt != 0 {
+		t.Fatalf("existing user should default to no custom avatar, got path=%q updated_at=%d", avatarPath, avatarUpdatedAt)
+	}
+}
+
+func TestUserAvatarMigrationIsIdempotent(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustMigrationExec(t, db, schemaSQL)
+	mustMigrationSchema(t, db)
+	if err := migrateUserAvatarColumn(db); err != nil {
+		t.Fatalf("rerun avatar column migration: %v", err)
+	}
+}
+
+func TestUserAvatarMigrationReportsInspectionAndAlterFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		failQuery string
+		failExec  string
+	}{
+		{name: "inspect avatar_path", failQuery: "pragma_table_info"},
+		{name: "add avatar_path", failExec: "ADD COLUMN avatar_path"},
+		{name: "add avatar_updated_at", failExec: "ADD COLUMN avatar_updated_at"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			mustMigrationExec(t, db, schemaSQL)
+			mustMigrationSchema(t, db)
+			mustMigrationExec(t, db, "ALTER TABLE users DROP COLUMN avatar_path; ALTER TABLE users DROP COLUMN avatar_updated_at; DELETE FROM schema_migrations WHERE version = 23")
+			err := migrateUserAvatarColumn(migrationTestExecutor{db: db, failQuery: test.failQuery, failExec: test.failExec})
+			if err == nil {
+				t.Fatal("migration should report the injected failure")
+			}
+		})
+	}
+}
+
+func TestJobHistoryMigrationRecordsNewChangesWithoutInventingLegacyEvents(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustMigrationExec(t, db, schemaSQL)
+	mustMigrationExec(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, created_at, keyword_note) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed', 100, 'Initial highlights')`)
+	mustMigrateJobHistory(t, db)
+	mustMigrationExec(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, created_at, keyword_note) VALUES ('new-job', 'Designer', 'waiting', 'unknown', 'none', 'seed', 200, 'Initial highlights')`)
+	mustMigrationExec(t, db, `UPDATE jobs SET status = 'ongoing', keyword_note = 'New highlights' WHERE id = 'new-job'`)
+	assertHistoryEvents(t, readHistoryEvents(t, db))
+	assertNoLegacyHistory(t, db)
+}
+
+func TestJobHistoryMigrationReportsTableAndIndexFailures(t *testing.T) {
+	for _, failure := range []string{"CREATE TABLE IF NOT EXISTS job_history", "CREATE INDEX IF NOT EXISTS idx_job_history_job_time"} {
+		t.Run(failure, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			mustMigrationExec(t, db, schemaSQL)
+			if err := migrateJobHistory(migrationTestExecutor{db: db, failExec: failure}); err == nil {
+				t.Fatalf("migration did not report failure for %q", failure)
+			}
+		})
+	}
+}
+
+func mustMigrateJobHistory(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := migrateJobHistory(db); err != nil {
+		t.Fatalf("apply job history migration: %v", err)
+	}
+}
+
+func readHistoryEvents(t *testing.T, db *sql.DB) map[string]int64 {
+	t.Helper()
+	rows, err := db.Query(`SELECT job_id, occurred_at, action FROM job_history ORDER BY occurred_at, id`)
+	if err != nil {
+		t.Fatalf("read job history: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	seen := make(map[string]int64, 3)
+	for rows.Next() {
+		var jobID string
+		var occurredAt int64
+		var action string
+		if err := rows.Scan(&jobID, &occurredAt, &action); err != nil {
+			t.Fatalf("scan job history: %v", err)
+		}
+		if jobID != "new-job" {
+			t.Fatalf("unexpected history for legacy job %q: %q", jobID, action)
+		}
+		seen[action] = occurredAt
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate job history: %v", err)
+	}
+	return seen
+}
+
+func assertHistoryEvents(t *testing.T, seen map[string]int64) {
+	t.Helper()
+	if len(seen) != 3 {
+		t.Fatalf("history event count=%d want=3: %+v", len(seen), seen)
+	}
+	if seen["created"] != 200 {
+		t.Fatalf("creation history=%d want=200", seen["created"])
+	}
+	for _, action := range []string{"moved to ongoing", "changed role highlights"} {
+		if seen[action] < 200 {
+			t.Fatalf("%q timestamp=%d want at least 200", action, seen[action])
+		}
+	}
+}
+
+func assertNoLegacyHistory(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var legacyEvents int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM job_history WHERE job_id = 'legacy-job'`).Scan(&legacyEvents); err != nil {
+		t.Fatalf("count legacy history: %v", err)
+	}
+	if legacyEvents != 0 {
+		t.Fatalf("migration invented %d events for an existing job", legacyEvents)
+	}
+}
+
+func mustMigrationExec(t *testing.T, db *sql.DB, query string, args ...any) {
+	t.Helper()
+	if _, err := db.Exec(query, args...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustMigrationSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := migrateSchema(db); err != nil {
+		t.Fatalf("migrate schema: %v", err)
+	}
+}
+
+func assertApplicationURLUpdatesActivity(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustMigrationExec(t, db, "UPDATE jobs SET application_url = ? WHERE id = 'legacy-job'", "https://example.com/apply")
+	var activity int64
+	if err := db.QueryRow("SELECT last_activity_at FROM jobs WHERE id = 'legacy-job'").Scan(&activity); err != nil {
+		t.Fatal(err)
+	}
+	if activity <= 1 {
+		t.Fatalf("application URL update did not refresh activity timestamp: %d", activity)
+	}
+}
+
+func TestOpenEndedSearchPeriodMigrationPreservesAssignments(t *testing.T) {
+	db := openMigrationTestDB(t)
+	seedVersionTwelveSearchPeriod(t, db)
+	verifyOpenEndedSearchPeriodMigration(t, db)
+}
+
+func TestOpenEndedSearchPeriodMigrationReportsStatementErrors(t *testing.T) {
+	for _, statement := range []string{"CREATE TABLE search_periods_new", "INSERT INTO search_periods_new", "DROP TABLE search_periods", "ALTER TABLE search_periods_new"} {
+		t.Run(statement, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			seedVersionTwelveSearchPeriod(t, db)
+			err := migrateOpenEndedSearchPeriods(migrationTestExecutor{db: db, failExec: statement})
+			if err == nil || !strings.Contains(err.Error(), "injected execution failure") {
+				t.Fatalf("migration error=%v, want injected statement failure", err)
+			}
+		})
+	}
+}
+
+func TestOpenEndedSearchPeriodMigrationReportsVersionInsertError(t *testing.T) {
+	db := openMigrationTestDB(t)
+	seedVersionTwelveSearchPeriod(t, db)
+	if err := applyOpenEndedSearchPeriodMigration(db, 12); err == nil || !strings.Contains(err.Error(), "record migration") {
+		t.Fatalf("duplicate version error=%v, want migration version insert error", err)
+	}
+}
+
+func TestOpenEndedSearchPeriodMigrationReportsConnectionAndCopyErrors(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOpenEndedSearchPeriodMigration(db, 13); err == nil {
+		t.Fatal("closed database should fail to open a migration connection")
+	}
+
+	db = openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOpenEndedSearchPeriodMigration(db, 13); err == nil || !strings.Contains(err.Error(), "copy search periods") {
+		t.Fatalf("missing search_periods copy error=%v", err)
+	}
+}
+
+func seedVersionTwelveSearchPeriod(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO schema_migrations (version) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := applySchemaMigration(db, 12); err != nil {
+		t.Fatalf("apply search period migration: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO search_periods (id, name, start_date, end_date) VALUES ('period', 'September', '2026-09-01', '2026-09-30')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed, search_period_id) VALUES ('job', 'Engineer', 'waiting', 'unknown', 'none', 'seed', 'period')`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func verifyOpenEndedSearchPeriodMigration(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if err := applySchemaMigration(db, 13); err != nil {
+		t.Fatalf("allow open-ended periods: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO search_periods (id, name, start_date, end_date) VALUES ('ongoing', 'Ongoing', '2026-10-01', '')`); err != nil {
+		t.Fatalf("insert ongoing period: %v", err)
+	}
+	var periodName, endDate, assignedPeriod string
+	if err := db.QueryRow(`SELECT p.name, p.end_date, j.search_period_id FROM search_periods p JOIN jobs j ON j.search_period_id = p.id WHERE j.id = 'job'`).Scan(&periodName, &endDate, &assignedPeriod); err != nil {
+		t.Fatal(err)
+	}
+	if periodName != "September" || endDate != "2026-09-30" || assignedPeriod != "period" {
+		t.Fatalf("existing period=%q end=%q assignment=%q", periodName, endDate, assignedPeriod)
+	}
+	rows, err := db.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Next() {
+		t.Fatal("migration left a foreign-key violation")
+	}
+}
+
+func TestInitDBReturnsDatabaseOpenErrors(t *testing.T) {
+	openError := errors.New("driver unavailable")
+	_, err := initDBWithOpener(&config.Config{DBPath: filepath.Join(t.TempDir(), "db.sqlite")}, func(string, string) (*sql.DB, error) {
+		return nil, openError
+	})
+	if !errors.Is(err, openError) {
+		t.Fatalf("database open error=%v, want wrapped opener error", err)
+	}
+}
+
+func TestInitDBReturnsJournalModeErrors(t *testing.T) {
+	database, err := sql.Open("journal-mode-failure", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = initDBWithOpener(&config.Config{DBPath: filepath.Join(t.TempDir(), "db.sqlite")}, func(string, string) (*sql.DB, error) {
+		return database, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "configure sqlite journal mode") {
+		t.Fatalf("journal mode error=%v, want wrapped configuration error", err)
+	}
+}
+
+func TestConfigureJournalModePrefersWAL(t *testing.T) {
+	var requested []string
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		requested = append(requested, mode)
+		return "wal", nil
+	})
+	if err != nil {
+		t.Fatalf("configure journal mode: %v", err)
+	}
+	if !reflect.DeepEqual(requested, []string{"WAL"}) {
+		t.Fatalf("requested journal modes=%v, want only WAL", requested)
+	}
+}
+
+func TestConfigureJournalModeFallsBackToDELETE(t *testing.T) {
+	var requested []string
+	walError := errors.New("WAL unavailable")
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		requested = append(requested, mode)
+		if mode == "WAL" {
+			return "", walError
+		}
+		return "delete", nil
+	})
+	if err != nil {
+		t.Fatalf("configure fallback journal mode: %v", err)
+	}
+	if !reflect.DeepEqual(requested, []string{"WAL", "DELETE"}) {
+		t.Fatalf("requested journal modes=%v, want WAL then DELETE", requested)
+	}
+}
+
+func TestConfigureJournalModeReportsFallbackFailure(t *testing.T) {
+	fallbackError := errors.New("DELETE unavailable")
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		if mode == "WAL" {
+			return "", errors.New("WAL unavailable")
+		}
+		return "", fallbackError
+	})
+	if !errors.Is(err, fallbackError) {
+		t.Fatalf("journal mode error=%v, want wrapped DELETE failure", err)
+	}
+}
+
+func TestConfigureJournalModeRejectsUnexpectedFallback(t *testing.T) {
+	err := configureJournalModeWithSetter(func(mode string) (string, error) {
+		if mode == "WAL" {
+			return "", errors.New("WAL unavailable")
+		}
+		return "memory", nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "unexpected fallback journal mode") {
+		t.Fatalf("unexpected fallback mode error=%v", err)
+	}
+}
+
+func TestFinalMigrationReportsInspectionAndExecutionFailures(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY, status_changed_at INTEGER, updated_at INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(&secondQueryFailureExecutor{migrationTestExecutor: migrationTestExecutor{db: db}, failAt: 2}); err == nil {
+		t.Fatal("failed updated_at inspection should abort the migration")
+	}
+	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failExec: "UPDATE jobs SET status_changed_at"}); err == nil {
+		t.Fatal("failed status timestamp initialization should abort the migration")
+	}
+	if err := migrateSearchPeriods(migrationTestExecutor{db: db, failExec: "CREATE TABLE search_periods"}); err == nil {
+		t.Fatal("failed search period migration statement should abort the migration")
+	}
+
+	closedDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "closed.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closedDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOpenEndedSearchPeriodMigration(closedDB, 15); err == nil {
+		t.Fatal("closed database should fail to start the open-ended period migration")
+	}
+	if err := applyWaitingStatusMigration(closedDB, 16); err == nil {
+		t.Fatal("closed database should fail to start the waiting status migration")
+	}
+}
+
+type secondQueryFailureExecutor struct {
+	migrationTestExecutor
+	failAt int
+	calls  int
+}
+
+func (executor *secondQueryFailureExecutor) Query(query string, args ...any) (*sql.Rows, error) {
+	executor.calls++
+	if executor.calls == executor.failAt {
+		return nil, errors.New("injected second query failure")
+	}
+	return executor.migrationTestExecutor.Query(query, args...)
+}
+
+func TestInitDBReturnsSchemaExecutionErrors(t *testing.T) {
+	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "readonly.db")}
+	setup, err := sql.Open("sqlite", sqliteDataSource(cfg.DBPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = initDBWithOpener(cfg, func(_, source string) (*sql.DB, error) {
+		return sql.Open("sqlite", source+"&mode=ro")
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed to execute schema") {
+		t.Fatalf("schema execution error=%v", err)
+	}
+}
+
+func TestRestoreRecoveryCVSnapshotValidatesBlobAndSequence(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		filename string
+		content  string
+		wantErr  bool
+	}{
+		{name: "unsafe filename", filename: "../escape", content: "cv", wantErr: true},
+		{name: "missing blob", filename: strings.Repeat("a", 64), content: "", wantErr: true},
+		{name: "checksum mismatch", filename: strings.Repeat("a", 64), content: "wrong", wantErr: true},
+		{name: "valid", filename: strings.Repeat("a", 64), content: "cv"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, cvDir := recoveryDatabase(t)
+			content := []byte(test.content)
+			if test.name != "missing blob" && test.filename != "../escape" {
+				if err := os.WriteFile(filepath.Join(cvDir, test.filename), content, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			digest := hex.EncodeToString(sha256.New().Sum(nil))
+			if test.name == "valid" {
+				digestBytes := sha256.Sum256(content)
+				digest = hex.EncodeToString(digestBytes[:])
+			}
+			snapshot := models.RecoverySnapshot{NextCVVersion: 8, CVVersions: []models.CVVersionSnapshot{{ID: "cv-1", Version: 3, OriginalName: "resume.pdf", StoredFilename: test.filename, FileSize: int64(len(content)), SHA256: digest, UploadedAt: 42}}}
+			err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), cvDir)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("restore error=%v, want error=%t", err, test.wantErr)
+			}
+			if !test.wantErr {
+				assertRestoredCVVersionIsUnclaimed(t, db, "cv-1", 3)
+			}
+		})
+	}
+}
+
+// assertRestoredCVVersionIsUnclaimed confirms a recovered CV version row has
+// no owning user yet (ClaimUnownedData seeds the real per-user sequence once
+// an account signs in).
+func assertRestoredCVVersionIsUnclaimed(t *testing.T, db *sql.DB, id string, wantVersion int) {
+	t.Helper()
+	var version int
+	var userID sql.NullString
+	if err := db.QueryRow(`SELECT version, user_id FROM cv_versions WHERE id = ?`, id).Scan(&version, &userID); err != nil || version != wantVersion || userID.Valid {
+		t.Fatalf("restored cv version=%d user=%v err=%v", version, userID, err)
+	}
+}
+
+func TestRestoreRecoveryCVSnapshotRollsBackFailedWrites(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	content := []byte("cv")
+	digestBytes := sha256.Sum256(content)
+	digest := hex.EncodeToString(digestBytes[:])
+	if err := os.WriteFile(filepath.Join(directory, digest), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := models.RecoverySnapshot{Jobs: []models.Job{}, CVVersions: []models.CVVersionSnapshot{{ID: "cv", Version: 1, OriginalName: "resume.pdf", StoredFilename: digest, FileSize: 2, SHA256: digest}}}
+	if err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), directory); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), directory); err == nil {
+		t.Fatal("duplicate CV metadata should fail restore")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM cv_versions`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("versions after rollback=%d err=%v", count, err)
+	}
+}
+
+func TestRestoreRecoverySnapshotRollsBackInvalidSearchPeriod(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	snapshot := models.RecoverySnapshot{
+		Jobs:          []models.Job{},
+		SearchPeriods: []models.SearchPeriod{{ID: "invalid-period", Name: "", StartDate: "2026-01-01", EndDate: ""}},
+	}
+	if err := restoreRecoverySnapshot(db, snapshot, t.TempDir(), directory); err == nil {
+		t.Fatal("invalid search period should abort snapshot restoration")
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM search_periods").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("search period count after failed restore=%d err=%v", count, err)
+	}
+}
+
+func recoveryDatabase(t *testing.T) (*sql.DB, string) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := &config.Config{DataDir: dir, DBPath: filepath.Join(dir, "recovery.sqlite"), BackupPath: filepath.Join(dir, "backup.json"),
+		AttachmentsDir: filepath.Join(dir, "attachments"), CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfg.CVDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db, cfg.CVDir
+}
+
+func (executor migrationTestExecutor) Exec(query string, args ...any) (sql.Result, error) {
+	if executor.failExec != "" && strings.Contains(query, executor.failExec) {
+		return nil, errors.New("injected execution failure")
+	}
+	return executor.db.Exec(query, args...)
+}
+
+func (executor migrationTestExecutor) Query(query string, args ...any) (*sql.Rows, error) {
+	if executor.failQuery != "" && strings.Contains(query, executor.failQuery) {
+		return nil, errors.New("injected query failure")
+	}
+	return executor.db.Query(query, args...)
+}
+
+func TestEnsureOptionalColumnsOnLegacyJobsTable(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, migrate := range map[string]func(schemaExecutor) error{
+		"preparation":      ensurePreparationColumns,
+		"work arrangement": ensureWorkArrangementColumns,
+		"employment type":  ensureEmploymentTypeColumn,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := migrate(db); err != nil {
+				t.Fatalf("migrate legacy jobs table: %v", err)
+			}
+		})
+	}
+	for _, column := range []string{"experience_notes", "expected_salary", "work_arrangement", "employment_type"} {
+		exists, err := hasColumn(db, "jobs", column)
+		if err != nil || !exists {
+			t.Fatalf("column %s exists=%t err=%v", column, exists, err)
+		}
+	}
+	// Running each migration twice also covers the already-present-column path.
+	if err := ensurePreparationColumns(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureWorkArrangementColumns(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureEmploymentTypeColumn(db); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunCVSchemaMigrationReportsStepFailures(t *testing.T) {
+	for _, test := range []struct {
+		name, failExec, failQuery string
+	}{
+		{name: "CV table", failExec: "CREATE TABLE IF NOT EXISTS cv_versions"},
+		{name: "sequence table", failExec: "CREATE TABLE IF NOT EXISTS cv_version_sequence"},
+		{name: "inspect job column", failQuery: "pragma_table_info"},
+		{name: "job reference", failExec: "ALTER TABLE jobs ADD COLUMN cv_version_id"},
+		{name: "version index", failExec: "idx_cv_versions_version"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+				t.Fatal(err)
+			}
+			executor := migrationTestExecutor{db: db, failExec: test.failExec, failQuery: test.failQuery}
+			if err := runSchemaMigration(executor, 7); err == nil {
+				t.Fatal("migration step failure should be returned")
+			}
+		})
+	}
+}
+
+func TestTechnologyCatalogMigrationPreservesExistingJobs(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY); INSERT INTO jobs (id) VALUES ('existing-job')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateTechnologyCatalog(db); err != nil {
+		t.Fatalf("migrate technology catalog: %v", err)
+	}
+	var jobCount, tableCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&jobCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('technologies', 'technology_aliases', 'job_technologies')`).Scan(&tableCount); err != nil {
+		t.Fatal(err)
+	}
+	if jobCount != 1 || tableCount != 3 {
+		t.Fatalf("preserved jobs=%d new tables=%d", jobCount, tableCount)
+	}
+}
+
+func TestTechnologyCatalogMigrationReportsSQLFailure(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	executor := migrationTestExecutor{db: db, failExec: "technology_aliases"}
+	if err := runSchemaMigration(executor, 8); err == nil {
+		t.Fatal("catalog migration SQL failure should be returned")
+	}
+}
+
+func TestWaitingStatusMigrationPreservesRelatedRecords(t *testing.T) {
+	db := prepareWaitingStatusMigrationDB(t)
+	insertWaitingMigrationRecords(t, db)
+	if err := applyWaitingStatusMigration(db, 9); err != nil {
+		t.Fatalf("apply waiting status migration: %v", err)
+	}
+	assertWaitingMigrationRecords(t, db)
+}
+
+func TestWaitingStatusMigrationReportsConnectionAndSchemaErrors(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyWaitingStatusMigration(db, 9); err == nil {
+		t.Fatal("closed database should fail to acquire a migration connection")
+	}
+
+	db = openMigrationTestDB(t)
+	if err := applyWaitingStatusMigration(db, 9); err == nil {
+		t.Fatal("missing jobs table should fail the waiting status migration")
+	}
+}
+
+func TestWaitingStatusMigrationAddsStatusWhenColumnIsMissing(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobWaitingStatus(db); err != nil {
+		t.Fatalf("add waiting job status: %v", err)
+	}
+	if hasStatus, err := hasColumn(db, "jobs", "status"); err != nil || !hasStatus {
+		t.Fatalf("jobs.status exists=%t err=%v", hasStatus, err)
+	}
+}
+
+func TestHasColumnTreatsIdentifiersAsValues(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, input := range []struct{ table, column string }{
+		{table: "jobs); SELECT 1; --", column: "id"},
+		{table: "jobs", column: "id' OR 1=1 --"},
+	} {
+		exists, err := hasColumn(db, input.table, input.column)
+		if err != nil || exists {
+			t.Fatalf("hasColumn(%q, %q) = %t, %v; want false, nil", input.table, input.column, exists, err)
+		}
+	}
+}
+
+func TestWaitingStatusMigrationReportsMigrationRecordFailure(t *testing.T) {
+	db := prepareWaitingStatusMigrationDB(t)
+	if _, err := db.Exec(`CREATE TRIGGER fail_waiting_migration_record BEFORE INSERT ON schema_migrations WHEN NEW.version = 9 BEGIN SELECT RAISE(ABORT, 'injected migration record failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyWaitingStatusMigration(db, 9); err == nil {
+		t.Fatal("migration record failure should be returned")
+	}
+}
+
+func TestWaitingStatusMigrationReturnsInspectionAndSQLFailures(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := runSchemaMigration(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}, 9); err == nil {
+		t.Fatal("schema inspection failure should be returned")
+	}
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	executor := migrationTestExecutor{db: db, failExec: "DROP TRIGGER IF EXISTS validate_employment_type_insert"}
+	if err := runSchemaMigration(executor, 9); err == nil {
+		t.Fatal("waiting status migration SQL failure should be returned")
+	}
+}
+
+func prepareWaitingStatusMigrationDB(t *testing.T) *sql.DB {
+	t.Helper()
+	databasePath := filepath.Join(t.TempDir(), "waiting-migration.db")
+	db, err := sql.Open("sqlite", sqliteDataSource(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	legacySchema := strings.Replace(schemaSQL, "('waiting', 'ongoing', 'accepted', 'rejected')", "('ongoing', 'accepted', 'rejected')", 1)
+	if _, err := db.Exec(legacySchema); err != nil {
+		t.Fatalf("create legacy schema: %v", err)
+	}
+	for version := 1; version <= 8; version++ {
+		if err := applySchemaMigration(db, version); err != nil {
+			t.Fatalf("apply legacy schema migration %d: %v", version, err)
+		}
+	}
+	return db
+}
+
+func insertWaitingMigrationRecords(t *testing.T, db *sql.DB) {
+	t.Helper()
+	statements := []string{
+		`INSERT INTO cv_versions (id, version, original_name, stored_filename, file_size, mime_type, sha256, uploaded_at) VALUES ('cv-1', 1, 'resume.pdf', 'resume.pdf', 1, 'application/pdf', 'digest', 1)`,
+		`INSERT INTO jobs (id, company_name, position_title, status, salary_type, salary_currency, recruiter_type, avatar_seed, cv_version_id) VALUES ('job-1', 'Example', 'Engineer', 'ongoing', 'unknown', 'EUR', 'none', 'avatar', 'cv-1')`,
+		`INSERT INTO stages (id, job_id, order_index, stage_type, status, meeting_type) VALUES ('stage-1', 'job-1', 0, 'HR', 'current', 'video')`,
+		`INSERT INTO stage_questions (id, stage_id, order_index, question) VALUES ('question-1', 'stage-1', 0, 'Question?')`,
+		`INSERT INTO attachments (id, job_id, stage_id, original_name, stored_filename, absolute_path, file_size, mime_type) VALUES ('attachment-1', 'job-1', 'stage-1', 'note.txt', 'note.txt', '/data/attachments/note.txt', 1, 'text/plain')`,
+		`INSERT INTO technologies (id, name, normalized_name) VALUES ('tech-1', 'Go', 'go')`,
+		`INSERT INTO job_technologies (job_id, technology_id) VALUES ('job-1', 'tech-1')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("insert related migration fixture: %v", err)
+		}
+	}
+}
+
+func assertWaitingMigrationRecords(t *testing.T, db *sql.DB) {
+	t.Helper()
+	for table, want := range map[string]int{"stages": 1, "stage_questions": 1, "attachments": 1, "job_technologies": 1} {
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil || count != want {
+			t.Fatalf("%s count=%d err=%v, want %d", table, count, err, want)
+		}
+	}
+	var cvVersionID string
+	if err := db.QueryRow(`SELECT cv_version_id FROM jobs WHERE id = 'job-1'`).Scan(&cvVersionID); err != nil || cvVersionID != "cv-1" {
+		t.Fatalf("job CV version=%q err=%v", cvVersionID, err)
+	}
+	var violations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&violations); err != nil || violations != 0 {
+		t.Fatalf("foreign-key violations=%d err=%v", violations, err)
+	}
+}
+
+func TestRecoverySnapshotRestoresTechnologyCatalogAndAssignments(t *testing.T) {
+	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "technology-recovery.db")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	technology := models.Technology{ID: "tech-kubernetes", Name: "Kubernetes", Aliases: []string{"K8s"}}
+	job := models.Job{ID: "job-1", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed",
+		WorkArrangement: models.WorkArrangementUnknown, EmploymentType: models.EmploymentTypeUnknown,
+		Technologies: []models.Technology{technology}}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: []models.Job{job}, Technologies: []models.Technology{technology}}, "", ""); err != nil {
+		t.Fatalf("restore recovery snapshot: %v", err)
+	}
+	var alias, canonical string
+	if err := db.QueryRow(`SELECT t.name, a.alias FROM technologies t JOIN technology_aliases a ON a.technology_id = t.id JOIN job_technologies jt ON jt.technology_id = t.id WHERE jt.job_id = ?`, job.ID).Scan(&canonical, &alias); err != nil {
+		t.Fatal(err)
+	}
+	if canonical != "Kubernetes" || alias != "K8s" {
+		t.Fatalf("restored canonical=%q alias=%q", canonical, alias)
+	}
+}
+
+func TestRecoverySnapshotRestoresSearchPeriodsAndAssignments(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{DataDir: dir, DBPath: filepath.Join(dir, "recovery-search-period.sqlite"),
+		BackupPath: filepath.Join(dir, "backup.json"), AttachmentsDir: filepath.Join(dir, "attachments"),
+		CVDir: filepath.Join(dir, "cvs"), LogosDir: filepath.Join(dir, "logos")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	periodID := "period-march"
+	job := models.Job{ID: "job-march", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone,
+		SearchPeriodID: &periodID}
+	period := models.SearchPeriod{ID: periodID, Name: "March 2026", StartDate: "2026-03-01", EndDate: "2026-03-31"}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: []models.Job{job}, SearchPeriods: []models.SearchPeriod{period}}, cfg.AttachmentsDir, cfg.CVDir); err != nil {
+		t.Fatalf("restore search period snapshot: %v", err)
+	}
+	var got string
+	if err := db.QueryRow("SELECT search_period_id FROM jobs WHERE id = ?", job.ID).Scan(&got); err != nil || got != periodID {
+		t.Fatalf("restored period assignment=%q err=%v", got, err)
+	}
+}
+
+func TestRecoverySnapshotRollsBackInvalidTechnologyReferences(t *testing.T) {
+	cfg := &config.Config{DBPath: filepath.Join(t.TempDir(), "invalid-technology-recovery.db")}
+	db, err := InitDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	technology := models.Technology{ID: "tech-one", Name: "One", Aliases: []string{"Same"}}
+	duplicateAlias := models.Technology{ID: "tech-two", Name: "Two", Aliases: []string{"Same"}}
+	err = restoreRecoverySnapshot(db, models.RecoverySnapshot{Technologies: []models.Technology{technology, duplicateAlias}}, "", "")
+	if err == nil {
+		t.Fatal("duplicate alias should fail recovery")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM technologies`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("rolled back technology count=%d err=%v", count, err)
+	}
+}
+
+func TestRecoverySnapshotRejectsDuplicateCatalogIDs(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "duplicate-technology.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	technologies := []models.Technology{{ID: "same", Name: "One"}, {ID: "same", Name: "Two"}}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Technologies: technologies}, "", ""); err == nil {
+		t.Fatal("duplicate catalog IDs should fail recovery")
+	}
+}
+
+func TestRecoverySnapshotRejectsUnknownJobTechnology(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "unknown-job-technology.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	job := models.Job{ID: "job-1", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone, AvatarSeed: "seed",
+		WorkArrangement: models.WorkArrangementUnknown, EmploymentType: models.EmploymentTypeUnknown,
+		Technologies: []models.Technology{{ID: "missing-tech", Name: "Missing"}}}
+	if err := restoreRecoverySnapshot(db, models.RecoverySnapshot{Jobs: []models.Job{job}}, "", ""); err == nil {
+		t.Fatal("unknown technology assignment should fail recovery")
+	}
+}
+
+func TestPrepareRestoreStatementsReportsMissingTechnologyRelation(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "prepare-technology-statements.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`DROP TABLE job_technologies`); err != nil {
+		t.Fatal(err)
+	}
+	tx := mustBegin(t, db)
+	defer func() { _ = tx.Rollback() }()
+	if _, err := prepareRestoreStatements(tx); err == nil {
+		t.Fatal("missing job technology relation should fail restore preparation")
+	}
+}
+
+func TestInitDBRejectsConnectionSchemaAndVersionErrors(t *testing.T) {
+	root := t.TempDir()
+	assertInitDBFailure(t, root, "database path that is a directory should fail to connect")
+	assertLegacySchemaRejected(t, root)
+	assertNewerSchemaRejected(t, root)
+}
+
+func assertInitDBFailure(t *testing.T, path, message string) {
+	t.Helper()
+	if _, err := InitDB(&config.Config{DBPath: path}); err == nil {
+		t.Fatal(message)
+	}
+}
+
+func assertLegacySchemaRejected(t *testing.T, root string) {
+	t.Helper()
+	legacyPath := filepath.Join(root, "legacy.db")
+	legacyDB, err := sql.Open("sqlite", legacyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacyDB.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacyDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertInitDBFailure(t, legacyPath, "incompatible pre-existing schema should fail")
+}
+
+func assertNewerSchemaRejected(t *testing.T, root string) {
+	t.Helper()
+	newerPath := filepath.Join(root, "newer.db")
+	newerDB, err := sql.Open("sqlite", newerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newerDB.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newerDB.Exec("INSERT INTO schema_migrations (version) VALUES (?)", latestSchemaVersion+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := newerDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertInitDBFailure(t, newerPath, "newer database version should fail")
+}
+
+func TestInitDBRejectsSchemaExecutionAndMigrationTableErrors(t *testing.T) {
+	root := t.TempDir()
+	viewPath := filepath.Join(root, "view.db")
+	viewDB, err := sql.Open("sqlite", viewPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := viewDB.Exec("CREATE VIEW jobs AS SELECT 'id' AS id"); err != nil {
+		t.Fatal(err)
+	}
+	if err := viewDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InitDB(&config.Config{DBPath: viewPath}); err == nil {
+		t.Fatal("incompatible database object should fail schema execution")
+	}
+
+	db := openMigrationTestDB(t)
+	if err := migrateSchema(db); err == nil {
+		t.Fatal("missing migration table should fail schema migration")
+	}
+}
+
+func TestApplySchemaMigrationReportsBeginAndRecordErrors(t *testing.T) {
+	closedDB := openMigrationTestDB(t)
+	if err := closedDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := applySchemaMigration(closedDB, 2); err == nil {
+		t.Fatal("closed database should fail migration transaction creation")
+	}
+	if err := applyWaitingStatusMigration(closedDB, 9); err == nil {
+		t.Fatal("closed database should fail acquiring the waiting migration connection")
+	}
+
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TRIGGER reject_migration_record BEFORE INSERT ON schema_migrations BEGIN SELECT RAISE(ABORT, 'record denied'); END"); err != nil {
+		t.Fatal(err)
+	}
+	if err := applySchemaMigration(db, 2); err == nil {
+		t.Fatal("migration record failure should abort the transaction")
+	}
+}
+
+func TestColumnMigrationsReturnQueryAndAlterErrors(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		migrate func(schemaExecutor) error
+		fake    migrationTestExecutor
+	}{
+		{"preparation inspect", ensurePreparationColumns, migrationTestExecutor{db: db, failQuery: "table_info"}},
+		{"preparation add", ensurePreparationColumns, migrationTestExecutor{db: db, failExec: "experience_notes"}},
+		{"work inspect", ensureWorkArrangementColumns, migrationTestExecutor{db: db, failQuery: "table_info"}},
+		{"work add", ensureWorkArrangementColumns, migrationTestExecutor{db: db, failExec: "ADD COLUMN work_arrangement"}},
+		{"employment inspect", ensureEmploymentTypeColumn, migrationTestExecutor{db: db, failQuery: "table_info"}},
+		{"employment add", ensureEmploymentTypeColumn, migrationTestExecutor{db: db, failExec: "ADD COLUMN employment_type"}},
+		{"employment constraints", ensureEmploymentTypeColumn, migrationTestExecutor{db: db, failExec: "UPDATE jobs SET employment_type"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.migrate(test.fake); err == nil {
+				t.Fatal("expected migration failure")
+			}
+		})
+	}
+}
+
+// TestRunFinalSchemaMigrationReportsUnknownVersion covers runFinalSchemaMigration's
+// own default branch. Version 13 is handled outside its switch (it goes through
+// applyOpenEndedSearchPeriodMigration at the applySchemaMigration level instead),
+// so calling runSchemaMigration directly with it reaches that default branch --
+// kept as its own test, not folded into TestSchemaMigrationDispatchReportsFailures,
+// to stay under that function's cyclomatic complexity limit.
+func TestRunFinalSchemaMigrationReportsUnknownVersion(t *testing.T) {
+	db := openMigrationTestDB(t)
+	err := runSchemaMigration(migrationTestExecutor{db: db}, 13)
+	if err == nil || !strings.Contains(err.Error(), "unknown migration") {
+		t.Fatalf("unknown migration error=%v", err)
+	}
+}
+
+func TestSchemaMigrationDispatchReportsFailures(t *testing.T) {
+	db := openMigrationTestDB(t)
+	executor := migrationTestExecutor{db: db, failExec: "CREATE TRIGGER"}
+	for _, version := range []int{2, 3} {
+		if err := runSchemaMigration(executor, version); err == nil {
+			t.Errorf("migration %d should report trigger creation failure", version)
+		}
+	}
+	if err := runSchemaMigration(executor, 99); err == nil || !strings.Contains(err.Error(), "unknown migration") {
+		t.Fatalf("unknown migration error=%v", err)
+	}
+	if err := applyInitialSchemaMigration(migrationTestExecutor{db: db, failExec: "CREATE INDEX"}); err == nil {
+		t.Fatal("initial migration should report index creation failure")
+	}
+	dispatchDB := openMigrationTestDB(t)
+	if _, err := dispatchDB.Exec(schemaSQL); err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []int{4, 5, 6, 7, 8, 9, 10, 11, 12} {
+		if err := runSchemaMigration(dispatchDB, version); err != nil {
+			t.Errorf("migration %d dispatch failed: %v", version, err)
+		}
+	}
+	if err := applyWaitingStatusMigration(dispatchDB, 9); err != nil {
+		t.Fatalf("waiting status migration transaction: %v", err)
+	}
+}
+
+func TestStatusTimestampMigrationPreservesLegacyUpdateTime(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, updated_at INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO jobs (id, status, updated_at) VALUES ('legacy', 'waiting', 123)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(db); err != nil {
+		t.Fatalf("add status timestamp: %v", err)
+	}
+	var changedAt int64
+	if err := db.QueryRow("SELECT status_changed_at FROM jobs WHERE id = 'legacy'").Scan(&changedAt); err != nil || changedAt != 123 {
+		t.Fatalf("status timestamp=%d err=%v, want legacy update time 123", changedAt, err)
+	}
+}
+
+func TestStatusTimestampMigrationSupportsJobsWithoutUpdateTime(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(db); err != nil {
+		t.Fatalf("add status timestamp without legacy updated_at: %v", err)
+	}
+	if exists, err := hasColumn(db, "jobs", "status_changed_at"); err != nil || !exists {
+		t.Fatalf("status_changed_at exists=%t err=%v", exists, err)
+	}
+}
+
+func TestProcessDateMigrationAddsNullableColumnsIdempotently(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobProcessDates(db); err != nil {
+		t.Fatalf("add process dates: %v", err)
+	}
+	if err := migrateJobProcessDates(db); err != nil {
+		t.Fatalf("repeat process date migration: %v", err)
+	}
+	for _, column := range []string{"application_sent_date", "recruiter_first_contact_date"} {
+		exists, err := hasColumn(db, "jobs", column)
+		if err != nil || !exists {
+			t.Fatalf("column %s exists=%t err=%v", column, exists, err)
+		}
+	}
+}
+
+func TestProcessDateMigrationsReturnInspectionAndAlterErrors(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}); err == nil {
+		t.Fatal("status timestamp inspection failure should be returned")
+	}
+	if err := migrateJobStatusChangedAt(migrationTestExecutor{db: db, failExec: "ADD COLUMN status_changed_at"}); err == nil {
+		t.Fatal("status timestamp alter failure should be returned")
+	}
+	if err := migrateJobProcessDates(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}); err == nil {
+		t.Fatal("process date inspection failure should be returned")
+	}
+	if err := migrateJobProcessDates(migrationTestExecutor{db: db, failExec: "application_sent_date"}); err == nil {
+		t.Fatal("process date alter failure should be returned")
+	}
+}
+
+func TestJobActivityMigrationBackfillsGraceAndTracksStages(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustExecMigrationTest(t, db, schemaSQL)
+	mustExecMigrationTest(t, db, `CREATE TABLE job_technologies (job_id TEXT, technology_id TEXT)`)
+	mustExecMigrationTest(t, db, `ALTER TABLE jobs DROP COLUMN last_activity_at`)
+	mustExecMigrationTest(t, db, `INSERT INTO jobs (id, position_title, status, salary_type, recruiter_type, avatar_seed) VALUES ('legacy-job', 'Engineer', 'waiting', 'unknown', 'none', 'seed')`)
+	if err := migrateJobActivity(db); err != nil {
+		t.Fatalf("migrate job activity: %v", err)
+	}
+	assertJobActivityTimestampAtLeast(t, db, "legacy-job", time.Now().Unix()-5)
+	mustExecMigrationTest(t, db, `UPDATE jobs SET last_activity_at = 1 WHERE id = 'legacy-job'`)
+	mustExecMigrationTest(t, db, `INSERT INTO stages (id, job_id, order_index, stage_type) VALUES ('stage', 'legacy-job', 0, 'HR')`)
+	assertJobActivityTimestamp(t, db, "legacy-job", 1)
+}
+
+// TestJobActivityMigrationSkipsTechnologyTriggersWhenCatalogAbsent covers an
+// install migrating straight through version 14 before the technology
+// catalog (job_technologies, introduced at version 8) ever existed on that
+// row's execution path within a single schemaExecutor call.
+func TestJobActivityMigrationSkipsTechnologyTriggersWhenCatalogAbsent(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustExecMigrationTest(t, db, schemaSQL)
+	mustExecMigrationTest(t, db, `ALTER TABLE jobs DROP COLUMN last_activity_at`)
+	if err := migrateJobActivity(db); err != nil {
+		t.Fatalf("migrate job activity without technology catalog: %v", err)
+	}
+	exists, err := hasTable(db, "job_technologies")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Fatal("job_technologies should not have been created by migrateJobActivity")
+	}
+}
+
+func TestJobActivityMigrationReportsStepFailures(t *testing.T) {
+	steps := []struct {
+		name string
+		fake migrationTestExecutor
+	}{
+		{name: "inspect column", fake: migrationTestExecutor{failQuery: "pragma_table_info"}},
+		{name: "add column", fake: migrationTestExecutor{failExec: "ALTER TABLE jobs ADD COLUMN last_activity_at"}},
+		{name: "backfill activity", fake: migrationTestExecutor{failExec: "UPDATE jobs SET last_activity_at"}},
+		{name: "create index", fake: migrationTestExecutor{failExec: "idx_jobs_status_activity"}},
+		{name: "create triggers", fake: migrationTestExecutor{failExec: "touch_job_activity"}},
+		{name: "inspect technology table", fake: migrationTestExecutor{failQuery: "sqlite_master"}},
+		{name: "create technology triggers", fake: migrationTestExecutor{failExec: "touch_job_activity_on_technology_insert"}},
+	}
+	for _, step := range steps {
+		t.Run(step.name, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			if step.name != "inspect column" && step.name != "add column" {
+				mustExecMigrationTest(t, db, schemaSQL)
+				mustExecMigrationTest(t, db, `CREATE TABLE job_technologies (job_id TEXT, technology_id TEXT)`)
+				mustExecMigrationTest(t, db, `ALTER TABLE jobs DROP COLUMN last_activity_at`)
+			}
+			step.fake.db = db
+			if err := migrateJobActivity(step.fake); err == nil {
+				t.Fatal("expected activity migration failure")
+			}
+		})
+	}
+}
+
+func mustExecMigrationTest(t *testing.T, db *sql.DB, query string) {
+	t.Helper()
+	if _, err := db.Exec(query); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertJobActivityTimestamp(t *testing.T, db *sql.DB, jobID string, minimum int64) {
+	t.Helper()
+	var timestamp int64
+	if err := db.QueryRow(`SELECT last_activity_at FROM jobs WHERE id = ?`, jobID).Scan(&timestamp); err != nil || timestamp <= minimum {
+		t.Fatalf("activity timestamp=%d err=%v, want greater than %d", timestamp, err, minimum)
+	}
+}
+
+func assertJobActivityTimestampAtLeast(t *testing.T, db *sql.DB, jobID string, minimum int64) {
+	t.Helper()
+	var timestamp int64
+	if err := db.QueryRow(`SELECT last_activity_at FROM jobs WHERE id = ?`, jobID).Scan(&timestamp); err != nil || timestamp < minimum {
+		t.Fatalf("activity timestamp=%d err=%v, want at least %d", timestamp, err, minimum)
+	}
+}
+
+func TestLegacyColumnMigrationReportsMissingTable(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureLegacyColumns(db); err == nil || !strings.Contains(err.Error(), "stages.meeting_date") {
+		t.Fatalf("missing legacy table error=%v", err)
+	}
+	if err := applyInitialSchemaMigration(db); err == nil {
+		t.Fatal("initial schema migration should report missing legacy tables")
+	}
+	if err := ensureLegacyColumns(migrationTestExecutor{db: db, failQuery: "table_info"}); err == nil {
+		t.Fatal("legacy column inspection query should fail")
+	}
+}
+
+func TestHasColumnReportsQueryFailure(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec("CREATE TABLE jobs (id TEXT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := hasColumn(migrationTestExecutor{db: db, failQuery: "pragma_table_info"}, "jobs", "id")
+	if err == nil {
+		t.Fatal("expected query failure")
+	}
+}
+
+func TestBackupLoadingRejectsMissingAndMalformedFiles(t *testing.T) {
+	directory := t.TempDir()
+	backupPath := filepath.Join(directory, "backup.json")
+	if _, err := loadBackup(backupPath); err == nil {
+		t.Fatal("missing backup should fail to load")
+	}
+	if err := os.WriteFile(backupPath, []byte("not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadBackup(backupPath); err == nil {
+		t.Fatal("malformed backup should fail to parse")
+	}
+	if err := os.Truncate(backupPath, maxBackupBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadBackup(backupPath); err == nil || !strings.Contains(err.Error(), "backup exceeds") {
+		t.Fatalf("oversized backup error=%v", err)
+	}
+}
+
+func TestBackupLoadingAcceptsEmptyJobList(t *testing.T) {
+	backupPath := filepath.Join(t.TempDir(), "backup.json")
+	if err := os.WriteFile(backupPath, []byte("[]"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := loadBackup(backupPath)
+	if err != nil {
+		t.Fatalf("load valid empty backup: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("jobs=%d, want 0", len(jobs))
+	}
+}
+
+func TestBackupSourceSelection(t *testing.T) {
+	directory := t.TempDir()
+	backupPath := filepath.Join(directory, "backup.json")
+	valid, err := json.Marshal([]models.Job{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(backupPath, valid, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if source := findBackupSource(backupPath, filepath.Join(directory, "seed.json")); source != backupPath {
+		t.Fatalf("mutable backup source=%q", source)
+	}
+	if source := findBackupSource(filepath.Join(directory, "missing.json"), ""); source != "" {
+		t.Fatalf("empty seed source=%q", source)
+	}
+	if source := findBackupSource(filepath.Join(directory, "missing.json"), backupPath); source != backupPath {
+		t.Fatalf("initial seed source=%q", source)
+	}
+	if source := findBackupSource("invalid\x00path", backupPath); source != "" {
+		t.Fatalf("invalid backup path source=%q", source)
+	}
+	if err := os.Mkdir(filepath.Join(directory, "not-a-file"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	directoryPath := filepath.Join(directory, "not-a-file")
+	if source := findBackupSource(directoryPath, backupPath); source != directoryPath {
+		t.Fatalf("existing mutable source=%q", source)
+	}
+}
+
+func TestRestoreAttachmentRestoresPresentAndSkipsMissingFiles(t *testing.T) {
+	directory, statements, job, attachment := newAttachmentRestoreFixture(t)
+	if err := restoreAttachment(statements.attachment, job, attachment, directory); err != nil {
+		t.Fatalf("restore regular file: %v", err)
+	}
+	if err := restoreAttachment(statements.attachment, job, attachment, directory); err == nil {
+		t.Fatal("duplicate attachment row should fail")
+	}
+	missing := attachment
+	missing.ID, missing.StoredFilename = "missing", "missing.txt"
+	if err := restoreAttachment(statements.attachment, job, missing, directory); err != nil {
+		t.Fatalf("missing file should be skipped: %v", err)
+	}
+}
+
+func TestRestoreRowsReportInsertFailures(t *testing.T) {
+	directory := t.TempDir()
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(directory, "restore.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	statements, err := prepareRestoreStatements(mustBegin(t, db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(statements.close)
+	job := models.Job{ID: "job", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		Interviewers: []models.Interviewer{{Name: "Alex"}}}
+	if err := restoreJobRow(statements.job, job); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreJobRow(statements.job, job); err == nil {
+		t.Fatal("duplicate job row should fail")
+	}
+	stage := models.Stage{ID: "stage", StageType: models.StageHR, Status: models.StageStatusCurrent, MeetingType: "video", RecruiterType: models.RecruiterNone,
+		Interviewers: []models.Interviewer{{Name: "Taylor"}},
+		Questions:    []models.Question{{ID: "question", Question: "First"}}}
+	if err := restoreStage(statements, job.ID, stage); err != nil {
+		t.Fatal(err)
+	}
+	duplicateQuestionStage := models.Stage{ID: "stage-2", StageType: models.StageTechnical, Status: models.StageStatusPending, MeetingType: "video", RecruiterType: models.RecruiterNone,
+		Questions: []models.Question{{ID: "question", Question: "Duplicate"}}}
+	if err := restoreStage(statements, job.ID, duplicateQuestionStage); err == nil {
+		t.Fatal("duplicate question row should fail")
+	}
+}
+
+func TestRestoreAttachmentRejectsUnsafeMetadata(t *testing.T) {
+	directory, statements, job, attachment := newAttachmentRestoreFixture(t)
+	wrongJob := attachment
+	wrongJob.JobID = "other-job"
+	wrongStage := attachment
+	wrongStage.StageID = stringPointer("unknown-stage")
+	negativeSize := attachment
+	negativeSize.ID, negativeSize.FileSize = "negative", -1
+	tests := []struct {
+		name       string
+		attachment models.Attachment
+	}{
+		{"unsafe path", withStoredFilename(attachment, "../resume.txt")},
+		{"wrong job", wrongJob},
+		{"wrong stage", wrongStage},
+		{"negative size", negativeSize},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := restoreAttachment(statements.attachment, job, test.attachment, directory); err == nil {
+				t.Fatal("invalid attachment should fail")
+			}
+		})
+	}
+}
+
+func TestRestoreAttachmentRejectsDirectories(t *testing.T) {
+	directory, statements, job, attachment := newAttachmentRestoreFixture(t)
+	if err := os.Mkdir(filepath.Join(directory, "directory"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	attachment.ID, attachment.StoredFilename = "directory", "directory"
+	if err := restoreAttachment(statements.attachment, job, attachment, directory); err == nil {
+		t.Fatal("directory should not be restored as an attachment")
+	}
+}
+
+func newAttachmentRestoreFixture(t *testing.T) (string, *restoreStatements, models.Job, models.Attachment) {
+	t.Helper()
+	directory := t.TempDir()
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(directory, "restore.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`INSERT INTO jobs (id, company_name, position_title, status, salary_type, salary_currency, recruiter_type, avatar_seed) VALUES ('job', 'Co', 'Role', 'ongoing', 'unknown', 'EUR', 'none', 'avatar')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "resume.txt"), []byte("resume"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	statements, err := prepareRestoreStatements(mustBegin(t, db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(statements.close)
+	job := models.Job{ID: "job", Stages: []models.Stage{{ID: "stage"}}}
+	attachment := models.Attachment{ID: "attachment", JobID: "job", OriginalName: "resume.txt", StoredFilename: "resume.txt", FileSize: 6}
+	return directory, statements, job, attachment
+}
+
+func TestRestoreJobReportsNestedRecordFailures(t *testing.T) {
+	directory := t.TempDir()
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(directory, "restore.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	statements, err := prepareRestoreStatements(mustBegin(t, db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(statements.close)
+	base := models.Job{ID: "job", CompanyName: "Co", PositionTitle: "Role", Status: models.StatusOngoing, AvatarSeed: "avatar"}
+	badStage := base
+	badStage.Stages = []models.Stage{{ID: "bad-stage", Status: models.StageStatus("invalid")}}
+	if err := restoreJob(statements, badStage, directory); err == nil {
+		t.Fatal("invalid stage should fail")
+	}
+	base.ID = "question-job"
+	base.Stages = []models.Stage{{ID: "stage", StageType: models.StageTechnical, Status: models.StageStatusPending, Questions: []models.Question{{ID: "question", Question: "Q", IsAsked: true}}}}
+	if err := restoreJob(statements, base, directory); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestoreJobsCommitsEmptyAndPopulatedBackups(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "restore.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := restoreJobs(db, nil, t.TempDir()); err != nil {
+		t.Fatalf("restore empty backup: %v", err)
+	}
+	job := models.Job{ID: "restored", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		Stages: []models.Stage{{ID: "restored-stage", StageType: models.StageHR, Status: models.StageStatusCurrent, MeetingType: "video", RecruiterType: models.RecruiterNone}}}
+	if err := restoreJobs(db, []models.Job{job}, t.TempDir()); err != nil {
+		t.Fatalf("restore job: %v", err)
+	}
+	assertRestoredInterviewersJSON(t, db, "jobs", job.ID)
+	assertRestoredInterviewersJSON(t, db, "stages", job.Stages[0].ID)
+	if err := restoreJobs(db, []models.Job{job}, t.TempDir()); err == nil {
+		t.Fatal("duplicate job restore should roll back")
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM jobs").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("jobs after rolled back restore=%d err=%v", count, err)
+	}
+}
+
+func TestRestoreJobsDefaultsMissingStatusTimestampToCreationTime(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "restore-time.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	job := models.Job{ID: "legacy-restored", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusWaiting, CreatedAt: 456}
+	if err := restoreJobs(db, []models.Job{job}, t.TempDir()); err != nil {
+		t.Fatalf("restore legacy job: %v", err)
+	}
+	var statusChangedAt int64
+	if err := db.QueryRow("SELECT status_changed_at FROM jobs WHERE id = ?", job.ID).Scan(&statusChangedAt); err != nil || statusChangedAt != job.CreatedAt {
+		t.Fatalf("status_changed_at=%d err=%v, want created_at %d", statusChangedAt, err, job.CreatedAt)
+	}
+}
+
+func TestJobActivityTimestampUsesStoredThenLegacyTimestamps(t *testing.T) {
+	if got := jobActivityTimestamp(models.Job{LastActivityAt: 10, UpdatedAt: 20}); got != 10 {
+		t.Fatalf("stored activity timestamp=%d, want 10", got)
+	}
+	if got := jobActivityTimestamp(models.Job{UpdatedAt: 20, CreatedAt: 30, StatusChangedAt: 25}); got != 30 {
+		t.Fatalf("legacy activity timestamp=%d, want 30", got)
+	}
+	if got := jobActivityTimestamp(models.Job{}); got < time.Now().Unix()-2 {
+		t.Fatalf("empty activity timestamp=%d, want current time", got)
+	}
+}
+
+func TestRecoveryPreservesActivityAfterRestoringChildRecords(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	job := models.Job{ID: "activity-recovery", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing,
+		CreatedAt: 100, UpdatedAt: 200, LastActivityAt: 300,
+		Stages: []models.Stage{{ID: "recovered-stage", StageType: "HR", Status: models.StageStatusCurrent,
+			Questions: []models.Question{{ID: "recovered-question", Question: "Example question"}}}}}
+	if err := restoreJobs(db, []models.Job{job}, directory); err != nil {
+		t.Fatal(err)
+	}
+	var activity int64
+	if err := db.QueryRow(`SELECT last_activity_at FROM jobs WHERE id = ?`, job.ID).Scan(&activity); err != nil || activity != job.LastActivityAt {
+		t.Fatalf("recovery changed last activity: got=%d err=%v", activity, err)
+	}
+}
+
+func TestActivityRestorationFailureRollsBackRecovery(t *testing.T) {
+	db, directory := recoveryDatabase(t)
+	if _, err := db.Exec(`CREATE TRIGGER reject_recovery_activity BEFORE UPDATE OF last_activity_at ON jobs WHEN NEW.last_activity_at = 300 BEGIN SELECT RAISE(ABORT, 'rejected activity restoration'); END`); err != nil {
+		t.Fatal(err)
+	}
+	job := models.Job{ID: "failed-activity", CompanyName: "Example", PositionTitle: "Engineer", Status: models.StatusOngoing, LastActivityAt: 300}
+	if err := restoreJobs(db, []models.Job{job}, directory); err == nil {
+		t.Fatal("activity restoration failure must abort recovery")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed recovery left partial records: count=%d err=%v", count, err)
+	}
+}
+
+func assertRestoredInterviewersJSON(t *testing.T, db *sql.DB, table, id string) {
+	t.Helper()
+	var value string
+	query := "SELECT interviewers_json FROM " + table + " WHERE id = ?"
+	if err := db.QueryRow(query, id).Scan(&value); err != nil || value != "[]" {
+		t.Fatalf("restored %s interviewers=%q err=%v", table, value, err)
+	}
+}
+
+func TestRestoreJobsReturnsSetupErrors(t *testing.T) {
+	db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "restore.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreJobs(db, nil, t.TempDir()); err == nil {
+		t.Fatal("closed database should fail restore transaction creation")
+	}
+
+	brokenDB, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "broken.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = brokenDB.Close() })
+	if _, err := brokenDB.Exec("DROP TABLE attachments"); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreJobs(brokenDB, nil, t.TempDir()); err == nil {
+		t.Fatal("missing restore table should fail statement preparation")
+	}
+}
+
+func TestRestoreStatementPreparationReportsMissingTables(t *testing.T) {
+	for _, table := range []string{"jobs", "stages", "stage_questions", "attachments"} {
+		t.Run(table, func(t *testing.T) {
+			db, err := InitDB(&config.Config{DBPath: filepath.Join(t.TempDir(), "restore.db")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			if _, err := db.Exec("DROP TABLE " + table); err != nil {
+				t.Fatal(err)
+			}
+			tx := mustBegin(t, db)
+			statements, err := prepareRestoreStatements(tx)
+			if err == nil {
+				statements.close()
+				t.Fatal("expected statement preparation to fail")
+			}
+		})
+	}
+}
+
+func TestAttachmentOwnerValidationBranches(t *testing.T) {
+	job := models.Job{ID: "job", Stages: []models.Stage{{ID: "stage"}}}
+	otherJob := models.Job{ID: "other-job"}
+	validStage := "stage"
+	unknownStage := "unknown-stage"
+	tests := []struct {
+		name       string
+		job        models.Job
+		attachment models.Attachment
+		wantErr    bool
+	}{
+		{"job omitted", job, models.Attachment{}, false},
+		{"matching job", job, models.Attachment{JobID: "job"}, false},
+		{"wrong job", job, models.Attachment{JobID: "other-job"}, true},
+		{"matching stage", job, models.Attachment{JobID: "job", StageID: &validStage}, false},
+		{"unknown stage", job, models.Attachment{JobID: "job", StageID: &unknownStage}, true},
+		{"no stages", otherJob, models.Attachment{StageID: &validStage}, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateAttachmentOwner(test.job, test.attachment)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("validateAttachmentOwner() error=%v, want error=%t", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func openMigrationTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func mustBegin(t *testing.T, db *sql.DB) *sql.Tx {
+	t.Helper()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	return tx
+}
+
+func stringPointer(value string) *string { return &value }
+
+func withStoredFilename(attachment models.Attachment, filename string) models.Attachment {
+	attachment.StoredFilename = filename
+	return attachment
+}
+
+// TestCreateJobsUserIndexFallsBackWithoutOrderIndex covers the legacy
+// upgrade path where this migration runs before version 1's order_index
+// backfill: it must still index jobs by user, just without order_index.
+func TestCreateJobsUserIndexFallsBackWithoutOrderIndex(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'waiting', user_id TEXT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := createJobsUserIndex(db); err != nil {
+		t.Fatalf("createJobsUserIndex without order_index: %v", err)
+	}
+	var indexSQL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_jobs_user'`).Scan(&indexSQL); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(indexSQL, "order_index") {
+		t.Fatalf("fallback index should not reference order_index: %s", indexSQL)
+	}
+}

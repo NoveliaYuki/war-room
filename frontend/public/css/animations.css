@@ -1,0 +1,31 @@
+/**
+ * Fluid Animations & FLIP Transition Keyframes
+ * Hardware-accelerated transitions utilizing compositor properties (transform, opacity).
+ */
+
+/* Modal FLIP container animation classes */
+.modal-animating {
+  pointer-events: none !important;
+}
+
+.card-detail-modal {
+  transform-origin: top left;
+  will-change: auto;
+  transition: none;
+}
+
+/* Pulse for ongoing indicators */
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.4;
+  }
+}
+
+.pulse-active {
+  animation: pulseDot 2s infinite ease-in-out;
+}

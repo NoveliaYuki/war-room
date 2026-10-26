@@ -1,0 +1,401 @@
+import { renderScheduleLoadingState } from "./loadingViews.js";
+import { captureLoadingView, revealLoadedContent } from "../utils/loadingTransition.js";
+import { showToast } from "../utils/toast.js";
+import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
+import { formatCalendarDate } from "../utils/date.js";
+/**
+ * @fileoverview Everyday Schedule & Meetings View Component.
+ * Answers every day whether you have a meeting to attend or not,
+ * groups upcoming interviews chronologically, and links directly to stage question banks.
+ */
+
+import { api } from "../api.js";
+import { renderCompanyAvatar } from "../avatar.js";
+import { openDetailModal } from "./detailModal.js";
+import { icon } from "../icons.js";
+
+const STAGE_TYPE_CLASSES = new Map([
+  ["HR", "HR"],
+  ["Technical", "Technical"],
+  ["Cultural", "Cultural"],
+  ["Offer & Decision", "Offer-Decision"],
+]);
+const MEETING_FORMAT_LABELS = new Map([
+  ["phone", `${icon("phone", 12)} Phone Call`],
+  ["onsite", `${icon("building", 12)} On-Site`],
+  ["video", `${icon("video", 12)} Video Call`],
+]);
+const MEETING_NOTE_CONTAINERS = new WeakSet();
+const PAST_MEETINGS_STATE_KEY = "war-room.past-meetings-expanded";
+
+/**
+ * Gets local YYYY-MM-DD string.
+ */
+function getLocalDateString(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Formats a date string nicely (e.g. "Tuesday, Sep 22, 2026").
+ */
+function formatNiceDate(dateStr) {
+  if (!dateStr) return "Unscheduled Date";
+  return formatCalendarDate(dateStr, { weekday: true });
+}
+
+/** Formats a meeting count with the matching singular or plural noun. */
+function formatMeetingCount(count) {
+  return `${count} meeting${count === 1 ? "" : "s"}`;
+}
+
+function getStageTypeClass(type) {
+  return STAGE_TYPE_CLASSES.get(type) || "HR";
+}
+
+/**
+ * Maps an API meeting format to a known CSS class suffix.
+ * @param {string} type - Meeting format from the API.
+ * @returns {string} A safe CSS class suffix.
+ */
+function getMeetingTypeClass(type) {
+  return ["video", "phone", "onsite"].includes(type) ? type : "video";
+}
+
+/** Renders the visible meeting format label. */
+function renderMeetingFormat(type) {
+  return MEETING_FORMAT_LABELS.get(type) || MEETING_FORMAT_LABELS.get("video");
+}
+
+/** Renders the safe company label shown in a meeting card. */
+function renderMeetingCompany(companyName) {
+  if (companyName.toLowerCase() === "unknown") return `${icon("building", 13)} Unknown Company (Undisclosed)`;
+  return `${icon("building", 13)} ${escapeHtml(companyName)}`;
+}
+
+/** Renders recruiter contact details when they are available. */
+function renderMeetingRecruiter(meeting) {
+  if (!meeting.recruiter_name) return "";
+  const contact = meeting.recruiter_contact ? `<span class="meeting-recruiter-contact">(${escapeHtml(meeting.recruiter_contact)})</span>` : "";
+  return `<div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"><span class="inline-icon-text">${icon("user", 12)} Recruiter: ${escapeHtml(meeting.recruiter_name)}</span>${contact}</div>`;
+}
+
+/** Renders meeting notes when they exist. */
+function renderMeetingNotes(notes, prefix = "Note: ") {
+  if (!notes) return "";
+  return `<div class="meeting-note" data-meeting-note>
+    <span class="meeting-note-content is-clamped">${escapeHtml(prefix + notes)}</span>
+    <button class="meeting-note-toggle" type="button" aria-expanded="false" hidden>Show full note</button>
+  </div>`;
+}
+
+/** Updates long-note controls after rendering or a viewport resize. */
+function updateMeetingNotePreviews(containerEl) {
+  containerEl.querySelectorAll("[data-meeting-note]").forEach((note) => {
+    const content = note.querySelector(".meeting-note-content");
+    const toggle = note.querySelector(".meeting-note-toggle");
+    const expanded = note.classList.contains("is-expanded");
+    content.classList.toggle("is-clamped", !expanded);
+    toggle.hidden = !expanded && content.scrollHeight <= content.clientHeight + 1;
+    toggle.textContent = expanded ? "Show less" : "Show full note";
+    toggle.setAttribute("aria-expanded", String(expanded));
+  });
+}
+
+/** Adds one delegated click handler for expanding full meeting notes. */
+function bindMeetingNotePreviews(containerEl) {
+  if (!MEETING_NOTE_CONTAINERS.has(containerEl)) {
+    containerEl.addEventListener("click", (event) => {
+      const toggle = event.target.closest(".meeting-note-toggle");
+      if (!toggle || !containerEl.contains(toggle)) return;
+      toggle.closest("[data-meeting-note]").classList.toggle("is-expanded");
+      updateMeetingNotePreviews(containerEl);
+    });
+    window.addEventListener("resize", () => updateMeetingNotePreviews(containerEl));
+    MEETING_NOTE_CONTAINERS.add(containerEl);
+  }
+  updateMeetingNotePreviews(containerEl);
+}
+
+/** Restores and saves the past-meetings disclosure state for this tab session. */
+function bindPastMeetingsDisclosure(containerEl) {
+  const disclosure = containerEl.querySelector(".past-meetings-group");
+  if (!disclosure) return;
+
+  try {
+    disclosure.open = window.sessionStorage.getItem(PAST_MEETINGS_STATE_KEY) === "true";
+  } catch {
+    return;
+  }
+
+  disclosure.addEventListener("toggle", () => {
+    try {
+      window.sessionStorage.setItem(PAST_MEETINGS_STATE_KEY, String(disclosure.open));
+    } catch {
+      // Keep the disclosure usable for this render when session storage is unavailable.
+    }
+  });
+}
+
+/** Renders the obviously fictional panel assigned to a demo meeting. */
+function renderMeetingInterviewers(interviewers = []) {
+  const names = interviewers.map((person) => person.name).filter(Boolean);
+  if (!names.length) return "";
+  return `<div class="inline-icon-text" style="font-size: 12px; color: var(--text-muted);">${icon("users", 12)} Interviewers: ${escapeHtml(names.join(", "))}</div>`;
+}
+
+/** Renders the join link or phone call details for a meeting. */
+function renderMeetingJoinAction(meeting) {
+  const url = safeUrl(meeting.meeting_url);
+  if (url) return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="text-decoration: none;"><span class="inline-icon-text">${icon("video", 13)} Join Meeting ${icon("arrowUpRight", 11)}</span></a>`;
+  if (meeting.meeting_type !== "phone") return "";
+  const phone = meeting.recruiter_contact ? `<span style="font-size: 11px; opacity: 0.85;">(${escapeHtml(meeting.recruiter_contact.split("|")[0].trim())})</span>` : "";
+  return `<div class="phone-call-indicator inline-icon-text">${icon("phone", 12)} Phone Call${phone}</div>`;
+}
+
+/** Renders a meeting scheduled for today. */
+function renderTodayMeeting(meeting) {
+  const time = meeting.meeting_time || "Time TBD";
+  const joinAction = renderMeetingJoinAction(meeting);
+  return `<div class="today-meeting-card" data-jobid="${escapeAttr(meeting.job_id)}">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;"><div style="display: flex; align-items: center; gap: 8px;">
+      <span class="meeting-time-badge inline-icon-text">${icon("clock", 12)} ${escapeHtml(time)}</span>
+      <span class="meeting-format-pill pill-${getMeetingTypeClass(meeting.meeting_type)} inline-icon-text">${renderMeetingFormat(meeting.meeting_type)}</span>
+    </div><span class="stage-type-badge ${getStageTypeClass(meeting.stage_type)}">${escapeHtml(meeting.stage_type)}</span></div>
+    <div><div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${escapeHtml(meeting.position_title)}</div>
+      <div class="inline-icon-text" style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">${renderMeetingCompany(meeting.company_name)}</div></div>
+    ${renderMeetingRecruiter(meeting)}${renderMeetingInterviewers(meeting.stage_interviewers)}${renderMeetingNotes(meeting.stage_notes)}
+    <div class="today-meeting-actions">${joinAction}
+      <button class="btn-primary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(meeting.job_id)}">${icon("chat", 13)} Open Questions & Prep ${icon("arrowUpRight", 11)}</button>
+    </div>
+  </div>`;
+}
+
+/**
+ * Renders the everyday schedule view into the container.
+ *
+ * @param {HTMLElement} containerEl - The container element to mount to.
+ * @param {HTMLElement} modalEl - Target modal element.
+ * @param {HTMLElement} backdropEl - Modal backdrop.
+ * @param {Function} onGlobalRefresh - Global state refresh callback.
+ * @param {Object} [options] - Initial loading behavior and meetings already fetched by the app.
+ */
+export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlobalRefresh, { showLoading = true, meetings: prefetchedMeetings } = {}) {
+  if (showLoading) renderScheduleLoadingState(containerEl);
+
+  const meetings = prefetchedMeetings ?? await api.getMeetings();
+  const loadingView = showLoading ? captureLoadingView(containerEl) : null;
+  containerEl.innerHTML = renderScheduleMarkup(meetings);
+
+  bindMeetingNotePreviews(containerEl);
+  bindPastMeetingsDisclosure(containerEl);
+
+  containerEl.querySelectorAll(".btn-open-meeting").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const jobId = btn.getAttribute("data-jobid");
+      await openDetailModal(modalEl, backdropEl, jobId, onGlobalRefresh);
+    });
+  });
+  revealLoadedContent(containerEl, loadingView);
+}
+
+/** Builds the schedule sections from one meeting snapshot. */
+function renderScheduleMarkup(meetings) {
+  const todayStr = getLocalDateString(0);
+  const tomorrowStr = getLocalDateString(1);
+
+  const todayMeetings = [];
+  const tomorrowMeetings = [];
+  const upcomingMeetings = [];
+  const pastMeetings = [];
+
+  meetings.forEach((m) => {
+    const d = m.meeting_date;
+    if (!d) {
+      upcomingMeetings.push(m);
+      return;
+    }
+    if (d === todayStr) {
+      todayMeetings.push(m);
+    } else if (d === tomorrowStr) {
+      tomorrowMeetings.push(m);
+    } else if (d > todayStr) {
+      upcomingMeetings.push(m);
+    } else {
+      pastMeetings.push(m);
+    }
+  });
+
+  const hasMeetingsToday = todayMeetings.length > 0;
+  const niceToday = formatNiceDate(todayStr);
+
+  return `
+    <div class="schedule-container">
+      <div class="today-banner ${hasMeetingsToday ? 'has-meetings' : ''}">
+        <div class="today-banner-header">
+          <div class="today-status-title inline-icon-text">
+            <span>${hasMeetingsToday ? icon("zap", 18) : icon("sparkles", 18)}</span>
+            <span>Today (${niceToday})</span>
+          </div>
+          <span class="${hasMeetingsToday ? 'today-badge-alert' : 'today-badge-calm'}">
+            ${hasMeetingsToday ? `${formatMeetingCount(todayMeetings.length)} scheduled today` : 'No meetings today'}
+          </span>
+        </div>
+
+        ${
+          hasMeetingsToday
+            ? `
+          <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 4px;">
+            You have upcoming interview sessions to attend today. Review your questions and notes ahead of time:
+          </div>
+          <div class="today-meetings-grid">
+            ${todayMeetings.map(renderTodayMeeting).join("")}
+          </div>
+        `
+            : `
+          <div style="font-size: 14px; color: var(--text-secondary);">
+            No interview calls or meetings scheduled for today. Enjoy your deep focus time or explore new selection processes!
+          </div>
+        `
+        }
+      </div>
+
+      ${
+        tomorrowMeetings.length > 0
+          ? `
+        <div class="schedule-day-group">
+          <div class="day-group-header">
+            <h3 class="day-group-title">
+              <span>Tomorrow (${formatNiceDate(tomorrowStr)})</span>
+            </h3>
+            <span class="day-group-count">${formatMeetingCount(tomorrowMeetings.length)}</span>
+          </div>
+          <div class="meetings-list">
+            ${renderMeetingsRows(tomorrowMeetings)}
+          </div>
+        </div>
+      `
+          : ''
+      }
+
+      ${
+        upcomingMeetings.length > 0
+          ? `
+        <div class="schedule-day-group">
+          <div class="day-group-header">
+            <h3 class="day-group-title">
+              <span>Upcoming Dates</span>
+            </h3>
+            <span class="day-group-count">${formatMeetingCount(upcomingMeetings.length)}</span>
+          </div>
+          <div class="meetings-list">
+            ${renderMeetingsRows(upcomingMeetings)}
+          </div>
+        </div>
+      `
+          : ''
+      }
+
+      ${
+        pastMeetings.length > 0
+          ? `
+        <details class="schedule-day-group past-meetings-group">
+          <summary class="day-group-header past-meetings-summary">
+            <h3 class="day-group-title">
+              <span>Past Meetings</span>
+            </h3>
+            <span class="day-group-count">${pastMeetings.length}</span>
+            <span class="past-meetings-chevron" aria-hidden="true">${icon("chevronDown", 16)}</span>
+          </summary>
+          <div class="meetings-list">
+            ${renderMeetingsRows(pastMeetings)}
+          </div>
+        </details>
+      `
+          : ''
+      }
+
+      ${
+        meetings.length === 0
+          ? `
+        <div class="empty-state">
+          <div class="empty-icon">${icon("calendar", 36)}</div>
+          <h3 class="empty-title">No scheduled meetings yet</h3>
+          <p class="empty-desc">Open any selection process card and set an interview date and time to track your meetings here.</p>
+        </div>
+      `
+          : ''
+      }
+    </div>
+  `;
+
+}
+
+/**
+ * Renders meeting rows list.
+ */
+function renderMeetingsRows(list = []) {
+  return list
+    .map((m) => {
+      const avatarHtml = renderCompanyAvatar(m.company_name, m.avatar_seed, 48, m.company_domain, m.job_id);
+      const meetingUrl = safeUrl(m.meeting_url);
+      return `
+      <div class="meeting-row-card${meetingUrl ? ' has-meeting-url' : ''}">
+        <div class="meeting-row-left">
+          <div class="meeting-row-avatar">${avatarHtml}</div>
+          <div class="meeting-row-info">
+            <div class="meeting-row-heading">
+              <div class="meeting-row-identity">
+                <span class="meeting-row-position">${escapeHtml(m.position_title)}</span>
+                <span class="meeting-row-company">@ ${m.company_name.toLowerCase() === 'unknown' ? 'Unknown Company (Undisclosed)' : escapeHtml(m.company_name)}</span>
+              </div>
+              <div class="meeting-row-badges">
+              <span class="stage-type-badge ${getStageTypeClass(m.stage_type)}">${escapeHtml(m.stage_type)}</span>
+              <span class="meeting-format-pill pill-${getMeetingTypeClass(m.meeting_type)} inline-icon-text">
+                ${
+                  m.meeting_type === 'phone'
+                    ? `${icon("phone", 12)} Phone Call`
+                    : m.meeting_type === 'onsite'
+                    ? `${icon("building", 12)} On-Site`
+                    : `${icon("video", 12)} Video Call`
+                }
+              </span>
+              </div>
+            </div>
+            <div class="meeting-row-meta">
+              <span class="meeting-time-badge inline-icon-text">
+                ${icon("calendar", 12)} ${formatNiceDate(m.meeting_date)} • ${escapeHtml(m.meeting_time || 'Time TBD')}
+              </span>
+              ${m.recruiter_name ? `<span class="inline-icon-text">${icon("user", 12)} ${escapeHtml(m.recruiter_name)}</span>` : ''}
+              ${renderMeetingInterviewers(m.stage_interviewers)}
+              ${renderMeetingNotes(m.stage_notes, "")}
+            </div>
+          </div>
+        </div>
+        <div class="meeting-row-right">
+          ${
+            meetingUrl
+              ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="font-size: 12px; padding: 6px 12px; text-decoration: none;">
+                  <span class="inline-icon-text">
+                    ${icon("video", 12)} Join Call ${icon("arrowUpRight", 11)}
+                  </span>
+                </a>`
+              : m.meeting_type === 'phone'
+              ? `<span class="phone-call-indicator inline-icon-text" style="font-size: 11px; padding: 4px 10px;">
+                  ${icon("phone", 11)} Phone
+                </span>`
+              : ''
+          }
+          <button class="btn-secondary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(m.job_id)}" style="font-size: 12px; padding: 6px 14px;">
+            Open Process ${icon("arrowUpRight", 11)}
+          </button>
+        </div>
+      </div>
+    `;
+    })
+    .join('');
+}

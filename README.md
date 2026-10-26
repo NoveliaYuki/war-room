@@ -1,0 +1,113 @@
+# War Room
+
+War Room is a self-hosted app for tracking interview and candidate-selection processes, gated by mandatory Google Sign-In. Run it with Docker on infrastructure you control; it keeps roles, stages, interview questions, meetings, notes, and related files together in one browser-based app. Only Google accounts you explicitly allow may sign in, and each account's data is kept separate from every other account's.
+
+## Quick start
+
+Requirements: Git and Docker with the Compose plugin. Project packages and development tools are installed in Docker images; no host Node.js or npm is required.
+
+```sh
+git clone https://github.com/NoveliaYuki/war-room.git war-room
+cd war-room
+cp .env.example .env
+docker compose up --build -d
+```
+
+Before signing in, edit `.env`: list the Google accounts allowed to sign in in `AUTH_ALLOWED_EMAILS`, set the Google OAuth client values and two encryption keys (see the comments in `.env.example`), and set `SESSION_COOKIE_SECURE=false` when testing over plain `http://localhost`. With these left empty every sign-in is rejected. Restart with `docker compose up -d` after changing `.env`.
+
+Compose starts the app and isolated test services by default. The Playwright runner waits until its test backend and frontend are healthy, then runs the full suite. The test backend uses temporary storage and no host ports, so tests cannot read or alter the app's persistent database. Follow progress with `docker compose logs --tail=100 test`. Open <http://localhost:3000> when the app services report `healthy` in `docker compose ps`; the API is at <http://localhost:4040>.
+
+Stop the app while keeping its database and uploads:
+
+```sh
+docker compose down
+```
+
+`docker compose down --volumes` permanently deletes the app's local database, snapshots, and uploads.
+
+## Features
+
+- Searchable selection-process board with status filters.
+- Interview stages, questions, interviewers, meetings, and schedule view.
+- Notes, salary details, company information, and attachments.
+- Portable encrypted `.wrbackup` export and restore, including uploaded files.
+- Mandatory Google Sign-In limited to an allowlist of accounts, with per-account data and an optional custom profile photo (PNG or JPEG up to 5 MiB) shown in the account menu.
+- Google Drive backup: signing in grants Drive access. Choose a Drive folder with Google Picker in **Data & Backups**, and War Room uploads a uniquely named encrypted backup when a job card is created or its status changes. Data & Backups also shows the selected destination and lets you change it before starting an upload. Drive requires Google OAuth credentials and `GOOGLE_BACKUP_ENCRYPTION_KEY`, plus optional Picker settings in `.env` (see `.env.example`). Portable encrypted export and import require only `GOOGLE_BACKUP_ENCRYPTION_KEY`. Keep the encryption key in a password manager or another safe place; without the same key, backups cannot be restored. War Room decrypts encrypted backups during import. Plain ZIP imports are rejected.
+- SQLite storage, schema migrations, and a recovery snapshot in a Docker volume.
+
+## Static browser demo
+
+The repository also includes a frontend-only demo with fictional sample processes. It uses the same UI as the self-hosted app, stores records in the current browser's local storage and uploaded files in IndexedDB, and does not include or require the Go API. See [`frontend/demo/README.md`](frontend/demo/README.md) for details.
+
+Build the static demo from `frontend/` with `npm run build:demo`. The generated site is written to `frontend/dist-demo` and can be hosted by any static-site host; it does not deploy the backend.
+
+## Architecture
+
+- `frontend/` — static HTML, CSS, and JavaScript served by Nginx.
+- `backend/` — Go HTTP API, SQLite migrations, repositories, and services.
+- `backend/tests/unit/` and `backend/tests/integration/` — backend unit and API integration tests.
+- `frontend/tests/unit/` — frontend unit tests.
+- `e2e/tests/` — Go Playwright browser tests.
+- `docs/database.md` — schema, constraints, migrations, and persistence review.
+
+The production backend is built in a Go builder stage and runs as a non-root user in `scratch`. The frontend build validates assets before copying them into an Nginx runtime image. The Playwright runner starts only after its isolated test backend and test frontend pass their 5-second health checks. Its test backend uses a temporary filesystem; application data remains in the separate `warroom-data` volume.
+
+## Configuration and data
+
+Copy `.env.example` to `.env`. Compose uses these local settings:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_BIND_ADDRESS` | `127.0.0.1` | Host interface for published ports |
+| `FRONTEND_HOST_PORT` | `3000` | Web app host port |
+| `BACKEND_HOST_PORT` | `4040` | API host port |
+| `BACKEND_HOST` | `0.0.0.0` | API listen address inside its container |
+| `CORS_ALLOWED_ORIGINS` | localhost origins | Browser origins allowed by the API |
+| `LOGO_LOOKUP_ENABLED` | `false` | Allow remote company-favicon lookups |
+| `AUTH_ALLOWED_EMAILS` | empty | Comma-separated Google accounts allowed to sign in |
+| `AUTH_TOKEN_ENCRYPTION_KEY` | empty | Encrypts stored Google tokens at rest |
+| `SESSION_COOKIE_SECURE` | `true` | Send the session cookie over HTTPS only |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_FRONTEND_URL` | see `.env.example` | Google OAuth client |
+| `GOOGLE_BACKUP_ENCRYPTION_KEY` | empty | Encrypts portable and Drive backups |
+| `GOOGLE_PICKER_API_KEY`, `GOOGLE_CLOUD_PROJECT_NUMBER` | empty | Optional Drive folder Picker settings |
+
+Compose uses the bind address and host ports for published-port mappings. It passes backend and test settings into the appropriate containers. A fresh `warroom-data` volume starts with an empty database. The backend stores its SQLite database, generated backup, company logos, profile photos, CVs, and attachments in that local Docker volume. Workspace `data/` and `backend/data/` folders are ignored by Git and excluded from Docker build contexts; they are for local state only. Protect the volume and backups as private data.
+
+Use **Data & Backups** in the app header to download an encrypted `.wrbackup` file or import one on another machine. Import decrypts the file automatically and replaces all processes and uploaded files currently stored in that War Room. The encrypted payload contains the versioned backup archive and uploaded files. Set the same `GOOGLE_BACKUP_ENCRYPTION_KEY` on each installation that needs to export or import backups; keep the key in a password manager. Plain `.zip` imports are not supported. Backups are encrypted in authenticated chunks and streamed through temporary files, so memory stays flat even for large archives.
+
+## Development and tests
+
+Use Docker for formatting, linting, and tests. Do not install project dependencies or tools on the host. Plain `docker compose up --build -d` starts the app and runs Playwright in an isolated test stack. For a synchronous pre-commit result, use the test-only Compose project below. The pre-commit requirements are in [.agents/skills/pre-commit/SKILL.md](.agents/skills/pre-commit/SKILL.md).
+
+```sh
+docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test
+docker compose --project-name war-room-precommit down
+```
+
+Run the cleanup command even when a check fails. The test-only project has temporary data and does not use the app's published ports or persistent database.
+
+The full test workflow checks the single version source, formatting, Go and JavaScript quality rules, backend unit coverage (95% minimum), frontend unit coverage (95% statements, lines, and functions; 90% branches), backend integration tests, and Go Playwright tests. Playwright runs in Docker. Use `git diff --check` before submitting changes.
+
+## Contributing
+
+Use focused changes, add tests and documentation when behavior changes, and include versioned migrations with database changes. Before opening a pull request, run the test-only Compose command above; never include private candidate data, generated databases, backups, or attachments.
+
+## Security and privacy
+
+Access is gated by mandatory Google Sign-In: only accounts listed in `AUTH_ALLOWED_EMAILS` can ever hold a session, and signing in also grants Drive backup access (one combined OAuth consent — there is no separate "connect Drive" step). “Self-hosted” means you run and manage it on infrastructure you control. Deploying beyond your own machine requires serving the app over HTTPS (the session cookie requires it), keeping `AUTH_ALLOWED_EMAILS`, `AUTH_TOKEN_ENCRYPTION_KEY`, and `GOOGLE_BACKUP_ENCRYPTION_KEY` set to real values, and leaving `SESSION_COOKIE_SECURE` at its default `true`. CORS is not access control on its own; it works alongside the session cookie, not instead of it. Remote logo lookup is disabled by default; if enabled, the backend sends the inferred company domain to Google's favicon service. Avoid enabling it when company-search privacy matters.
+
+To report a vulnerability, contact the maintainers privately through the hosting platform's security feature when available. Do not include candidate data, credentials, attachments, or unredacted logs in public issues.
+
+## Troubleshooting
+
+- If Docker cannot connect, start Docker Desktop or run `colima start` on macOS.
+- If a service is unhealthy, inspect `docker compose ps` and `docker compose logs --tail=200 backend frontend`.
+- If ports 3000 or 4040 are busy, stop the process using them and rerun `docker compose up --build -d`.
+
+## Versioning
+
+`VERSION` is the only application release version source for the frontend and backend together. Do not add or maintain separate app versions in package metadata or image labels. Later releases require the exact next semantic-version bump. The test container validates `VERSION` by default; release authors can optionally pass `BASE_VERSION` and `VERSION_BUMP` (defaults to `patch`) to validate the bump. These settings are not needed to run or deploy the app.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See the repository's `LICENSE` file for the full terms.
