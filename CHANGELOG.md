@@ -11,20 +11,6 @@ Version 0.2.0 — 2026-11-02 · Release: [v0.2.0](https://github.com/NoveliaYuki
 - Remove the hover lift from process cards, the new process card and button, primary buttons, and schedule cards.
 
 # References
-- [#4](https://github.com/NoveliaYuki/war-room/pull/4) / noissue
-
-Version 0.2.0 — 2026-11-02 · Release: [v0.2.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.2.0)
-
-# Highlights
-- Click anywhere on a scheduled interview to open its process on that exact stage, replacing the Open Process button.
-- Cards and primary buttons stay still on hover instead of lifting.
-
-# What changed
-- Keep links, note toggles, and text selection working inside clickable interviews, and make the interview title a keyboard entry point.
-- Open the stages view on phones when an interview is opened from the schedule.
-- Remove the hover lift from process cards, the new process card and button, primary buttons, and schedule cards.
-
-# References
 - [#3](https://github.com/NoveliaYuki/war-room/pull/3) / noissue
 
 Version 0.1.0 — 2026-11-02 · Release: [v0.1.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.1.0)
