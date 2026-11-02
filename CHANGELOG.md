@@ -1,4 +1,4 @@
-Version 0.1.0 — 2026-11-02 · Issues: none · PR: PR_LINK_PENDING
+Version 0.1.0 — 2026-11-02 · Issues: none · PR: [#1](https://github.com/NoveliaYuki/war-room/pull/1)
 
 # Highlights
 - Open the location of an on-site interview directly: stages with a Google Maps link show an Open in Maps button in the stage banner and the schedule, and stages without one offer Add Maps Link.
