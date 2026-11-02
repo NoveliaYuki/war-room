@@ -139,7 +139,8 @@ For mixed-scope PRs, run the full suite. Do not commit or request merge if a
 required check fails, and report checks accurately in the PR.
 
 After the release PR merges and CI passes, tag and publish its minor or major
-version. Use these release-note sections; keep each bullet to at most two
+version. Use the `CHANGELOG.md` sections as the release description, with `##`
+headings and without the entry's `Version` line; keep each bullet to at most two
 sentences:
 
 ```markdown
@@ -149,10 +150,14 @@ sentences:
 ## What changed
 - List other updates and fixes since the previous release.
 
-## Pull requests
-- Link every pull request included since the previous release, with its title.
+## References
+- [#<pr>](<pr link>) / [#<issue>](<issue link>)
+- [#<pr>](<pr link>) / noissue
 
 ```
+
+List every pull request included since the previous release under **References**.
+Link its issue after the slash, or write `noissue` when it has none.
 
 Add an **Upgrade notes** section only when users must take a manual action.
 
