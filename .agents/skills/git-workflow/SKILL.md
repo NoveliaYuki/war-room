@@ -139,7 +139,8 @@ For mixed-scope PRs, run the full suite. Do not commit or request merge if a
 required check fails, and report checks accurately in the PR.
 
 After the release PR merges and CI passes, tag and publish its minor or major
-version. Use these release-note sections; keep each bullet to at most two
+version. Use the `CHANGELOG.md` sections as the release description, with `##`
+headings and without the entry's `Version` line; keep each bullet to at most two
 sentences:
 
 ```markdown
