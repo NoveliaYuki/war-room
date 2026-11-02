@@ -1,4 +1,4 @@
-Version 0.2.0 — 2026-11-02 · Release: [v0.2.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.2.0)
+Version 0.1.1 — 2026-11-02
 
 # Highlights
 - Click anywhere on a scheduled interview to open its process on that exact stage, replacing the Open Process button.
