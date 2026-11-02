@@ -396,6 +396,13 @@ function renderStageAttachmentRows(view) {
 let activeStageIndex = 0;
 
 /** Resolves the supported modal and job arguments. */
+/** Picks the requested stage, falling back to the current one and then the first. */
+function findInitialStageIndex(stages = [], stageId) {
+  const requestedIdx = stageId ? stages.findIndex((stage) => stage.id === stageId) : -1;
+  if (requestedIdx !== -1) return requestedIdx;
+  return Math.max(0, stages.findIndex((stage) => stage.status === "current"));
+}
+
 function resolveDetailModalTarget(arg1, arg2, arg3, arg4) {
   if (typeof arg1 === "string") {
     return {
@@ -418,7 +425,7 @@ function resolveDetailModalTarget(arg1, arg2, arg3, arg4) {
  * Accepts either (arg1: jobId, arg2: onGlobalRefresh)
  * or (arg1: modalEl, arg2: backdropEl, arg3: jobId, arg4: onGlobalRefresh)
  */
-export async function openDetailModal(arg1, arg2, arg3, arg4) {
+export async function openDetailModal(arg1, arg2, arg3, arg4, { stageId } = {}) {
   const requestId = ++detailLoadRequestId;
   cancelPendingFlipClose();
   const { modalEl, backdropEl, jobId, onGlobalRefresh } = resolveDetailModalTarget(arg1, arg2, arg3, arg4);
@@ -434,8 +441,9 @@ export async function openDetailModal(arg1, arg2, arg3, arg4) {
       clearFailedDetailLoad(modalEl, backdropEl);
       return;
     }
-    const currentIdx = job.stages ? job.stages.findIndex((s) => s.status === "current") : -1;
-    activeStageIndex = currentIdx !== -1 ? currentIdx : 0;
+    activeStageIndex = findInitialStageIndex(job.stages, stageId);
+    // Phone layouts show one pane at a time, so a requested stage needs its pane open.
+    if (stageId) modalEl.dataset.mobileDetailPane = "stages";
     const loadingView = captureLoadingView(modalEl);
     renderModalContent(modalEl, backdropEl, job, onGlobalRefresh);
     revealLoadedContent(modalEl, loadingView);

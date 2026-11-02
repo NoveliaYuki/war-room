@@ -1059,6 +1059,23 @@ describe('detail modal', () => {
     expect(modal.querySelector('.btn-add-maps-link')).toBeNull();
   });
 
+  it('opens on a requested stage in the stages pane, falling back to the current stage', async () => {
+    const fixture = job([
+      { id: 's1', stage_type: 'HR', status: 'completed', questions: [], interviewers: [] },
+      { id: 's2', stage_type: 'Technical', status: 'current', questions: [], interviewers: [] },
+    ]);
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    const backdrop = document.querySelector('#modal-backdrop');
+    modal.dataset.mobileDetailPane = 'overview';
+    await openDetailModal(modal, backdrop, fixture.id, undefined, { stageId: 's1' });
+    expect(modal.querySelector('.stage-tab-item.active').id).toBe('stage-tab-0');
+    expect(modal.dataset.mobileDetailPane).toBe('stages');
+
+    await openDetailModal(modal, backdrop, fixture.id, undefined, { stageId: 'deleted-stage' });
+    expect(modal.querySelector('.stage-tab-item.active').id).toBe('stage-tab-1');
+  });
+
   it('preserves the phone meeting format default in the schedule form', async () => {
     const modal = document.querySelector('#detail-modal');
     api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', meeting_type: 'phone', questions: [] }]));

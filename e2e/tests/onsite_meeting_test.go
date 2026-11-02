@@ -43,7 +43,7 @@ func TestOnsiteMeetingOpensMaps(t *testing.T) {
 			assertMapsLinkFits(t, page, fmt.Sprintf(`.meeting-row-right a[href=%q]`, mapsURL), scheduleLayoutWidths)
 
 			restoreDesktopSchedule(t, page)
-			clickLocator(t, page.Locator(fmt.Sprintf(`.meeting-row-card:has(a[href=%q]) .btn-open-meeting`, mapsURL)), "open the scheduled job")
+			clickLocator(t, page.Locator(fmt.Sprintf(`.meeting-row-card:has(a[href=%q]) .meeting-open-trigger`, mapsURL)), "open the scheduled job")
 			scheduleOnsiteMeeting(t, page, mapsURL, 0)
 			closeDetailAndOpenSchedule(t, page)
 			todayLink := fmt.Sprintf(`.today-meeting-actions a[href=%q]`, mapsURL)

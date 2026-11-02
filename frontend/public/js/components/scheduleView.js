@@ -158,20 +158,26 @@ function renderMeetingJoinAction(meeting) {
   return `<div class="phone-call-indicator inline-icon-text">${icon("phone", 12)} Phone Call${phone}</div>`;
 }
 
+/** Renders a meeting's title as the keyboard entry point to its process. */
+function renderMeetingTitle(meeting, className = "") {
+  const label = `Open ${meeting.position_title}, ${meeting.stage_type} interview`;
+  return `<button type="button" class="meeting-open-trigger ${className}" data-open-meeting aria-label="${escapeAttr(label)}">${escapeHtml(meeting.position_title)}</button>`;
+}
+
 /** Renders a meeting scheduled for today. */
 function renderTodayMeeting(meeting) {
   const time = meeting.meeting_time || "Time TBD";
   const joinAction = renderMeetingJoinAction(meeting);
-  return `<div class="today-meeting-card" data-jobid="${escapeAttr(meeting.job_id)}">
+  return `<div class="today-meeting-card" data-meeting-card data-jobid="${escapeAttr(meeting.job_id)}" data-stageid="${escapeAttr(meeting.stage_id || "")}">
     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;"><div style="display: flex; align-items: center; gap: 8px;">
       <span class="meeting-time-badge inline-icon-text">${icon("clock", 12)} ${escapeHtml(time)}</span>
       <span class="meeting-format-pill pill-${getMeetingTypeClass(meeting.meeting_type)} inline-icon-text">${renderMeetingFormat(meeting.meeting_type)}</span>
     </div><span class="stage-type-badge ${getStageTypeClass(meeting.stage_type)}">${escapeHtml(meeting.stage_type)}</span></div>
-    <div><div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${escapeHtml(meeting.position_title)}</div>
+    <div><div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${renderMeetingTitle(meeting)}</div>
       <div class="inline-icon-text" style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">${renderMeetingCompany(meeting.company_name)}</div></div>
     ${renderMeetingRecruiter(meeting)}${renderMeetingInterviewers(meeting.stage_interviewers)}${renderMeetingNotes(meeting.stage_notes)}
     <div class="today-meeting-actions">${joinAction}
-      <button class="btn-primary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(meeting.job_id)}">${icon("chat", 13)} Open Questions & Prep ${icon("arrowUpRight", 11)}</button>
+      <button class="btn-primary btn-open-meeting inline-icon-text" data-open-meeting>${icon("chat", 13)} Open Questions & Prep ${icon("arrowUpRight", 11)}</button>
     </div>
   </div>`;
 }
@@ -195,13 +201,21 @@ export async function renderScheduleView(containerEl, modalEl, backdropEl, onGlo
   bindMeetingNotePreviews(containerEl);
   bindPastMeetingsDisclosure(containerEl);
 
-  containerEl.querySelectorAll(".btn-open-meeting").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const jobId = btn.getAttribute("data-jobid");
-      await openDetailModal(modalEl, backdropEl, jobId, onGlobalRefresh);
+  containerEl.querySelectorAll("[data-meeting-card]").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (!shouldOpenMeeting(event)) return;
+      const { jobid: jobId, stageid: stageId } = card.dataset;
+      void openDetailModal(modalEl, backdropEl, jobId, onGlobalRefresh, { stageId });
     });
   });
   revealLoadedContent(containerEl, loadingView);
+}
+
+/** Leaves links, note toggles, and text selection to their own behavior. */
+function shouldOpenMeeting(event) {
+  const control = event.target.closest("a, button, summary");
+  if (control && !control.hasAttribute("data-open-meeting")) return false;
+  return !window.getSelection()?.toString();
 }
 
 /** Builds the schedule sections from one meeting snapshot. */
@@ -336,6 +350,17 @@ function renderScheduleMarkup(meetings) {
 
 }
 
+/** Renders a row's join link or phone indicator, or nothing when it has neither. */
+function renderMeetingRowAction(m, meetingUrl) {
+  if (meetingUrl) {
+    return `<div class="meeting-row-right"><a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="font-size: 12px; padding: 6px 12px; text-decoration: none;">
+      <span class="inline-icon-text">${renderMeetingLinkContent(m.meeting_type, "Join Call", 12)}</span>
+    </a></div>`;
+  }
+  if (m.meeting_type !== 'phone') return '';
+  return `<div class="meeting-row-right"><span class="phone-call-indicator inline-icon-text" style="font-size: 11px; padding: 4px 10px;">${icon("phone", 11)} Phone</span></div>`;
+}
+
 /**
  * Renders meeting rows list.
  */
@@ -345,13 +370,13 @@ function renderMeetingsRows(list = []) {
       const avatarHtml = renderCompanyAvatar(m.company_name, m.avatar_seed, 48, m.company_domain, m.job_id);
       const meetingUrl = safeUrl(m.meeting_url);
       return `
-      <div class="meeting-row-card${meetingUrl ? ' has-meeting-url' : ''}">
+      <div class="meeting-row-card${meetingUrl ? ' has-meeting-url' : ''}" data-meeting-card data-jobid="${escapeAttr(m.job_id)}" data-stageid="${escapeAttr(m.stage_id || '')}">
         <div class="meeting-row-left">
           <div class="meeting-row-avatar">${avatarHtml}</div>
           <div class="meeting-row-info">
             <div class="meeting-row-heading">
               <div class="meeting-row-identity">
-                <span class="meeting-row-position">${escapeHtml(m.position_title)}</span>
+                ${renderMeetingTitle(m, "meeting-row-position")}
                 <span class="meeting-row-company">@ ${m.company_name.toLowerCase() === 'unknown' ? 'Unknown Company (Undisclosed)' : escapeHtml(m.company_name)}</span>
               </div>
               <div class="meeting-row-badges">
@@ -377,24 +402,7 @@ function renderMeetingsRows(list = []) {
             </div>
           </div>
         </div>
-        <div class="meeting-row-right">
-          ${
-            meetingUrl
-              ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="font-size: 12px; padding: 6px 12px; text-decoration: none;">
-                  <span class="inline-icon-text">
-                    ${renderMeetingLinkContent(m.meeting_type, "Join Call", 12)}
-                  </span>
-                </a>`
-              : m.meeting_type === 'phone'
-              ? `<span class="phone-call-indicator inline-icon-text" style="font-size: 11px; padding: 4px 10px;">
-                  ${icon("phone", 11)} Phone
-                </span>`
-              : ''
-          }
-          <button class="btn-secondary btn-open-meeting inline-icon-text" data-jobid="${escapeAttr(m.job_id)}" style="font-size: 12px; padding: 6px 14px;">
-            Open Process ${icon("arrowUpRight", 11)}
-          </button>
-        </div>
+        ${renderMeetingRowAction(m, meetingUrl)}
       </div>
     `;
     })

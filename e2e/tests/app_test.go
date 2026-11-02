@@ -2652,3 +2652,67 @@ func fill(t *testing.T, locator playwright.Locator, value string) {
 		t.Fatalf("fill form field: %v", err)
 	}
 }
+
+func TestProcessControlsStayStillOnHover(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	for _, selector := range []string{".process-card", ".quick-add-card", "#btn-new-process"} {
+		assertStaysStillOnHover(t, page, selector)
+	}
+}
+
+func TestScheduledInterviewOpensItsStage(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	selectFilter(t, page, "schedule")
+	clickLocator(t, page.Locator(".past-meetings-group summary"), "show past meetings")
+	row := page.Locator(".past-meetings-group .meeting-row-card").First()
+	waitForLocator(t, row, "past interview")
+	if count, err := page.Locator(`.meeting-row-card:has-text("Open Process")`).Count(); err != nil || count != 0 {
+		t.Fatalf("schedule rows should not offer Open Process (count=%d, err=%v)", count, err)
+	}
+	cursor, err := row.Evaluate("card => getComputedStyle(card).cursor", nil)
+	if err != nil || cursor != "pointer" {
+		t.Fatalf("interview cursor=%v, want pointer (err=%v)", cursor, err)
+	}
+	stageType, err := row.Locator(".stage-type-badge").TextContent()
+	if err != nil {
+		t.Fatalf("read interview stage: %v", err)
+	}
+	clickLocator(t, row.Locator(".meeting-row-meta"), "open interview from its row")
+	hero := page.Locator("#detail-modal .stage-hero-banner .stage-type-badge")
+	waitForLocator(t, hero, "stage banner")
+	openedType, err := hero.TextContent()
+	if err != nil || openedType != stageType {
+		t.Fatalf("opened stage %q, want %q (err=%v)", openedType, stageType, err)
+	}
+	current, err := page.Locator("#detail-modal .stage-tab-item.active").TextContent()
+	if err != nil || strings.Contains(strings.ToLower(current), "current") {
+		t.Fatalf("past interview should open its own stage, not the current one: tab=%q (err=%v)", current, err)
+	}
+}
+
+func assertStaysStillOnHover(t *testing.T, page playwright.Page, selector string) {
+	t.Helper()
+	control := page.Locator(selector).First()
+	if err := control.ScrollIntoViewIfNeeded(); err != nil {
+		t.Fatalf("scroll to %s: %v", selector, err)
+	}
+	before, err := control.BoundingBox()
+	if err != nil || before == nil {
+		t.Fatalf("read %s position: bounds=%v, err=%v", selector, before, err)
+	}
+	if err := control.Hover(); err != nil {
+		t.Fatalf("hover %s: %v", selector, err)
+	}
+	if _, err := page.Evaluate("() => document.getAnimations().forEach(animation => animation.finish())", nil); err != nil {
+		t.Fatalf("finish %s hover transition: %v", selector, err)
+	}
+	after, err := control.BoundingBox()
+	if err != nil || after == nil {
+		t.Fatalf("read hovered %s position: bounds=%v, err=%v", selector, after, err)
+	}
+	if after.Y != before.Y || after.X != before.X {
+		t.Errorf("%s moved on hover from (%v, %v) to (%v, %v)", selector, before.X, before.Y, after.X, after.Y)
+	}
+}
