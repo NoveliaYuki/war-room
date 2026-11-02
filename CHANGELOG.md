@@ -10,8 +10,8 @@ Version 0.1.0 — 2026-11-02 · Issues: none · Release: [v0.1.0](https://github
 - Reach the 44px phone touch target on stage meeting links, whose rules previously matched no rendered element.
 - Cover on-site links and logo fitting with Playwright tests that check rendered avatar pixels across logo families and avatar shapes.
 
-# Pull requests
-- [#1](https://github.com/NoveliaYuki/war-room/pull/1) feat: [v0.1.0] - add Open in Maps for on-site interviews
+# References
+- [#1](https://github.com/NoveliaYuki/war-room/pull/1) / noissue
 
 Version 0.0.1 — 2026-10-26 · Issues: none · Release: [v0.0.1](https://github.com/NoveliaYuki/war-room/releases/tag/v0.0.1)
 

@@ -149,10 +149,14 @@ sentences:
 ## What changed
 - List other updates and fixes since the previous release.
 
-## Pull requests
-- Link every pull request included since the previous release, with its title.
+## References
+- [#<pr>](<pr link>) / [#<issue>](<issue link>)
+- [#<pr>](<pr link>) / noissue
 
 ```
+
+List every pull request included since the previous release under **References**.
+Link its issue after the slash, or write `noissue` when it has none.
 
 Add an **Upgrade notes** section only when users must take a manual action.
 
