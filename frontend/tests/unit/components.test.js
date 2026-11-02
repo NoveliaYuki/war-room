@@ -322,9 +322,32 @@ describe('schedule view', () => {
     await flush();
     expect(backdrop.classList.contains('active')).toBe(false);
     expect(mocks.openDetailModal).toHaveBeenCalled();
-    root.querySelector('.meeting-row-card .btn-open-meeting').click();
+
+    const row = root.querySelector('.meeting-row-card');
+    expect(row.textContent).not.toContain('Open Process');
+    row.dataset.stageid = 'stage-2';
+    mocks.openDetailModal.mockClear();
+    row.querySelector('.meeting-row-meta').click();
     await flush();
-    expect(mocks.openDetailModal).toHaveBeenLastCalledWith(modal, backdrop, 'tomorrow', expect.any(Function));
+    expect(mocks.openDetailModal).toHaveBeenLastCalledWith(modal, backdrop, 'tomorrow', expect.any(Function), { stageId: 'stage-2' });
+
+    mocks.openDetailModal.mockClear();
+    row.querySelector('.meeting-open-trigger').click();
+    await flush();
+    expect(mocks.openDetailModal).toHaveBeenCalledTimes(1);
+
+    mocks.openDetailModal.mockClear();
+    row.querySelector('a.btn-join-call').addEventListener('click', (event) => event.preventDefault());
+    row.querySelector('a.btn-join-call').click();
+    row.querySelector('.meeting-note-toggle').click();
+    await flush();
+    expect(mocks.openDetailModal).not.toHaveBeenCalled();
+
+    const selection = vi.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'copied note' });
+    row.querySelector('.meeting-row-meta').click();
+    await flush();
+    expect(mocks.openDetailModal).not.toHaveBeenCalled();
+    selection.mockRestore();
   });
 });
 
