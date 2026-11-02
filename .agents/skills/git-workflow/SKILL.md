@@ -149,6 +149,9 @@ sentences:
 ## What changed
 - List other updates and fixes since the previous release.
 
+## Pull requests
+- Link every pull request included since the previous release, with its title.
+
 ```
 
 Add an **Upgrade notes** section only when users must take a manual action.

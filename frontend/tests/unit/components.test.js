@@ -263,6 +263,8 @@ describe('schedule view', () => {
       meeting('phone-no-contact', 0, { meeting_type: 'phone', meeting_time: '', recruiter_contact: '' }),
       meeting('untrusted-type', 0, { meeting_type: 'video\" onmouseover=alert(1)', stage_type: '<img src=x onerror=alert(1)>' }),
       meeting('tomorrow', 1, { meeting_type: 'video" onmouseover=alert(1)', meeting_url: 'https://future.example', recruiter_name: 'Future recruiter', stage_notes: 'Confirm panel with the interview team and review the role expectations before the conversation.', stage_interviewers: [{ name: 'Taylor' }], company_domain: 'acme.example', avatar_seed: 'Acme' }),
+      meeting('onsite-maps', 0, { meeting_type: 'onsite', meeting_url: 'https://maps.example/today' }),
+      meeting('onsite-maps-later', 3, { meeting_type: 'onsite', meeting_url: 'https://maps.example/later' }),
       meeting('onsite-tbd', 2, { company_name: 'Unknown', meeting_type: 'onsite', meeting_time: '', recruiter_name: 'Recruiter without contact', recruiter_contact: '' }),
       meeting('future', 4, { company_name: 'Unknown' }),
       meeting('future-phone', 5, { meeting_type: 'phone', meeting_url: 'javascript:alert(1)', recruiter_contact: '555-0100|mobile' }),
@@ -279,6 +281,9 @@ describe('schedule view', () => {
     expect(root.querySelector('a[href="https://meet.example"]')).not.toBeNull();
     expect(root.querySelector('a[href="https://future.example"]')).not.toBeNull();
     expect(root.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(root.querySelector('a[href="https://maps.example/today"]').textContent).toContain('Open in Maps');
+    expect(root.querySelector('a[href="https://maps.example/later"]').textContent).toContain('Open in Maps');
+    expect(root.querySelector('a[href="https://meet.example"]').textContent).toContain('Join Meeting');
     expect(root.querySelector('.meeting-row-right .phone-call-indicator').textContent).toContain('Phone');
     expect(root.querySelector('.today-meeting-card[data-jobid="phone"] .phone-call-indicator').textContent).toContain('<img src=x onerror=alert(1)>');
     expect(root.querySelector('.today-meeting-card[data-jobid="phone-no-contact"] .phone-call-indicator').textContent).toContain('Phone Call');
@@ -288,7 +293,7 @@ describe('schedule view', () => {
     expect(root.querySelector('.meeting-row-card .meeting-format-pill').classList.contains('pill-video')).toBe(true);
     expect(root.querySelector('.meeting-row-card').textContent).toContain('Interviewers: Taylor');
     expect(root.querySelector('.meeting-row-card .meeting-format-pill.pill-onsite').textContent).toContain('On-Site');
-    const onsiteMeetingRow = root.querySelector('.meeting-format-pill.pill-onsite').closest('.meeting-row-card');
+    const onsiteMeetingRow = [...root.querySelectorAll('.meeting-row-card')].find((row) => row.querySelector('.pill-onsite') && !row.querySelector('a[href^="https://maps.example"]'));
     expect(onsiteMeetingRow.querySelector('.meeting-time-badge').textContent).toContain('Time TBD');
     expect(onsiteMeetingRow.textContent).toContain('Unknown Company (Undisclosed)');
     const noteRoot = root.querySelector('.meeting-row-card');

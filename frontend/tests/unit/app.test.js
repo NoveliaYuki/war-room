@@ -126,6 +126,8 @@ describe('application entry point', () => {
     avatar.dispatchEvent(new Event('error', { bubbles: true }));
     expect(avatar.style.display).toBe('none');
     expect(fallback.style.display).toBe('block');
+    avatar.dispatchEvent(new Event('load'));
+    expect(avatar.classList.contains('company-logo-tile')).toBe(false);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true }));
     expect(document.activeElement).toBe(document.querySelector('#search-input'));
     document.querySelector('#search-input').blur();

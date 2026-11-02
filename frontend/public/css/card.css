@@ -607,6 +607,15 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
   padding: 3px !important;
 }
 
+.company-logo-img.company-logo-tile {
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: var(--logo-backing, transparent) !important;
+}
+
+.company-logo-img.company-logo-fills { object-fit: cover !important; }
+.company-logo-img.company-logo-mark { background: var(--logo-backing, #fff) !important; }
+
 .card-avatar svg {
   width: 100%;
   height: 100%;

@@ -879,6 +879,11 @@ func TestScheduleMeetingClearsStaleLinkAndKeepsFreeTextTimes(t *testing.T) {
 	if got := meetingURL(t, fixture, job.ID); got != "" {
 		t.Fatalf("link kept after switching to a phone call: %q", got)
 	}
+	mapsLink, onsite := "https://maps.example/office", "onsite"
+	mustNoErr(t, fixture.service.ScheduleMeeting(testUserID, stage.ID, models.ScheduleMeetingInput{MeetingDate: "2026-10-01", MeetingTime: "10:30", MeetingURL: &mapsLink, MeetingType: &onsite}))
+	if got := meetingURL(t, fixture, job.ID); got != mapsLink {
+		t.Fatalf("on-site maps link=%q, want %q", got, mapsLink)
+	}
 	freeText := "11:00 AM - 11:30 AM CEST"
 	mustNoErr(t, fixture.service.ScheduleMeeting(testUserID, stage.ID, models.ScheduleMeetingInput{MeetingDate: "2026-10-01", MeetingTime: freeText, MeetingType: &phone}))
 }

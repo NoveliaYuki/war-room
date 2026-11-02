@@ -1,3 +1,18 @@
+Version 0.1.0 — 2026-11-02 · Issues: none · Release: [v0.1.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.1.0) · PRs: [#1](https://github.com/NoveliaYuki/war-room/pull/1)
+
+# Highlights
+- Open the location of an on-site interview directly: stages with a Google Maps link show an Open in Maps button in the stage banner and the schedule, and stages without one offer Add Maps Link.
+- Company logos now fit their avatar: solid logos fill it without a white frame, and transparent logos and wordmarks are trimmed and stay inside it.
+
+# What changed
+- Relabel the schedule form's link field for each format, and keep a saved link with its own format when switching.
+- Classify each logo by its backdrop once per source, put white marks on a dark backing, and keep non-square painted logos whole on their own color.
+- Reach the 44px phone touch target on stage meeting links, whose rules previously matched no rendered element.
+- Cover on-site links and logo fitting with Playwright tests that check rendered avatar pixels across logo families and avatar shapes.
+
+# Pull requests
+- [#1](https://github.com/NoveliaYuki/war-room/pull/1) feat: [v0.1.0] - add Open in Maps for on-site interviews
+
 Version 0.0.1 — 2026-10-26 · Issues: none · Release: [v0.0.1](https://github.com/NoveliaYuki/war-room/releases/tag/v0.0.1)
 
 # Highlights

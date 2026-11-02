@@ -989,6 +989,76 @@ describe('detail modal', () => {
 
   });
 
+  it('collects and shows a Google Maps link for on-site interviews', async () => {
+    const fixture = job([{
+      id: 's1', stage_type: 'HR', status: 'current', meeting_date: '2026-10-01', meeting_time: '11:00',
+      meeting_type: 'video', meeting_url: 'https://meet.example/room', questions: [], interviewers: [],
+    }]);
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    expect(modal.querySelector('.btn-join-meeting-inline').textContent).toContain('Join Call');
+    modal.querySelector('.btn-edit-meeting-schedule').click();
+    const form = modal.querySelector('#schedule-stage-form');
+    const type = form.querySelector('[name="meeting_type"]');
+    const url = form.querySelector('[name="meeting_url"]');
+    expect(form.querySelector('#schedule-meeting-url-label').textContent).toContain('Meeting Video URL');
+
+    type.value = 'onsite';
+    type.dispatchEvent(new Event('change'));
+    expect(form.querySelector('#schedule-meeting-url-label').textContent).toBe('Google Maps Link');
+    expect(form.querySelector('#video-link-row').hidden).toBe(false);
+    expect(url.value).toBe('');
+
+    type.value = 'video';
+    type.dispatchEvent(new Event('change'));
+    expect(url.value).toBe('https://meet.example/room');
+
+    type.value = 'phone';
+    type.dispatchEvent(new Event('change'));
+    expect(form.querySelector('#video-link-row').hidden).toBe(true);
+
+    type.value = 'onsite';
+    type.dispatchEvent(new Event('change'));
+    url.value = 'https://maps.example/office';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(api.scheduleMeeting).toHaveBeenCalledWith('s1', expect.objectContaining({ meeting_type: 'onsite', meeting_url: 'https://maps.example/office' }));
+
+    Object.assign(fixture.stages[0], { meeting_type: 'onsite', meeting_url: 'https://maps.example/office' });
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    const mapsLink = modal.querySelector('.btn-join-meeting-inline');
+    expect(mapsLink.getAttribute('href')).toBe('https://maps.example/office');
+    expect(mapsLink.textContent).toContain('Open in Maps');
+  });
+
+  it('prompts for a Maps link on on-site interviews saved without one', async () => {
+    const fixture = job([{
+      id: 's1', stage_type: 'HR', status: 'current', meeting_date: '2026-10-01', meeting_time: '11:00',
+      meeting_type: 'onsite', meeting_url: '', questions: [], interviewers: [],
+    }]);
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    expect(modal.querySelector('.btn-join-meeting-inline')).toBeNull();
+
+    modal.querySelector('.btn-add-maps-link').click();
+    const url = modal.querySelector('#schedule-meeting-url');
+    expect(modal.querySelector('#sel-meeting-type option[value="onsite"]').hasAttribute('selected')).toBe(true);
+    expect(document.activeElement).toBe(url);
+  });
+
+  it('shows no Maps prompt for video calls without a link', async () => {
+    const fixture = job([{
+      id: 's1', stage_type: 'HR', status: 'current', meeting_date: '2026-10-01', meeting_time: '11:00',
+      meeting_type: 'video', meeting_url: '', questions: [], interviewers: [],
+    }]);
+    api.getJob.mockResolvedValue(fixture);
+    const modal = document.querySelector('#detail-modal');
+    await openDetailModal(modal, document.querySelector('#modal-backdrop'), fixture.id);
+    expect(modal.querySelector('.btn-add-maps-link')).toBeNull();
+  });
+
   it('preserves the phone meeting format default in the schedule form', async () => {
     const modal = document.querySelector('#detail-modal');
     api.getJob.mockResolvedValue(job([{ id: 's1', stage_type: 'HR', status: 'current', meeting_type: 'phone', questions: [] }]));
