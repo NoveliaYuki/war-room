@@ -2692,6 +2692,40 @@ func TestScheduledInterviewOpensItsStage(t *testing.T) {
 	}
 }
 
+func TestMobileDetailTabsAttachToHeader(t *testing.T) {
+	page := newPage(t)
+	openDemoPage(t, page)
+	setPageViewport(t, page, 390, 844)
+	clickLocator(t, page.Locator(".process-card").First().Locator(".btn-card-open-details"), "open job details")
+	waitForLocator(t, page.Locator("#detail-modal .mobile-detail-view-switch"), "detail tabs")
+	encoded, err := page.Evaluate(`() => {
+		document.getAnimations().forEach(animation => animation.finish());
+		const header = document.querySelector("#detail-modal .modal-header").getBoundingClientRect();
+		const strip = document.querySelector("#detail-modal .mobile-detail-view-switch").getBoundingClientRect();
+		const tab = document.querySelector("#detail-modal .mobile-detail-view-button").getBoundingClientRect();
+		return JSON.stringify({ gap: strip.top - header.bottom, stripWidth: strip.width, tabWidth: tab.width, tabHeight: tab.height, stripHeight: strip.height });
+	}`, nil)
+	if err != nil {
+		t.Fatalf("measure detail tabs: %v", err)
+	}
+	var tabs struct {
+		Gap         float64 `json:"gap"`
+		StripWidth  float64 `json:"stripWidth"`
+		TabWidth    float64 `json:"tabWidth"`
+		TabHeight   float64 `json:"tabHeight"`
+		StripHeight float64 `json:"stripHeight"`
+	}
+	if err := json.Unmarshal([]byte(encoded.(string)), &tabs); err != nil {
+		t.Fatalf("decode detail tabs: %v", err)
+	}
+	if math.Abs(tabs.Gap) > 0.5 {
+		t.Errorf("detail tabs should attach to the header, gap=%.1fpx", tabs.Gap)
+	}
+	if tabs.TabWidth > tabs.StripWidth/2 || tabs.TabHeight < 44 || tabs.StripHeight > 46 {
+		t.Errorf("detail tabs should stay compact with 44px targets: %+v", tabs)
+	}
+}
+
 func assertStaysStillOnHover(t *testing.T, page playwright.Page, selector string) {
 	t.Helper()
 	control := page.Locator(selector).First()
