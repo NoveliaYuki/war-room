@@ -21,7 +21,20 @@ import { formatSalary } from "../utils/salary.js";
 import { formatCvUploadDate } from "./cvLibrary.js";
 import { confirmAction } from "../utils/confirmDialog.js";
 import { formatCalendarDate } from "../utils/date.js";
+import { renderMeetingLinkContent } from "../utils/meetingLink.js";
 
+const MEETING_LINK_FIELDS = new Map([
+  ["video", {
+    label: "Meeting Video URL (Teams, Meet, Zoom)",
+    hint: "Displays a direct 1-click 'Join Meeting' button in your schedule and active stage banner.",
+    placeholder: "https://meet.example.com/...",
+  }],
+  ["onsite", {
+    label: "Google Maps Link",
+    hint: "Displays a direct 1-click 'Open in Maps' button in your schedule and active stage banner.",
+    placeholder: "https://maps.app.goo.gl/...",
+  }],
+]);
 const STAGE_TYPE_CLASSES = new Map([
   ["HR", "HR"],
   ["Technical", "Technical"],
@@ -791,9 +804,16 @@ function renderStageSchedule(stage) {
   if (!stage.meeting_date && !stage.meeting_time) {
     return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${formatTag}</div></div>`;
   }
-  const meetingUrl = safeUrl(stage.meeting_url);
-  const join = meetingUrl ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-meeting-inline inline-icon-text">${icon("video", 12)} Join Call ${icon("arrowUpRight", 11)}</a>` : "";
+  const join = renderStageMeetingLink(stage);
   return `<div class="stage-schedule-badge-row"><div class="stage-schedule-metadata">${formatTag}<span class="stage-meeting-date inline-icon-text">${icon("calendar", 12)} <time datetime="${escapeAttr(stage.meeting_date || "")}">${escapeHtml(formatCalendarDate(stage.meeting_date))}</time> • ${escapeHtml(stage.meeting_time || "")}</span>${join}</div></div>`;
+}
+
+/** Renders a stage's meeting link, or a prompt for an on-site meeting still missing its Maps link. */
+function renderStageMeetingLink(stage) {
+  const meetingUrl = safeUrl(stage.meeting_url);
+  if (meetingUrl) return `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-meeting-inline inline-icon-text">${renderMeetingLinkContent(stage.meeting_type, "Join Call", 12)}</a>`;
+  if (stage.meeting_type !== "onsite") return "";
+  return `<button type="button" class="btn-add-maps-link inline-icon-text">${icon("pin", 12)} Add Maps Link</button>`;
 }
 
 /** Maps a meeting format to an allowed style class suffix. */
@@ -1694,6 +1714,11 @@ function bindActiveStageActions(context) {
       openScheduleStageForm(modalEl, backdropEl, job, activeStage, refreshModal);
     });
 
+    modalEl.querySelector(".btn-add-maps-link")?.addEventListener("click", () => {
+      openScheduleStageForm(modalEl, backdropEl, job, activeStage, refreshModal);
+      modalEl.querySelector("#schedule-meeting-url").focus();
+    });
+
     modalEl.querySelector("#btn-move-stage-down")?.addEventListener("click", async () => {
       try {
         const ids = stages.map((s) => s.id);
@@ -2187,9 +2212,9 @@ function getScheduleStageFormMarkup(stage, defaultDate, defaultType, title, hasE
       </div>
 
       <div id="video-link-row">
-        <label class="meta-label" for="schedule-meeting-url">Meeting Video URL (Teams, Meet, Zoom)</label>
-        <input id="schedule-meeting-url" type="url" name="meeting_url" value="${escapeAttr(stage.meeting_url || '')}" placeholder="https://meet.example.com/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-        <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Displays a direct 1-click 'Join Meeting' button in your schedule and active stage banner.</span>
+        <label class="meta-label" id="schedule-meeting-url-label" for="schedule-meeting-url"></label>
+        <input id="schedule-meeting-url" type="url" name="meeting_url" value="${escapeAttr(stage.meeting_url || '')}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        <span id="schedule-meeting-url-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;"></span>
       </div>
 
       <div>
@@ -2213,17 +2238,8 @@ function bindScheduleStageForm(modalEl, stage, onSaved) {
   const cancelBtn = modalEl.querySelector(".btn-cancel-schedule");
   const closeBtn = modalEl.querySelector(".modal-close-btn");
   const clearBtn = modalEl.querySelector(".btn-clear-schedule");
-  const meetingTypeSelect = form.querySelector("#sel-meeting-type");
-  const videoLinkRow = form.querySelector("#video-link-row");
-  const meetingURLInput = form.querySelector("#schedule-meeting-url");
 
-  const updateVideoLinkVisibility = () => {
-    const isVideo = meetingTypeSelect.value === "video";
-    videoLinkRow.hidden = !isVideo;
-    meetingURLInput.disabled = !isVideo;
-  };
-  meetingTypeSelect.addEventListener("change", updateVideoLinkVisibility);
-  updateVideoLinkVisibility();
+  bindMeetingLinkField(form, stage);
 
   const cancel = () => onSaved();
   cancelBtn.addEventListener("click", cancel);
@@ -2231,6 +2247,31 @@ function bindScheduleStageForm(modalEl, stage, onSaved) {
 
   clearBtn?.addEventListener("click", () => clearStageSchedule(stage, onSaved));
   form.addEventListener("submit", (event) => saveStageSchedule(event, form, stage, onSaved));
+}
+
+/** Shows the link field matching the selected format and resets links from another format. */
+function bindMeetingLinkField(form, stage) {
+  const select = form.querySelector("#sel-meeting-type");
+  const input = form.querySelector("#schedule-meeting-url");
+  const initialType = select.value;
+  select.addEventListener("change", () => {
+    // A Meet link is not a Maps location, so a saved link only applies to its own format.
+    input.value = select.value === initialType ? stage.meeting_url || "" : "";
+    applyMeetingLinkField(form, select.value);
+  });
+  applyMeetingLinkField(form, initialType);
+}
+
+/** Applies a meeting format's link field copy, hiding the field for formats without a link. */
+function applyMeetingLinkField(form, meetingType) {
+  const linkField = MEETING_LINK_FIELDS.get(meetingType);
+  const input = form.querySelector("#schedule-meeting-url");
+  form.querySelector("#video-link-row").hidden = !linkField;
+  input.disabled = !linkField;
+  if (!linkField) return;
+  form.querySelector("#schedule-meeting-url-label").textContent = linkField.label;
+  form.querySelector("#schedule-meeting-url-hint").textContent = linkField.hint;
+  input.placeholder = linkField.placeholder;
 }
 
 async function clearStageSchedule(stage, onSaved) {
@@ -2262,7 +2303,7 @@ async function saveStageSchedule(event, form, stage, onSaved) {
       meeting_date: data.get("meeting_date"),
       meeting_time: data.get("meeting_time"),
       meeting_type: meetingType,
-      meeting_url: meetingType === "video" ? data.get("meeting_url") || "" : "",
+      meeting_url: MEETING_LINK_FIELDS.has(meetingType) ? data.get("meeting_url") || "" : "",
       notes: data.get("notes"),
     });
     onSaved();

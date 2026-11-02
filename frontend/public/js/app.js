@@ -14,6 +14,7 @@ import { openTechnologyLibrary } from "./components/technologyLibrary.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, setModalBackgroundScrollPosition, trapModalTab } from "./modalA11y.js";
+import { applyLogoFit } from "./utils/logoFit.js";
 import { showToast } from "./utils/toast.js";
 import { showBackupProgress } from "./utils/backupProgress.js";
 import { confirmAction } from "./utils/confirmDialog.js";
@@ -35,7 +36,14 @@ function handleAvatarImageError(event) {
   if (fallback) fallback.style.display = "block";
 }
 
+/** Fits a company logo to its tile once its pixels are known. */
+function handleAvatarImageLoad(event) {
+  const image = event.target;
+  if (image instanceof HTMLImageElement && image.hasAttribute("data-avatar-fallback")) applyLogoFit(image);
+}
+
 document.addEventListener("error", handleAvatarImageError, true);
+document.addEventListener("load", handleAvatarImageLoad, true);
 
 const FILTER_STORAGE_KEY = "war-room.active-filter";
 const OPEN_JOB_STORAGE_KEY = "war-room.open-job";

@@ -200,12 +200,13 @@ function setWideLogoFrame(card) {
   if (!logo) return;
 
   const applyFrame = () => {
-    if (logo.naturalHeight === 0 || logo.naturalWidth / logo.naturalHeight <= 1.2) return;
-    card.querySelector(".card-avatar")?.classList.add("card-avatar-wide-logo");
-    card.querySelector(".card-header")?.classList.add("has-wide-logo");
+    const isWide = logo.naturalHeight > 0 && logo.naturalWidth / logo.naturalHeight > 1.2;
+    card.querySelector(".card-avatar")?.classList.toggle("card-avatar-wide-logo", isWide);
+    card.querySelector(".card-header")?.classList.toggle("has-wide-logo", isWide);
   };
 
-  logo.addEventListener("load", applyFrame, { once: true });
+  // Trimming a logo's margin reloads it, which can change its proportions.
+  logo.addEventListener("load", applyFrame);
   if (logo.complete) applyFrame();
 }
 

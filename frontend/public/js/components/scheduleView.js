@@ -3,6 +3,7 @@ import { captureLoadingView, revealLoadedContent } from "../utils/loadingTransit
 import { showToast } from "../utils/toast.js";
 import { escapeHtml, escapeAttr, safeUrl } from "../utils/sanitize.js";
 import { formatCalendarDate } from "../utils/date.js";
+import { renderMeetingLinkContent } from "../utils/meetingLink.js";
 /**
  * @fileoverview Everyday Schedule & Meetings View Component.
  * Answers every day whether you have a meeting to attend or not,
@@ -148,10 +149,10 @@ function renderMeetingInterviewers(interviewers = []) {
   return `<div class="inline-icon-text" style="font-size: 12px; color: var(--text-muted);">${icon("users", 12)} Interviewers: ${escapeHtml(names.join(", "))}</div>`;
 }
 
-/** Renders the join link or phone call details for a meeting. */
+/** Renders the join or Maps link, or phone call details, for a meeting. */
 function renderMeetingJoinAction(meeting) {
   const url = safeUrl(meeting.meeting_url);
-  if (url) return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="text-decoration: none;"><span class="inline-icon-text">${icon("video", 13)} Join Meeting ${icon("arrowUpRight", 11)}</span></a>`;
+  if (url) return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="text-decoration: none;"><span class="inline-icon-text">${renderMeetingLinkContent(meeting.meeting_type, "Join Meeting", 13)}</span></a>`;
   if (meeting.meeting_type !== "phone") return "";
   const phone = meeting.recruiter_contact ? `<span style="font-size: 11px; opacity: 0.85;">(${escapeHtml(meeting.recruiter_contact.split("|")[0].trim())})</span>` : "";
   return `<div class="phone-call-indicator inline-icon-text">${icon("phone", 12)} Phone Call${phone}</div>`;
@@ -381,7 +382,7 @@ function renderMeetingsRows(list = []) {
             meetingUrl
               ? `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-call" style="font-size: 12px; padding: 6px 12px; text-decoration: none;">
                   <span class="inline-icon-text">
-                    ${icon("video", 12)} Join Call ${icon("arrowUpRight", 11)}
+                    ${renderMeetingLinkContent(m.meeting_type, "Join Call", 12)}
                   </span>
                 </a>`
               : m.meeting_type === 'phone'

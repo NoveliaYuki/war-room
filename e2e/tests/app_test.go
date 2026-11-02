@@ -1424,13 +1424,13 @@ func TestDemoNvidiaLogoLoads(t *testing.T) {
 	logo := page.Locator(`.process-card[data-id="demo-3"] img.company-logo-img`)
 	if _, err := page.WaitForFunction(`() => {
 		const logo = document.querySelector('.process-card[data-id="demo-3"] img.company-logo-img');
-		return logo?.complete && logo.naturalWidth > 0;
+		return logo?.complete && logo.naturalWidth > 0 && logo.dataset.logoFitted === "true";
 	}`, nil); err != nil {
 		t.Fatalf("wait for NVIDIA logo to load: %v", err)
 	}
-	source, err := logo.GetAttribute("src")
-	if err != nil || !strings.HasSuffix(source, "/demo/assets/logos/nvidia-eye.png") {
-		t.Fatalf("NVIDIA demo card logo source=%q, want bundled NVIDIA eye mark (err=%v)", source, err)
+	source, err := logo.Evaluate("image => image.dataset.logoSource || image.getAttribute('src')", nil)
+	if err != nil || !strings.HasSuffix(fmt.Sprint(source), "/demo/assets/logos/nvidia-eye.png") {
+		t.Fatalf("NVIDIA demo card logo source=%.120v, want bundled NVIDIA eye mark (err=%v)", source, err)
 	}
 }
 

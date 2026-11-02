@@ -1076,7 +1076,8 @@ func (s *JobService) ScheduleMeeting(userID, stageID string, input models.Schedu
 }
 
 // scheduleMeetingFields maps a schedule request to stage columns. A meeting
-// that is no longer a video call, or is cleared, drops its stale link.
+// that changes to a non-video format without a new link, or is cleared, drops
+// its stale link; on-site meetings keep a supplied Maps link.
 func scheduleMeetingFields(input models.ScheduleMeetingInput) map[string]interface{} {
 	fields := map[string]interface{}{
 		"meeting_date": input.MeetingDate,

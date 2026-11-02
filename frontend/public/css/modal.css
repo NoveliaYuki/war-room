@@ -1508,6 +1508,25 @@ body.is-resizing-split * {
   color: #ffffff !important;
 }
 
+.btn-add-maps-link {
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--accent-blue);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+
+.btn-add-maps-link:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-surface-elevated);
+}
+
 .stage-schedule-badge-row .btn-edit-meeting-schedule {
   min-height: 28px;
   box-sizing: border-box;
@@ -1745,7 +1764,7 @@ body.is-resizing-split * {
   .add-question-form .add-question-input { width: 100%; min-height: 44px; font-size: 16px; }
   .add-question-form .btn-add-question { align-self: flex-start; max-width: 100%; white-space: normal; }
   .questions-workspace .question-answer-box { font-size: 16px; }
-  .stage-schedule-actions > .btn-join-meeting-inline,
+  .stage-schedule-metadata > .btn-join-meeting-inline,
   .stage-schedule-actions > .btn-edit-meeting-schedule { min-height: 44px; }
 }
 
@@ -1834,7 +1853,7 @@ body.is-resizing-split * {
   #detail-modal .btn-add-question { min-height: 44px; box-sizing: border-box; }
   #detail-modal .stage-hero-actions > .stage-action-btn { min-width: 44px; min-height: 44px; }
   #detail-modal .btn-stage-current,
-  #detail-modal .stage-schedule-actions > .btn-join-meeting-inline {
+  #detail-modal .stage-schedule-metadata > .btn-join-meeting-inline {
     position: relative;
     isolation: isolate;
     padding: 0 8px;
@@ -1843,7 +1862,7 @@ body.is-resizing-split * {
     box-shadow: none;
   }
   #detail-modal .btn-stage-current::before,
-  #detail-modal .stage-schedule-actions > .btn-join-meeting-inline::before {
+  #detail-modal .stage-schedule-metadata > .btn-join-meeting-inline::before {
     position: absolute;
     z-index: -1;
     inset: 11px 0;
@@ -1852,7 +1871,7 @@ body.is-resizing-split * {
     background: var(--stage-badge-background);
     content: "";
   }
-  #detail-modal .stage-schedule-actions > .btn-join-meeting-inline {
+  #detail-modal .stage-schedule-metadata > .btn-join-meeting-inline {
     --stage-badge-background: var(--stage-action-background);
     --stage-badge-border: transparent;
     --stage-badge-radius: var(--stage-action-radius);
@@ -1860,7 +1879,8 @@ body.is-resizing-split * {
     box-shadow: none;
   }
   #detail-modal .stage-recruiter-source-select { min-height: 44px; box-sizing: border-box; font-size: 16px; }
-  #detail-modal .stage-schedule-actions > .btn-join-meeting-inline,
+  #detail-modal .stage-schedule-metadata > .btn-join-meeting-inline,
+  #detail-modal .stage-schedule-metadata > .btn-add-maps-link,
   #detail-modal .stage-schedule-actions > .btn-edit-meeting-schedule { min-height: 44px; }
   #detail-modal .btn-add-stage-tab { min-height: 44px; }
   #detail-modal .stage-create-fields { grid-template-columns: minmax(0, 1fr); }
