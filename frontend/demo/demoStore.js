@@ -415,6 +415,30 @@ function jobWithCurrentTechnologies(job) {
   };
 }
 
+/** Finds catalog technologies named in demo posting text. */
+function suggestDemoTechnologies(text) {
+  const haystack = ` ${String(text).toLowerCase()} `;
+  return listDemoTechnologies()
+    .filter((item) => haystack.includes(` ${item.name.toLowerCase()} `) || haystack.includes(` ${item.name.toLowerCase()},`))
+    .map((item) => ({ id: item.id, name: item.name, aliases: item.aliases || [], recommended: true }));
+}
+
+/** Imitates link import without a backend, using a synthetic posting. */
+function previewDemoImport({ url, description }) {
+  if (!url) return { technologies: suggestDemoTechnologies(description) };
+  if (/linkedin\.com/i.test(url)) throw Object.assign(new Error("This site does not allow automatic imports."), { code: "paste_required" });
+  const overview = "## About the role\n\nBuild the platform behind a fictional demo company.\n\n## Requirements\n\n- Python, AWS and Terraform experience";
+  return {
+    draft: {
+      position_title: "Senior Platform Engineer", company_name: "Demo Company", company_overview: overview,
+      company_domain: "", job_post_url: url, application_url: "", keyword_note: "Remote, Europe",
+      work_arrangement: "remote", employment_type: "permanent", salary_min: 70000, salary_max: 90000,
+      salary_currency: "EUR", source: "demo", warnings: [],
+    },
+    technologies: suggestDemoTechnologies(overview),
+  };
+}
+
 function listDemoTechnologies() {
   return clone(technologies.map((item) => ({ ...item, jobs: jobs.filter((job) => (job.technologies || []).some((entry) => entry.id === item.id)).map((job) => ({ id: job.id, company_name: job.company_name, position_title: job.position_title })) })));
 }
@@ -599,6 +623,7 @@ export const demoApi = {
     if (jobs.some((job) => (job.technologies || []).some((entry) => entry.id === item.id))) throw new Error("Technology is assigned to one or more processes; remove its assignments first.");
     technologies = technologies.filter((technology) => technology.id !== item.id); saveTechnologies(); return { success: true };
   },
+  async previewJobImport(payload) { return previewDemoImport(payload); },
   async createJob(payload) { const job = makeJob(payload); touchDemoJob(job); jobs.push(job); save(); return clone(job); },
   async updateJob(id, payload) {
     const job = getJob(id);

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,24 +17,28 @@ import (
 	"war-room/backend/pkg/config"
 	"war-room/backend/pkg/database"
 	"war-room/backend/pkg/handlers"
+	"war-room/backend/pkg/logging"
 	"war-room/backend/pkg/middleware"
 	"war-room/backend/pkg/repository"
 	"war-room/backend/pkg/service"
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Println("Starting War Room Selection Process Command Center...")
-
 	cfg := config.Load()
-	log.Printf("Configuration loaded: Host=%s Port=%d DataDir=%s StaticDir=%s",
-		cfg.Host, cfg.Port, cfg.DataDir, cfg.StaticDir)
+	if err := logging.Setup(os.Stdout, cfg.LogLevel, cfg.LogFormat); err != nil {
+		slog.Warn("invalid logging settings; using defaults where needed", "error", err.Error())
+	}
+	slog.Info("starting war room backend", "host", cfg.Host, "port", cfg.Port,
+		"data_dir", cfg.DataDir, "static_dir", cfg.StaticDir, "log_level", cfg.LogLevel, "log_format", cfg.LogFormat,
+		"test_mode", cfg.TestMode, "https_only_sessions", cfg.SessionCookieSecure,
+		"job_import_enabled", cfg.JobImportEnabled, "logo_lookup_enabled", cfg.LogoLookupEnabled,
+		"allowed_email_count", len(cfg.AuthAllowedEmails))
 
 	service.RemoveStaleBackupTempFiles(cfg.DataDir)
 
 	db, err := database.InitDB(cfg)
 	if err != nil {
-		log.Fatalf("Fatal: Failed to initialize database: %v", err)
+		fatal("could not initialize database", err)
 	}
 	defer func() { _ = db.Close() }()
 	removeStaleGoogleDriveFile(cfg)
@@ -44,7 +48,7 @@ func main() {
 	defer stopScheduler()
 	jobSvc := service.NewJobService(repo, cfg)
 	if err := jobSvc.MigrateLegacyCVAttachments(); err != nil {
-		log.Fatalf("Fatal: Failed to migrate legacy CV attachments: %v", err)
+		fatal("could not migrate legacy CV attachments", err)
 	}
 	logoSvc := service.NewLogoService(cfg)
 	authSvc := service.NewAuthService(db, cfg)
@@ -60,9 +64,10 @@ func main() {
 	h.RegisterRoutes(mux)
 	handlerWithMiddleware := middleware.Chain(
 		mux,
+		middleware.Logger,
+		middleware.Recoverer,
 		middleware.SecurityHeaders,
 		middleware.CORS(cfg.CORSAllowed),
-		middleware.Logger,
 		middleware.RequireSession(authSvc, "/api/test/session"),
 	)
 
@@ -77,7 +82,7 @@ func main() {
 // service.ErrGoogleNotConfigured message is what HTTP responses carry.
 func logGoogleConfigurationIssues(drive *service.DriveBackupService) {
 	if issues := drive.ConfigurationIssues(); len(issues) > 0 {
-		log.Printf("Warning: Google sign-in is not configured: %s", strings.Join(issues, "; "))
+		slog.Warn("google sign-in is not configured", "issues", strings.Join(issues, "; "))
 	}
 }
 
@@ -88,9 +93,9 @@ func logGoogleConfigurationIssues(drive *service.DriveBackupService) {
 func removeStaleGoogleDriveFile(cfg *config.Config) {
 	path := filepath.Join(cfg.DataDir, "google-drive.json")
 	if err := os.Remove(path); err == nil {
-		log.Printf("Removed pre-multi-user Google Drive credential file %s; reconnect Drive after signing in.", path)
+		slog.Info("removed pre-multi-user google drive credential file; reconnect Drive after signing in", "path", path)
 	} else if !os.IsNotExist(err) {
-		log.Printf("Warning: could not remove stale Google Drive credential file %s: %v", path, err)
+		slog.Warn("could not remove stale google drive credential file", "path", path, "error", err.Error())
 	}
 }
 
@@ -102,6 +107,7 @@ func newHTTPServer(cfg *config.Config, handler http.Handler) *http.Server {
 		Addr:              serverAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 		IdleTimeout:       120 * time.Second,
 	}
 }
@@ -110,7 +116,7 @@ func runServer(srv *http.Server, cfg *config.Config) {
 	// Server run context for graceful shutdown
 	serverErrChan := make(chan error, 1)
 	go func() {
-		log.Printf("War Room backend server running at http://%s:%d", cfg.Host, cfg.Port)
+		slog.Info("war room backend listening", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErrChan <- err
 		}
@@ -122,17 +128,23 @@ func runServer(srv *http.Server, cfg *config.Config) {
 
 	select {
 	case err := <-serverErrChan:
-		log.Fatalf("Server startup failed: %v", err)
+		fatal("server startup failed", err)
 	case sig := <-shutdownChan:
-		log.Printf("Received signal %v. Initiating graceful shutdown...", sig)
+		slog.Info("shutdown signal received; draining requests", "signal", sig.String())
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("Graceful shutdown error: %v", err)
+		slog.Error("graceful shutdown failed", "error", err.Error())
 	} else {
-		log.Println("War Room backend server gracefully stopped.")
+		slog.Info("war room backend stopped")
 	}
+}
+
+// fatal logs err as the reason the process cannot continue, then exits.
+func fatal(message string, err error) {
+	slog.Error(message, "error", err.Error())
+	os.Exit(1)
 }

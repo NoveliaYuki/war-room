@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -221,7 +221,7 @@ func (s *JobService) MigrateLegacyCVAttachments() error {
 	version := legacyCVVersion(chosen, digest)
 	created, err := s.repo.MigrateLegacyCVAttachments(version, migrated, jobIDs)
 	if errors.Is(err, repository.ErrLegacyCVAcrossAccounts) {
-		log.Printf("Warning: skipped legacy CV migration because the files belong to more than one account")
+		slog.Warn("skipped legacy CV migration because the files belong to more than one account")
 		return nil
 	}
 	if err != nil {
@@ -229,7 +229,7 @@ func (s *JobService) MigrateLegacyCVAttachments() error {
 	}
 	if created {
 		if err := s.MirrorDatabaseToJSON(); err != nil {
-			log.Printf("Warning: retained legacy CV files because recovery snapshot failed: %v", err)
+			slog.Warn("retained legacy CV files because the recovery snapshot failed", "error", err.Error())
 			return nil
 		}
 		return s.cleanupMigratedCVFiles(migrated)

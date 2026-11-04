@@ -473,6 +473,7 @@ func TestNewProcessOverviewTabsAreEasyToTap(t *testing.T) {
 	if err := page.Locator("#btn-new-process").Click(); err != nil {
 		t.Fatalf("open the new-process form: %v", err)
 	}
+	clickLocator(t, page.Locator("#process-entry-manual"), "choose to fill in by hand")
 	sourceTab := page.Locator("#create-overview-tab-source")
 	previewTab := page.Locator("#create-overview-tab-preview")
 	if err := sourceTab.WaitFor(); err != nil {
@@ -1458,7 +1459,7 @@ func openAndAssertDialogNameAndFocus(t *testing.T, page playwright.Page) {
 	}
 	state, err := page.Evaluate(`() => {
 		const dialog = document.querySelector("#detail-modal");
-		const name = document.querySelector('input[name="position_title"]');
+		const name = document.querySelector("#job-import-url");
 		const labelId = dialog.getAttribute("aria-labelledby");
 		return document.activeElement === name && dialog.getAttribute("aria-modal") === "true" &&
 			document.querySelector(".app-container").inert && labelId &&
@@ -1473,7 +1474,7 @@ func assertDialogFocusWraps(t *testing.T, page playwright.Page) {
 	t.Helper()
 	if _, err := page.Evaluate(`() => {
 		const dialog = document.querySelector("#detail-modal");
-		const controls = [...dialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+		const controls = [...dialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((control) => control.offsetParent);
 		controls.at(-1).focus();
 	}`, nil); err != nil {
 		t.Fatalf("focus final dialog control: %v", err)
@@ -1958,6 +1959,7 @@ func TestCreateJobAndScheduleView(t *testing.T) {
 		t.Fatalf("open create form: %v", err)
 	}
 	assertVisible(t, page.Locator("#detail-modal"))
+	clickLocator(t, page.Locator("#process-entry-manual"), "choose to fill in by hand")
 	if err := page.Locator("details.process-form-disclosure").First().Locator("summary").Click(); err != nil {
 		t.Fatalf("open optional job details: %v", err)
 	}
@@ -2611,6 +2613,7 @@ func createStatusCycleProcess(t *testing.T, page playwright.Page, uniqueTitle st
 	if err := page.Locator("#btn-new-process").Click(); err != nil {
 		t.Fatalf("open create form: %v", err)
 	}
+	clickLocator(t, page.Locator("#process-entry-manual"), "choose to fill in by hand")
 	fill(t, page.Locator(`input[name="company_name"]`), "E2E Status Company")
 	fill(t, page.Locator(`input[name="position_title"]`), uniqueTitle)
 	if err := page.Locator(`button[type="submit"]`).Click(); err != nil {

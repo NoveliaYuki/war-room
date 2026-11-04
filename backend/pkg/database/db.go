@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -250,7 +250,7 @@ func configureJournalModeWithSetter(setJournalMode func(string) (string, error))
 	if !strings.EqualFold(mode, "delete") {
 		return fmt.Errorf("SQLite returned unexpected fallback journal mode %q", mode)
 	}
-	log.Print("SQLite WAL mode unavailable; using DELETE journal mode")
+	slog.Warn("sqlite WAL mode unavailable; using DELETE journal mode")
 	return nil
 }
 
@@ -1300,17 +1300,17 @@ func restoreFromBackupIfEmpty(db *sql.DB, backupPath, initialBackupPath, attachm
 
 	snapshot, err := loadRecoverySnapshot(backupSource)
 	if err != nil {
-		log.Printf("Warning: Failed to load backup.json: %v", err)
+		slog.Warn("could not load recovery snapshot backup.json", "error", err.Error())
 		return
 	}
 	if len(snapshot.Jobs) == 0 && len(snapshot.Technologies) == 0 {
 		return
 	}
 	if err := restoreRecoverySnapshot(db, snapshot, attachmentsDir, cvDirectory); err != nil {
-		log.Printf("Warning: Failed to restore backup.json atomically: %v", err)
+		slog.Error("could not restore recovery snapshot backup.json", "error", err.Error())
 		return
 	}
-	log.Printf("Restored %d jobs from backup.json into empty database.", len(snapshot.Jobs))
+	slog.Info("restored recovery snapshot into empty database", "jobs", len(snapshot.Jobs), "technologies", len(snapshot.Technologies))
 }
 
 const maxBackupBytes = 64 << 20

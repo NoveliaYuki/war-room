@@ -6,8 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	"war-room/backend/pkg/config"
+	"war-room/backend/pkg/jobimport"
+	"war-room/backend/pkg/logging"
 	"war-room/backend/pkg/middleware"
 	"war-room/backend/pkg/models"
 	"war-room/backend/pkg/repository"
@@ -30,6 +32,7 @@ type Handler struct {
 	cfg            *config.Config
 	drive          *service.DriveBackupService
 	auth           *service.AuthService
+	imports        *jobimport.Importer
 	backupMaxBytes int64
 }
 
@@ -48,9 +51,10 @@ const maxBackupPlainBytes = 500 << 20
 // NewHandler constructs an HTTP handler backed by the supplied services.
 func NewHandler(jobs *service.JobService, logos *service.LogoService, cfg *config.Config) *Handler {
 	return &Handler{
-		jobs:  jobs,
-		logos: logos,
-		cfg:   cfg,
+		jobs:    jobs,
+		logos:   logos,
+		cfg:     cfg,
+		imports: jobimport.New(),
 	}
 }
 
@@ -62,16 +66,61 @@ func JSON(w http.ResponseWriter, status int, data interface{}) {
 	_ = json.NewEncoder(w).Encode(data) // intentionally ignoring write errors
 }
 
-// ErrorJSON writes a JSON error response with the supplied status and message.
+// ErrorJSON writes a JSON error response with the supplied status and
+// message. The body also carries the request ID that locates the full
+// diagnostic record in the server log.
 func ErrorJSON(w http.ResponseWriter, status int, message string) {
-	JSON(w, status, map[string]string{"error": message})
+	body := map[string]string{"error": message}
+	if req := logging.RequestFromWriter(w); req != nil {
+		body["request_id"] = req.ID
+	}
+	JSON(w, status, body)
+}
+
+// publicError records err in the request's log record and sends only the
+// deliberately public message to the client.
+func publicError(w http.ResponseWriter, status int, message string, err error) {
+	logging.RecordError(w, err)
+	ErrorJSON(w, status, message)
 }
 
 // internalError logs err server-side and returns a generic 500 so internal
 // details (paths, SQL, upstream messages) never reach the client.
 func internalError(w http.ResponseWriter, err error) {
-	log.Printf("Internal error: %v", err)
-	ErrorJSON(w, http.StatusInternalServerError, "Internal server error")
+	publicError(w, http.StatusInternalServerError, "Internal server error", err)
+}
+
+// invalidPayload rejects an undecodable body without echoing parser details.
+func invalidPayload(w http.ResponseWriter, err error) {
+	publicError(w, http.StatusBadRequest, "Invalid JSON payload", fmt.Errorf("decode request body: %w", err))
+}
+
+// publicValidationErrors are service errors whose messages describe the
+// caller's own input and are written for end users.
+var publicValidationErrors = []error{
+	service.ErrInvalidField,
+	service.ErrPositionTitleRequired,
+	service.ErrQuestionTextRequired,
+	service.ErrInvalidMeetingDate,
+}
+
+func isPublicValidationError(err error) bool {
+	for _, target := range publicValidationErrors {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// writeServiceError returns validation messages as 400 and hides every other
+// failure behind a generic 500.
+func writeServiceError(w http.ResponseWriter, err error) {
+	if isPublicValidationError(err) {
+		publicError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	internalError(w, err)
 }
 
 // decodeJSONBody accepts exactly one JSON value followed only by whitespace.
@@ -97,6 +146,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/jobs/counts", h.handleJobCounts)
 	mux.HandleFunc("GET /api/jobs", h.handleListJobs)
 	mux.HandleFunc("POST /api/jobs", h.handleCreateJob)
+	mux.HandleFunc("POST /api/jobs/import-preview", h.handleJobImportPreview)
 	mux.HandleFunc("PUT /api/jobs/reorder", h.handleReorderJobs)
 	mux.HandleFunc("GET /api/jobs/{id}", h.handleGetJob)
 	mux.HandleFunc("PUT /api/jobs/{id}", h.handleUpdateJob)
@@ -183,16 +233,16 @@ func (h *Handler) handleCreateSearchPeriod(w http.ResponseWriter, r *http.Reques
 	var input models.SearchPeriodInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 	period, err := h.jobs.CreateSearchPeriod(userID, input)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidField) {
-			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			publicError(w, http.StatusBadRequest, err.Error(), err)
 			return
 		}
-		ErrorJSON(w, http.StatusConflict, err.Error())
+		internalError(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, period)
@@ -203,7 +253,7 @@ func (h *Handler) handleUpdateSearchPeriod(w http.ResponseWriter, r *http.Reques
 	var input models.SearchPeriodInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 	err := h.jobs.UpdateSearchPeriod(userID, r.PathValue("id"), input)
@@ -213,10 +263,10 @@ func (h *Handler) handleUpdateSearchPeriod(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if errors.Is(err, service.ErrInvalidField) {
-			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			publicError(w, http.StatusBadRequest, err.Error(), err)
 			return
 		}
-		ErrorJSON(w, http.StatusConflict, err.Error())
+		internalError(w, err)
 		return
 	}
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
@@ -287,12 +337,12 @@ func (h *Handler) handleUpdateTechnology(w http.ResponseWriter, r *http.Request)
 }
 
 func writeTechnologyPayloadError(w http.ResponseWriter, err error) {
-	ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+	invalidPayload(w, err)
 }
 
 func writeTechnologyServiceError(w http.ResponseWriter, err error) {
 	if errors.Is(err, service.ErrInvalidField) {
-		ErrorJSON(w, http.StatusBadRequest, err.Error())
+		publicError(w, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 	if errors.Is(err, sql.ErrNoRows) {
@@ -486,12 +536,11 @@ func (h *Handler) handleExportBackup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) writeBackupExportError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, service.ErrGoogleBackupKeyMissing):
-		ErrorJSON(w, http.StatusServiceUnavailable, "Encrypted backups are not configured on this server")
+		publicError(w, http.StatusServiceUnavailable, "Encrypted backups are not configured on this server", err)
 	case errors.Is(err, service.ErrBackupTooLarge):
-		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup archive exceeds the 500 MiB limit")
+		publicError(w, http.StatusRequestEntityTooLarge, "Backup archive exceeds the 500 MiB limit", err)
 	default:
-		log.Printf("backup export failed: %v", err)
-		ErrorJSON(w, http.StatusInternalServerError, "Failed to create backup archive")
+		publicError(w, http.StatusInternalServerError, "Failed to create backup archive", fmt.Errorf("export backup archive: %w", err))
 	}
 }
 
@@ -527,7 +576,7 @@ func (h *Handler) handleImportBackup(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		ErrorJSON(w, http.StatusBadRequest, err.Error())
+		publicError(w, http.StatusBadRequest, "This backup could not be imported", fmt.Errorf("import backup archive: %w", err))
 		return
 	}
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
@@ -615,6 +664,7 @@ func (h *Handler) discardStaged(staged stagedBackup) {
 }
 
 func writeBackupUploadReadError(w http.ResponseWriter, err error) {
+	logging.RecordError(w, fmt.Errorf("read backup upload: %w", err))
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
 		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup exceeds the 500 MiB limit")
@@ -624,6 +674,9 @@ func writeBackupUploadReadError(w http.ResponseWriter, err error) {
 }
 
 func (h *Handler) writeBackupStageError(w http.ResponseWriter, err error) {
+	if !errors.Is(err, errBackupStorage) {
+		logging.RecordError(w, fmt.Errorf("stage backup import: %w", err))
+	}
 	switch {
 	case errors.Is(err, service.ErrGoogleBackupKeyMissing):
 		ErrorJSON(w, http.StatusServiceUnavailable, "Encrypted backup restore is not configured on this server")
@@ -634,8 +687,7 @@ func (h *Handler) writeBackupStageError(w http.ResponseWriter, err error) {
 	case errors.Is(err, service.ErrBackupTooLarge):
 		ErrorJSON(w, http.StatusRequestEntityTooLarge, "Backup exceeds the 500 MiB limit")
 	case errors.Is(err, errBackupStorage):
-		log.Printf("backup import staging failed: %v", err)
-		ErrorJSON(w, http.StatusInternalServerError, "Failed to prepare backup import")
+		publicError(w, http.StatusInternalServerError, "Failed to prepare backup import", fmt.Errorf("stage backup import: %w", err))
 	default:
 		writeBackupUploadReadError(w, err)
 	}
@@ -676,16 +728,25 @@ func (h *Handler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var input models.CreateJobInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 
 	job, err := h.jobs.CreateJob(userID, input)
 	if err != nil {
-		ErrorJSON(w, http.StatusBadRequest, err.Error())
+		writeServiceError(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, job)
+}
+
+// writeStageLookupError reports a missing stage as 404 and hides other failures.
+func writeStageLookupError(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		publicError(w, http.StatusNotFound, "Stage not found", err)
+		return
+	}
+	internalError(w, err)
 }
 
 // writeReorderError reports unknown, duplicate, or foreign IDs as client errors.
@@ -739,7 +800,7 @@ func (h *Handler) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
 	var input models.UpdateJobInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid JSON payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 
@@ -750,11 +811,11 @@ func (h *Handler) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, service.ErrPositionTitleRequired) {
-			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			publicError(w, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		if errors.Is(err, service.ErrInvalidField) {
-			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			publicError(w, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		internalError(w, err)
@@ -782,7 +843,7 @@ func (h *Handler) handleCreateStage(w http.ResponseWriter, r *http.Request) {
 	var input models.CreateStageInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 
@@ -792,7 +853,7 @@ func (h *Handler) handleCreateStage(w http.ResponseWriter, r *http.Request) {
 			ErrorJSON(w, http.StatusNotFound, "Job process not found")
 			return
 		}
-		ErrorJSON(w, http.StatusBadRequest, err.Error())
+		writeServiceError(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, map[string]interface{}{"success": true, "id": stage.ID})
@@ -823,13 +884,13 @@ func (h *Handler) handleScheduleStage(w http.ResponseWriter, r *http.Request) {
 	var input models.ScheduleMeetingInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 
 	if err := h.jobs.ScheduleMeeting(userID, id, input); err != nil {
 		if errors.Is(err, service.ErrInvalidMeetingDate) || errors.Is(err, service.ErrInvalidField) {
-			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			publicError(w, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
@@ -847,7 +908,7 @@ func (h *Handler) handleSetCurrentStage(w http.ResponseWriter, r *http.Request) 
 	id := r.PathValue("id")
 	stages, err := h.jobs.SetCurrentStage(userID, id)
 	if err != nil {
-		ErrorJSON(w, http.StatusNotFound, err.Error())
+		writeStageLookupError(w, err)
 		return
 	}
 	JSON(w, http.StatusOK, map[string]interface{}{
@@ -863,14 +924,14 @@ func (h *Handler) handleUpdateStage(w http.ResponseWriter, r *http.Request) {
 	var input models.UpdateStageInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 
 	_, err := h.jobs.UpdateStage(userID, id, input)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidMeetingDate) || errors.Is(err, service.ErrInvalidField) {
-			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			publicError(w, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
@@ -902,7 +963,7 @@ func (h *Handler) handleCreateQuestion(w http.ResponseWriter, r *http.Request) {
 	var input models.CreateQuestionInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 
@@ -912,7 +973,7 @@ func (h *Handler) handleCreateQuestion(w http.ResponseWriter, r *http.Request) {
 			ErrorJSON(w, http.StatusNotFound, "Stage not found")
 			return
 		}
-		ErrorJSON(w, http.StatusBadRequest, err.Error())
+		writeServiceError(w, err)
 		return
 	}
 	JSON(w, http.StatusCreated, map[string]interface{}{"success": true, "id": q.ID})
@@ -943,7 +1004,7 @@ func (h *Handler) handleUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 	var input models.UpdateQuestionInput
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
 	if err := decodeJSONBody(r.Body, &input); err != nil {
-		ErrorJSON(w, http.StatusBadRequest, "Invalid payload: "+err.Error())
+		invalidPayload(w, err)
 		return
 	}
 
@@ -954,7 +1015,7 @@ func (h *Handler) handleUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, service.ErrQuestionTextRequired) {
-			ErrorJSON(w, http.StatusBadRequest, err.Error())
+			publicError(w, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		internalError(w, err)

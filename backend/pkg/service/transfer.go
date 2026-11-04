@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -442,11 +442,11 @@ func (s *JobService) applyImportedArchive(userID string, manifest *backupManifes
 	stage.committed = true
 	if manifest.Version == 1 {
 		if err := s.MigrateLegacyCVAttachments(); err != nil {
-			log.Printf("Warning: failed to convert legacy CV attachments after import: %v", err)
+			slog.Warn("could not convert legacy CV attachments after import", "error", err.Error())
 		}
 	}
 	if err := s.MirrorDatabaseToJSON(); err != nil {
-		log.Printf("Warning: failed to refresh recovery snapshot after import: %v", err)
+		slog.Warn("could not refresh recovery snapshot after import", "error", err.Error())
 		return nil
 	}
 	return s.cleanupReplacedArchiveFiles(oldAttachments, oldCVVersions)
@@ -496,7 +496,7 @@ func (s *JobService) stageArchiveImport(userID string, manifest *backupManifest,
 func (s *JobService) cleanupReplacedArchiveFiles(oldAttachments []models.Attachment, oldCVVersions []models.CVVersion) error {
 	remaining, err := s.repo.GetAllAttachments()
 	if err != nil {
-		log.Printf("Warning: retained old attachments because references could not be checked: %v", err)
+		slog.Warn("retained old attachments because references could not be checked", "error", err.Error())
 		return nil
 	}
 	protected := make(map[string]bool, len(remaining))

@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"war-room/backend/pkg/logging"
 	"war-room/backend/pkg/middleware"
 	"war-room/backend/pkg/service"
 )
@@ -43,7 +45,7 @@ func (h *Handler) handleGoogleStatus(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleGoogleConnect(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if !h.validGoogleRequestOrigin(r) {
-		ErrorJSON(w, http.StatusForbidden, "Request origin is not allowed")
+		rejectGoogleOrigin(w, r)
 		return
 	}
 	if !h.driveOrError(w) {
@@ -56,7 +58,7 @@ func (h *Handler) handleGoogleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	parsed, err := url.Parse(authURL)
 	if err != nil {
-		ErrorJSON(w, http.StatusInternalServerError, "Could not start Google sign-in")
+		publicError(w, http.StatusInternalServerError, "Could not start Google sign-in", fmt.Errorf("parse google auth url: %w", err))
 		return
 	}
 	state := parsed.Query().Get("state")
@@ -88,25 +90,54 @@ func (h *Handler) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) completeGoogleCallback(w http.ResponseWriter, r *http.Request, cookie *http.Cookie, cookieErr error) string {
 	frontendURL := strings.TrimSuffix(h.cfg.GoogleFrontendURL, "/")
-	state := r.URL.Query().Get("state")
-	if cookieErr != nil || cookie.Value == "" || cookie.Value != state || h.drive == nil || h.auth == nil {
+	userID, err := h.signInFromGoogleCallback(w, r, cookie, cookieErr)
+	if err != nil {
+		logging.RecordError(w, err)
+		logging.AuditFailure(r.Context(), "auth.sign_in", "reason", err.Error())
 		return frontendURL + "/?google=error"
+	}
+	logging.RequestFrom(r.Context()).SetUserID(userID)
+	logging.Audit(r.Context(), "auth.sign_in")
+	return frontendURL + "/?google=connected"
+}
+
+// signInFromGoogleCallback runs every callback step and names the one that
+// failed, so a rejected sign-in is explained in the server log.
+func (h *Handler) signInFromGoogleCallback(w http.ResponseWriter, r *http.Request, cookie *http.Cookie, cookieErr error) (string, error) {
+	state := r.URL.Query().Get("state")
+	if err := h.checkGoogleCallbackState(cookie, cookieErr, state); err != nil {
+		return "", err
+	}
+	if googleErr := r.URL.Query().Get("error"); googleErr != "" {
+		return "", fmt.Errorf("google callback: google returned error %q", truncateForLog(googleErr))
 	}
 	info, token, err := h.drive.ExchangeCode(r.URL.Query().Get("code"), state)
 	if err != nil {
-		return frontendURL + "/?google=error"
+		return "", fmt.Errorf("google callback: exchange code: %w", err)
 	}
 	user, err := h.auth.UpsertUserFromGoogle(service.GoogleIdentity(info), r.RemoteAddr)
 	if err != nil {
-		return frontendURL + "/?google=error"
+		return "", fmt.Errorf("google callback: accept identity: %w", err)
 	}
 	if err := h.drive.SaveAccount(user.ID, token); err != nil {
-		return frontendURL + "/?google=error"
+		return "", fmt.Errorf("google callback: save drive credentials for user %s: %w", user.ID, err)
 	}
 	if err := h.auth.IssueSession(w, user.ID); err != nil {
-		return frontendURL + "/?google=error"
+		return "", fmt.Errorf("google callback: issue session for user %s: %w", user.ID, err)
 	}
-	return frontendURL + "/?google=connected"
+	return user.ID, nil
+}
+
+func (h *Handler) checkGoogleCallbackState(cookie *http.Cookie, cookieErr error, state string) error {
+	switch {
+	case h.drive == nil || h.auth == nil:
+		return errors.New("google callback: sign-in services are not configured")
+	case cookieErr != nil || cookie.Value == "":
+		return errors.New("google callback: oauth state cookie is missing or expired")
+	case cookie.Value != state:
+		return errors.New("google callback: oauth state does not match the browser cookie")
+	}
+	return nil
 }
 
 // handleAuthMe returns the signed-in user's public profile. A 401 here
@@ -123,7 +154,7 @@ func (h *Handler) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 		ErrorJSON(w, http.StatusUnauthorized, "sign in required")
 		return
 	}
-	JSON(w, http.StatusOK, user)
+	JSON(w, http.StatusOK, authMeResponse{User: user, JobImportEnabled: h.cfg.JobImportEnabled})
 }
 
 // handleSignOut ends only this session (this device/browser). It does not
@@ -135,9 +166,10 @@ func (h *Handler) handleSignOut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.auth.SignOut(w, r); err != nil {
-		ErrorJSON(w, http.StatusInternalServerError, "Could not sign out")
+		publicError(w, http.StatusInternalServerError, "Could not sign out", fmt.Errorf("sign out: %w", err))
 		return
 	}
+	logging.Audit(r.Context(), "auth.sign_out")
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -146,7 +178,7 @@ func (h *Handler) handleSignOut(w http.ResponseWriter, r *http.Request) {
 // revoking one must revoke both.
 func (h *Handler) handleGoogleRevoke(w http.ResponseWriter, r *http.Request) {
 	if !h.validGoogleRequestOrigin(r) {
-		ErrorJSON(w, http.StatusForbidden, "Request origin is not allowed")
+		rejectGoogleOrigin(w, r)
 		return
 	}
 	if !h.driveOrError(w) {
@@ -159,19 +191,21 @@ func (h *Handler) handleGoogleRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.drive.Revoke(userID); err != nil {
 		if errors.Is(err, service.ErrGoogleRevocationFailed) {
+			logging.AuditFailure(r.Context(), "google.revoke", "reason", err.Error())
 			_ = h.auth.SignOutAllSessions(userID)
 			h.auth.ClearSessionCookie(w)
 			googleError(w, err)
 			return
 		}
-		ErrorJSON(w, http.StatusInternalServerError, "Could not revoke Google Drive access")
+		publicError(w, http.StatusInternalServerError, "Could not revoke Google Drive access", fmt.Errorf("revoke google access: %w", err))
 		return
 	}
 	if err := h.auth.SignOutAllSessions(userID); err != nil {
-		ErrorJSON(w, http.StatusInternalServerError, "Could not sign out")
+		publicError(w, http.StatusInternalServerError, "Could not sign out", fmt.Errorf("end all sessions after revoke: %w", err))
 		return
 	}
 	h.auth.ClearSessionCookie(w)
+	logging.Audit(r.Context(), "google.revoke")
 	JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -194,7 +228,7 @@ func (h *Handler) handleGoogleFolders(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGooglePickerToken(w http.ResponseWriter, r *http.Request) {
 	if !h.validGoogleRequestOrigin(r) {
-		ErrorJSON(w, http.StatusForbidden, "Request origin is not allowed")
+		rejectGoogleOrigin(w, r)
 		return
 	}
 	userID, ok := h.authUserID(r)
@@ -215,7 +249,7 @@ func (h *Handler) handleGooglePickerToken(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleGoogleSetFolder(w http.ResponseWriter, r *http.Request) {
 	if !h.validGoogleRequestOrigin(r) {
-		ErrorJSON(w, http.StatusForbidden, "Request origin is not allowed")
+		rejectGoogleOrigin(w, r)
 		return
 	}
 	userID, ok := h.authUserID(r)
@@ -239,12 +273,13 @@ func (h *Handler) handleGoogleSetFolder(w http.ResponseWriter, r *http.Request) 
 		googleError(w, err)
 		return
 	}
+	logging.Audit(r.Context(), "google.backup_folder_changed", "folder_id", input.FolderID)
 	JSON(w, http.StatusOK, h.drive.Status(userID))
 }
 
 func (h *Handler) handleGoogleBackupNow(w http.ResponseWriter, r *http.Request) {
 	if !h.validGoogleRequestOrigin(r) {
-		ErrorJSON(w, http.StatusForbidden, "Request origin is not allowed")
+		rejectGoogleOrigin(w, r)
 		return
 	}
 	userID, ok := h.authUserID(r)
@@ -256,9 +291,11 @@ func (h *Handler) handleGoogleBackupNow(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.drive.BackupNow(userID); err != nil {
+		logging.AuditFailure(r.Context(), "backup.drive_manual", "reason", err.Error())
 		googleError(w, err)
 		return
 	}
+	logging.Audit(r.Context(), "backup.drive_manual")
 	JSON(w, http.StatusOK, h.drive.Status(userID))
 }
 
@@ -300,15 +337,33 @@ func (h *Handler) validGoogleRequestOrigin(r *http.Request) bool {
 	return origin == frontend.Scheme+"://"+frontend.Host
 }
 
+// googleError sends the deliberately public sentinel messages as they are and
+// replaces any other Google failure (upstream status, reason, transport
+// error) with a generic message. The detail is kept in the request log.
 func googleError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, service.ErrGoogleNotConfigured):
-		ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		publicError(w, http.StatusServiceUnavailable, service.ErrGoogleNotConfigured.Error(), err)
 	case errors.Is(err, service.ErrGoogleNotConnected):
-		ErrorJSON(w, http.StatusConflict, err.Error())
+		publicError(w, http.StatusConflict, service.ErrGoogleNotConnected.Error(), err)
 	case errors.Is(err, service.ErrGoogleRevocationFailed):
-		ErrorJSON(w, http.StatusBadGateway, err.Error())
+		publicError(w, http.StatusBadGateway, service.ErrGoogleRevocationFailed.Error(), err)
 	default:
-		ErrorJSON(w, http.StatusBadGateway, err.Error())
+		publicError(w, http.StatusBadGateway, "Google Drive request failed. Try again later.", err)
 	}
+}
+
+// rejectGoogleOrigin answers a cross-origin Google endpoint call and logs the origin.
+func rejectGoogleOrigin(w http.ResponseWriter, r *http.Request) {
+	publicError(w, http.StatusForbidden, "Request origin is not allowed",
+		fmt.Errorf("google endpoint: origin %q is not allowed", truncateForLog(r.Header.Get("Origin"))))
+}
+
+// truncateForLog bounds client-supplied text before it is written to a log record.
+func truncateForLog(value string) string {
+	const limit = 128
+	if len(value) > limit {
+		return value[:limit]
+	}
+	return value
 }

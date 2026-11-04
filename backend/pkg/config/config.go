@@ -24,6 +24,7 @@ type Config struct {
 	StaticDir                 string
 	CORSAllowed               string
 	LogoLookupEnabled         bool
+	JobImportEnabled          bool
 	GoogleClientID            string
 	GoogleClientSecret        string
 	GoogleBackupEncryptionKey string
@@ -35,6 +36,8 @@ type Config struct {
 	AuthTokenEncryptionKey    string
 	SessionCookieSecure       bool
 	TestMode                  bool
+	LogLevel                  string
+	LogFormat                 string
 }
 
 // Load reads configuration, applies defaults, and creates writable data directories.
@@ -54,6 +57,7 @@ func Load() *Config {
 		StaticDir:                 configuredStaticDirectory(),
 		CORSAllowed:               valueOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"),
 		LogoLookupEnabled:         boolOrDefault("LOGO_LOOKUP_ENABLED", false),
+		JobImportEnabled:          boolOrDefault("JOB_IMPORT_ENABLED", true),
 		GoogleClientID:            os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:        os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleBackupEncryptionKey: os.Getenv("GOOGLE_BACKUP_ENCRYPTION_KEY"),
@@ -65,6 +69,8 @@ func Load() *Config {
 		AuthTokenEncryptionKey:    os.Getenv("AUTH_TOKEN_ENCRYPTION_KEY"),
 		SessionCookieSecure:       boolOrDefault("SESSION_COOKIE_SECURE", true),
 		TestMode:                  boolOrDefault("WARROOM_TEST_MODE", false),
+		LogLevel:                  valueOrDefault("LOG_LEVEL", "info"),
+		LogFormat:                 valueOrDefault("LOG_FORMAT", "json"),
 	}
 
 	if err := createDataDirectories(cfg); err != nil {

@@ -1422,7 +1422,7 @@ func exerciseQuestionDatabaseFailures(t *testing.T, fixture *databaseFailureFixt
 
 func assertQuestionErrorRoutes(t *testing.T, fixture *databaseFailureFixture) {
 	t.Helper()
-	expectRouteStatus(t, fixture.mux, http.MethodPost, "/api/questions", `{"stage_id":"`+fixture.stage.ID+`","question":"New"}`, http.StatusBadRequest)
+	expectRouteStatus(t, fixture.mux, http.MethodPost, "/api/questions", `{"stage_id":"`+fixture.stage.ID+`","question":"New"}`, http.StatusInternalServerError)
 	expectRouteStatus(t, fixture.mux, http.MethodPut, "/api/questions/"+fixture.question.ID, `{"question":"changed"}`, http.StatusInternalServerError)
 	expectRouteStatus(t, fixture.mux, http.MethodDelete, "/api/questions/"+fixture.question.ID, "", http.StatusInternalServerError)
 	body := `{"stage_id":"` + fixture.stage.ID + `","question_ids":["` + fixture.question.ID + `"]}`
@@ -1459,9 +1459,9 @@ func exerciseStageDatabaseFailures(t *testing.T, fixture *databaseFailureFixture
 
 func assertStageErrorRoutes(t *testing.T, fixture *databaseFailureFixture) {
 	jobID, stageID := fixture.job.ID, fixture.stage.ID
-	expectRouteStatus(t, fixture.mux, http.MethodPost, "/api/stages", `{"job_id":"`+jobID+`","stage_type":"HR"}`, http.StatusBadRequest)
+	expectRouteStatus(t, fixture.mux, http.MethodPost, "/api/stages", `{"job_id":"`+jobID+`","stage_type":"HR"}`, http.StatusInternalServerError)
 	expectRouteStatus(t, fixture.mux, http.MethodPut, "/api/stages/reorder", `{"job_id":"`+jobID+`","stage_ids":["`+stageID+`"]}`, http.StatusInternalServerError)
-	expectRouteStatus(t, fixture.mux, http.MethodPut, "/api/stages/"+stageID+"/set-current", "", http.StatusNotFound)
+	expectRouteStatus(t, fixture.mux, http.MethodPut, "/api/stages/"+stageID+"/set-current", "", http.StatusInternalServerError)
 	expectRouteStatus(t, fixture.mux, http.MethodDelete, "/api/stages/"+stageID, "", http.StatusInternalServerError)
 	expectRouteStatus(t, fixture.mux, http.MethodPut, "/api/stages/"+stageID, `{"notes":"changed"}`, http.StatusInternalServerError)
 	expectRouteStatus(t, fixture.mux, http.MethodPut, "/api/stages/"+stageID+"/schedule", `{"meeting_date":"2032-01-01"}`, http.StatusInternalServerError)

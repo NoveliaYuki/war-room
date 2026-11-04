@@ -1,3 +1,30 @@
+Version 0.2.0 — 2026-11-04 · Release: [v0.2.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.2.0)
+
+# Highlights
+- Start a new process from a job posting link: War Room reads the public posting, prefills the form for review, and suggests Tech Stack entries. Smart paste fills the form from copied posting text when a site cannot be read.
+- Structured backend logs explain every failure in one record: request ID, user, status, timing, the full error chain, and for Google calls the API's own reason with an operator hint.
+- Clients receive only generic error messages plus a `request_id` that locates the full record in the server log.
+- Audit events for sign-in, denied sign-in, sign-out, Google access revocation, backup folder changes, manual and background Drive backups, and automatic job rejections.
+- Click anywhere on a scheduled interview to open its process on that exact stage (from 0.1.1).
+
+# What changed
+- Add `JOB_IMPORT_ENABLED` (default `true`); the backend fetches only the submitted public https link.
+- Add `LOG_LEVEL` (default `info`) and `LOG_FORMAT` (default `json`). Health checks and job-count polling log at debug.
+- Return the `X-Request-ID` header on every API response and `request_id` in every error body.
+- Never log tokens, secrets, cookies, OAuth codes, request bodies, URL query strings, or Drive upload session URLs; secret-named fields are redacted as a safeguard.
+- Recover handler panics with a logged stack trace and a generic 500 response.
+- Log every Google sign-in failure with the step that failed, instead of only redirecting with `?google=error`.
+- Database failures now return 500 instead of 400, 404, or 409, without SQL text; validation messages about the caller's own input are unchanged.
+- Store a generic message in the Drive backup status instead of the raw error.
+- Cap Docker log files for the app containers.
+- Keep links, note toggles, and text selection working inside clickable interviews, and make the interview title a keyboard entry point (from 0.1.1).
+- Open the stages view on phones when an interview is opened from the schedule (from 0.1.1).
+- Remove the hover lift from process cards, the new process card and button, primary buttons, and schedule cards (from 0.1.1).
+
+# References
+- [#3](https://github.com/NoveliaYuki/war-room/pull/3) / noissue
+- [#4](https://github.com/NoveliaYuki/war-room/pull/4) / noissue
+
 Version 0.1.1 — 2026-11-02
 
 # Highlights
