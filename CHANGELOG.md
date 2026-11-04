@@ -17,6 +17,9 @@ Version 0.2.0 — 2026-11-04 · Release: [v0.2.0](https://github.com/NoveliaYuki
 - Database failures now return 500 instead of 400, 404, or 409, without SQL text; validation messages about the caller's own input are unchanged.
 - Store a generic message in the Drive backup status instead of the raw error.
 - Cap Docker log files for the app containers.
+- Scroll the board while a dragged card is held near the top or bottom edge, so a card can move past neighbors on phone screens.
+- Keep the board's scroll position after dropping a card; iOS browsers previously jumped back to the top.
+- Keep the question list steady while a question is lifted or dropped, so questions can be dragged down in iOS Chromium.
 - Keep links, note toggles, and text selection working inside clickable interviews, and make the interview title a keyboard entry point (from 0.1.1).
 - Open the stages view on phones when an interview is opened from the schedule (from 0.1.1).
 - Remove the hover lift from process cards, the new process card and button, primary buttons, and schedule cards (from 0.1.1).

@@ -192,6 +192,33 @@ describe('enableQuestionReordering', () => {
     expect(list.querySelector('.question-drop-placeholder')).toBeNull();
   });
 
+  it('keeps its scroller in place when lifting or dropping a question shifts it', async () => {
+    const scroller = document.createElement('div');
+    let scrollTop = 120;
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, get: () => scrollTop, set: (value) => { scrollTop = value; } });
+    const { list, handles } = createList();
+    scroller.appendChild(list);
+    document.body.appendChild(scroller);
+    const [first, second] = list.querySelectorAll('.question-item');
+    first.getBoundingClientRect = () => rect(0);
+    second.getBoundingClientRect = () => rect(30);
+    // WebKit can clamp the scroller while the item and its placeholder swap places.
+    const insertBefore = list.insertBefore.bind(list);
+    list.insertBefore = (node, reference) => {
+      const inserted = insertBefore(node, reference);
+      scrollTop = 21;
+      return inserted;
+    };
+    enableQuestionReordering(list, 'stage', vi.fn());
+
+    startDrag(handles[0], 5);
+    expect(scroller.scrollTop).toBe(120);
+    await finishDrag(70);
+
+    expect(scroller.scrollTop).toBe(120);
+    expect(api.reorderQuestions).toHaveBeenCalledWith('stage', ['q2', 'q1']);
+  });
+
   it('reorders questions with native touch events and prevents page scrolling during the drag', async () => {
     const { list, handles } = createList();
     const [first, second] = list.querySelectorAll('.question-item');

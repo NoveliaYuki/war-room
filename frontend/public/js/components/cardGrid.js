@@ -457,12 +457,16 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
       bindCardInlineEditors(card, job, onGlobalRefresh);
       bindCardDeletion(card, job, onGlobalRefresh);
       const isDragActive = sortMode === "manual"
-        ? enableHoldToDrag(card, containerEl, (newOrder) => Promise.resolve(api.reorderJobs(newOrder))
-          .then(async () => {
-            await onGlobalRefresh?.();
-            announceCardReorder(job, newOrder);
-          })
-          .catch(() => showToast("Could not save card order", "error")))
+        ? enableHoldToDrag(card, containerEl, (newOrder, { scrollY: restoreScrollY = window.scrollY } = {}) => {
+          // The refresh rebuilds the grid; browsers without scroll anchoring
+          // (WebKit, so every iOS browser) would otherwise jump to the top.
+          return Promise.resolve(api.reorderJobs(newOrder))
+            .then(async () => {
+              await onGlobalRefresh?.({ restoreScrollY });
+              announceCardReorder(job, newOrder);
+            })
+            .catch(() => showToast("Could not save card order", "error"));
+        })
         : () => false;
       bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
       containerEl.appendChild(card);
@@ -487,7 +491,7 @@ function announceCardReorder(job, newOrder) {
  *
  * @param {HTMLElement} card - The process card element.
  * @param {HTMLElement} containerEl - The cards grid container.
- * @param {Function} onReorderFinished - Callback when user finishes reordering, receives array of job IDs.
+ * @param {Function} onReorderFinished - Callback when user finishes reordering, receives array of job IDs and the page scroll offset at the drop.
  * @returns {Function} Function returning true if drag or suppression is currently active.
  */
 function enableHoldToDrag(card, containerEl, onReorderFinished) {
@@ -496,6 +500,9 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   const MOUSE_HOLD_DELAY_MS = 180;
   const TOUCH_HOLD_DELAY_MS = 500;
   const HOLD_MOVE_THRESHOLD_PX = 32;
+  const EDGE_SCROLL_ZONE_PX = 110;
+  const EDGE_SCROLL_MAX_STEP_PX = 16;
+  const EDGE_SCROLL_DELAY_MS = 150;
 
   let holdTimer = null;
   let isDragging = false;
@@ -514,6 +521,11 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   let activePointerType = "mouse";
   let lastTouchPointerDown = Number.NEGATIVE_INFINITY;
   let initialOrder = [];
+  let lastDragPoint = null;
+  let edgeScrollFrame = null;
+  let maxLockedScrollY = 0;
+  let topScrollEdge = EDGE_SCROLL_ZONE_PX;
+  let dragStartedAt = 0;
 
   function beginHold(e, holdDelay) {
     startX = e.clientX;
@@ -561,6 +573,9 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
   }
 
   function startDragging(e, rect) {
+    // Measured before the scroll lock classes and pinned body unstick the header.
+    const headerBottom = document.querySelector(".app-header")?.getBoundingClientRect().bottom ?? 0;
+    topScrollEdge = Math.max(0, headerBottom) + EDGE_SCROLL_ZONE_PX;
     isDragging = true;
     card.classList.remove("is-holding");
     card.classList.add("is-dragging");
@@ -568,6 +583,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     document.body.classList.add("is-reordering-cards");
     if (activePointerType === "touch") {
       lockedScrollY = window.scrollY;
+      maxLockedScrollY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       bodyScrollLockStyles = {
         position: document.body.style.position,
         top: document.body.style.top,
@@ -609,6 +625,42 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     card.style.zIndex = "1000";
     card.style.margin = "0";
     card.style.pointerEvents = "none";
+    lastDragPoint = { clientX: e.clientX, clientY: e.clientY };
+    dragStartedAt = Date.now();
+    edgeScrollFrame = requestAnimationFrame(scrollNearEdges);
+  }
+
+  /** Returns the scroll step for a drag point near the top or bottom of the viewport. */
+  function edgeScrollStep(clientY) {
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const bottomEdge = viewportHeight - EDGE_SCROLL_ZONE_PX;
+    const depth = clientY < topScrollEdge ? clientY - topScrollEdge : Math.max(0, clientY - bottomEdge);
+    return Math.round(EDGE_SCROLL_MAX_STEP_PX * Math.max(-1, Math.min(1, depth / EDGE_SCROLL_ZONE_PX)));
+  }
+
+  /** Scrolls the board by step, moving the touch scroll lock when the body is pinned. */
+  function scrollBoardBy(step) {
+    if (!bodyScrollLockStyles) {
+      window.scrollBy(0, step);
+      return;
+    }
+    lockedScrollY = Math.max(0, Math.min(maxLockedScrollY, lockedScrollY + step));
+    document.body.style.top = `-${lockedScrollY}px`;
+  }
+
+  // Cards are taller than a phone screen allows for a drag across a neighbor,
+  // so the board scrolls while a dragged card is held near either edge. The
+  // short delay ignores the unsettled pointer positions WebKit reports while
+  // the card is first lifted.
+  function scrollNearEdges() {
+    if (!isDragging || !lastDragPoint) return;
+    const settled = Date.now() - dragStartedAt >= EDGE_SCROLL_DELAY_MS;
+    const step = settled ? edgeScrollStep(lastDragPoint.clientY) : 0;
+    if (step !== 0) {
+      scrollBoardBy(step);
+      movePlaceholderToPoint(lastDragPoint);
+    }
+    edgeScrollFrame = requestAnimationFrame(scrollNearEdges);
   }
 
   function cancelHoldWhenMoved(e) {
@@ -677,6 +729,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     // Drag position
     if (activePointerType === "touch" && e.cancelable) e.preventDefault();
     moveCardToPointer(e);
+    lastDragPoint = { clientX: e.clientX, clientY: e.clientY };
 
     movePlaceholderToPoint(e);
   }
@@ -690,6 +743,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
     if (e.cancelable) e.preventDefault();
     moveCardToPointer(point);
+    lastDragPoint = point;
     movePlaceholderToPoint(point);
   }
 
@@ -711,6 +765,9 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
 
     if (!isDragging) return;
 
+    cancelAnimationFrame(edgeScrollFrame);
+    edgeScrollFrame = null;
+    lastDragPoint = null;
     suppressClickUntil = Date.now() + 350;
 
     // Reset styles
@@ -725,10 +782,13 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
     card.classList.remove("is-dragging");
     document.documentElement.classList.remove("is-reordering-cards");
     document.body.classList.remove("is-reordering-cards");
+    let dropScrollY = window.scrollY;
     if (bodyScrollLockStyles) {
       Object.assign(document.body.style, bodyScrollLockStyles);
       bodyScrollLockStyles = null;
       window.scrollTo(0, lockedScrollY);
+      // window.scrollY can lag the restore on iOS, so report the lock offset.
+      dropScrollY = lockedScrollY;
     }
 
     if (placeholder && placeholder.parentNode) {
@@ -748,7 +808,7 @@ function enableHoldToDrag(card, containerEl, onReorderFinished) {
       newOrder.some((id, idx) => id !== initialOrder[idx]);
 
     if (hasChanged && typeof onReorderFinished === "function") {
-      onReorderFinished(newOrder);
+      onReorderFinished(newOrder, { scrollY: dropScrollY });
     }
   }
 

@@ -718,6 +718,79 @@ describe('cardGrid', () => {
     expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['bottom', 'top']);
   });
 
+  function stubAnimationFrames() {
+    const frames = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => frames.push(callback)));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    return () => frames.shift()?.();
+  }
+
+  it('scrolls the pinned page while a touch-dragged card is held near the bottom edge', async () => {
+    vi.useFakeTimers();
+    const runFrame = stubAnimationFrames();
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const { container } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b' })], { refresh });
+    const [first, second] = container.querySelectorAll('.process-card');
+    vi.spyOn(first, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 320, height: 230 });
+    vi.spyOn(second, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 250, width: 320, height: 230 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(second);
+    vi.spyOn(window, 'scrollY', 'get').mockReturnValue(100);
+    Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: window.innerHeight + 140 });
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const topBeforeDrag = document.body.style.top;
+
+    first.querySelector('.btn-card-drag').dispatchEvent(touchEvent('touchstart', { x: 20, y: 10 }));
+    vi.advanceTimersByTime(500);
+    expect(document.body.style.top).toBe('-100px');
+    window.dispatchEvent(touchEvent('touchmove', { x: 20, y: window.innerHeight - 5 }));
+    vi.advanceTimersByTime(100);
+    runFrame();
+    expect(document.body.style.top).toBe('-100px');
+    vi.advanceTimersByTime(60);
+    runFrame();
+    expect(document.body.style.top).toBe('-115px');
+    runFrame();
+    runFrame();
+    expect(document.body.style.top).toBe('-140px');
+
+    window.dispatchEvent(touchEvent('touchend'));
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    expect(document.body.style.top).toBe(topBeforeDrag);
+    expect(scrollTo).toHaveBeenCalledWith(0, 140);
+    expect(mocks.api.reorderJobs).toHaveBeenCalledWith(['b', 'a']);
+    expect(refresh).toHaveBeenCalledWith({ restoreScrollY: 140 });
+    delete document.documentElement.scrollHeight;
+  });
+
+  it('scrolls the window while a mouse-dragged card is held just below the header', () => {
+    vi.useFakeTimers();
+    const runFrame = stubAnimationFrames();
+    const header = document.createElement('header');
+    header.className = 'app-header';
+    vi.spyOn(header, 'getBoundingClientRect').mockReturnValue({ bottom: 60 });
+    document.body.prepend(header);
+    const { card } = setup([makeJob({ id: 'a' }), makeJob({ id: 'b' })]);
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 200, width: 100, height: 100 });
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(null);
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+
+    card.dispatchEvent(pointerEvent('pointerdown', { x: 10, y: 250 }));
+    vi.advanceTimersByTime(180);
+    window.dispatchEvent(pointerEvent('pointermove', { x: 10, y: 115 }));
+    runFrame();
+    expect(scrollBy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(150);
+    runFrame();
+    expect(scrollBy).toHaveBeenCalledWith(0, -8);
+    window.dispatchEvent(pointerEvent('pointermove', { x: 10, y: 400 }));
+    runFrame();
+    expect(scrollBy).toHaveBeenCalledOnce();
+
+    window.dispatchEvent(pointerEvent('pointerup'));
+    expect(runFrame()).toBeUndefined();
+    expect(scrollBy).toHaveBeenCalledOnce();
+  });
+
   it('reorders cards with the keyboard and announces the saved position', async () => {
     const announcer = document.createElement('p');
     announcer.id = 'card-reorder-announcer';
