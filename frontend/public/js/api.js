@@ -250,6 +250,18 @@ const backendApi = {
     return job;
   },
 
+  /** Reads a posting link, or matches technologies in pasted text, without saving anything. */
+  async previewJobImport(payload) {
+    const res = await fetch("/api/jobs/import-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) return body;
+    throw Object.assign(new Error(body.error || "Could not import that posting"), { code: body.code, duplicate: body.duplicate });
+  },
+
   /**
    * Creates a new job process.
    */

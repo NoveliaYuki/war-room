@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -9,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"war-room/backend/pkg/config"
+	"war-room/backend/pkg/logging"
 	"war-room/backend/pkg/models"
 	"war-room/backend/pkg/repository"
 )
@@ -74,7 +76,7 @@ func (a *AuthService) emailAllowed(email string) bool {
 func (a *AuthService) UpsertUserFromGoogle(identity GoogleIdentity, remoteAddr string) (*models.User, error) {
 	email := strings.ToLower(strings.TrimSpace(identity.Email))
 	if !identity.EmailVerified || !a.emailAllowed(email) {
-		log.Printf("rejected google sign-in attempt: email=%q verified=%t remote=%s", email, identity.EmailVerified, remoteAddr)
+		logging.AuditFailure(context.Background(), "auth.sign_in_denied", "email", email, "email_verified", identity.EmailVerified, "remote_addr", remoteAddr, "allowed", a.emailAllowed(email))
 		return nil, ErrEmailNotAllowed
 	}
 	return a.upsertUserAndClaimIfFirst(identity, email)
@@ -194,7 +196,7 @@ func (a *AuthService) Authenticate(w http.ResponseWriter, r *http.Request) (stri
 		return "", false
 	}
 	if err != nil {
-		log.Printf("session lookup failed: %v", err)
+		slog.Error("session lookup failed", "error", err.Error())
 		return "", false
 	}
 	expiresAt := time.Unix(expiresAtUnix, 0)

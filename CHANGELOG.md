@@ -1,3 +1,22 @@
+Version 0.2.0 — 2026-11-04 · Release: [v0.2.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.2.0)
+
+# Highlights
+- Start a new process from a job posting link; War Room prefills the form for review and suggests Tech Stack entries.
+- Structured backend logs explain each failure in one record, while clients get a generic message and a `request_id` to find it.
+- Dragging cards and questions works on phones, including iOS browsers.
+- Click a scheduled interview to open its process on that stage (from 0.1.1).
+
+# What changed
+- Add `JOB_IMPORT_ENABLED`, `LOG_LEVEL`, `LOG_FORMAT`, `LOG_MAX_SIZE`, and `LOG_MAX_FILES`.
+- Log audit events for sign-in, sign-out, Google access, and Drive backups, and never log tokens, secrets, or query strings.
+- Database failures return 500 without SQL text; input validation messages are unchanged.
+- Scroll the board while a dragged card nears the screen edge, and keep the scroll position after a drop.
+- Keep links and text selection working inside clickable interviews, and remove the card hover lift (from 0.1.1).
+
+# References
+- [#3](https://github.com/NoveliaYuki/war-room/pull/3) / noissue
+- [#4](https://github.com/NoveliaYuki/war-room/pull/4) / noissue
+
 Version 0.1.1 — 2026-11-02
 
 # Highlights

@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
+	"war-room/backend/pkg/logging"
 	"war-room/backend/pkg/repository"
 )
 
@@ -49,17 +50,17 @@ func startInactiveWaitingSchedulerWithCallback(ctx context.Context, repo *reposi
 func checkAllUsersInactiveWaitingJobs(repo *repository.Repository, now time.Time, onRejected func(userID string)) {
 	userIDs, err := repo.ListUserIDs()
 	if err != nil {
-		log.Printf("Failed to list users for inactive waiting job sweep: %v", err)
+		slog.Error("inactive waiting job sweep could not list users", "error", err.Error())
 		return
 	}
 	for _, userID := range userIDs {
 		count, err := repo.RejectInactiveWaitingJobs(userID, now)
 		if err != nil {
-			log.Printf("Failed to reject inactive waiting jobs for a user: %v", err)
+			slog.Error("inactive waiting job sweep failed for user", "user_id", userID, "error", err.Error())
 			continue
 		}
 		if count > 0 {
-			log.Printf("Automatically rejected %d inactive waiting job(s)", count)
+			logging.Audit(context.Background(), "jobs.auto_rejected_inactive", "user_id", userID, "count", count)
 			if onRejected != nil {
 				onRejected(userID)
 			}

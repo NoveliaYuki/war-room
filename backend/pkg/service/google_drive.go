@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -441,14 +442,14 @@ func (d *DriveBackupService) exchange(form url.Values) (tokenResponse, error) {
 }
 
 func (d *DriveBackupService) doToken(req *http.Request) (tokenResponse, error) {
-	res, err := d.client.Do(req)
+	res, err := doRequest(d.client, req)
 	if err != nil {
 		return tokenResponse{}, err
 	}
 	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode != http.StatusOK {
-		return tokenResponse{}, fmt.Errorf("google token request failed (%d)", res.StatusCode)
+		return tokenResponse{}, newGoogleAPIError("token request", res.StatusCode, body)
 	}
 	var token tokenResponse
 	return token, json.Unmarshal(body, &token)
@@ -457,13 +458,13 @@ func (d *DriveBackupService) doToken(req *http.Request) (tokenResponse, error) {
 func (d *DriveBackupService) fetchUserInfo(accessToken string) (googleUserInfo, error) {
 	req, _ := http.NewRequest(http.MethodGet, d.userURL, nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	res, err := d.client.Do(req)
+	res, err := doRequest(d.client, req)
 	if err != nil {
 		return googleUserInfo{}, err
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		return googleUserInfo{}, fmt.Errorf("google userinfo request failed (%d)", res.StatusCode)
+		return googleUserInfo{}, googleResponseError("userinfo request", res)
 	}
 	var info googleUserInfo
 	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&info); err != nil {
@@ -488,7 +489,9 @@ func (d *DriveBackupService) accessToken(userID string, account *driveAccount) (
 	}
 	account.AccessToken = token.AccessToken
 	account.Expiry = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
-	_ = d.saveAccount(userID, *account)
+	if err := d.saveAccount(userID, *account); err != nil {
+		slog.Warn("could not cache refreshed google access token", "user_id", userID, "error", err.Error())
+	}
 	return token.AccessToken, nil
 }
 
@@ -507,6 +510,7 @@ func (d *DriveBackupService) Revoke(userID string) error {
 		return err
 	}
 	if revokeErr != nil {
+		slog.Warn("google token revocation failed; local credentials were deleted", "user_id", userID, "error", revokeErr.Error())
 		return ErrGoogleRevocationFailed
 	}
 	return nil
@@ -521,15 +525,15 @@ func (d *DriveBackupService) revokeToken(token string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	res, err := d.client.Do(req)
+	res, err := doRequest(d.client, req)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = res.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("google token revocation failed (%d)", res.StatusCode)
+		return googleResponseError("token revocation", res)
 	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 	return nil
 }
 
@@ -552,11 +556,9 @@ func (d *DriveBackupService) SetFolder(userID, id, name string) error {
 			account.FolderName = name
 			return d.saveAccount(userID, account)
 		}
-		if token, err := d.accessToken(userID, &account); err == nil {
-			if d.moveFile(account.FileID, id, token) == nil {
-				account.FolderID, account.FolderName = id, name
-				return d.saveAccount(userID, account)
-			}
+		if d.moveBackupToFolder(userID, &account, id) {
+			account.FolderID, account.FolderName = id, name
+			return d.saveAccount(userID, account)
 		}
 	}
 	// Keep the old ID so the next successful upload can clean it up safely.
@@ -593,13 +595,13 @@ func (d *DriveBackupService) moveFile(id, folderID, token string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	res, err := d.client.Do(req)
+	res, err := doRequest(d.client, req)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("google drive move failed (%d)", res.StatusCode)
+		return googleResponseError("drive move", res)
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 	return nil
@@ -665,14 +667,14 @@ func (d *DriveBackupService) connectedAccount(userID string) (driveAccount, erro
 func (d *DriveBackupService) driveGET(path, token string) ([]byte, error) {
 	req, _ := http.NewRequest(http.MethodGet, d.driveBase+path, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	res, err := d.client.Do(req)
+	res, err := doRequest(d.client, req)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("google drive request failed (%d)", res.StatusCode)
+		return nil, newGoogleAPIError("drive request", res.StatusCode, body)
 	}
 	return body, nil
 }
@@ -706,23 +708,31 @@ func (d *DriveBackupService) runLoop(userID string) {
 	}
 }
 
-// BackupNow exports and uploads one backup for userID synchronously.
+// BackupNow exports and uploads one backup for userID synchronously and logs
+// the outcome with every detail needed to diagnose a failure.
 func (d *DriveBackupService) BackupNow(userID string) error {
+	start := time.Now()
+	size, err := d.backupNow(userID)
+	logBackupResult(userID, size, time.Since(start), err)
+	return err
+}
+
+func (d *DriveBackupService) backupNow(userID string) (int64, error) {
 	defer d.lockAccount(userID)()
 	account, err := d.connectedAccount(userID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	token, err := d.accessToken(userID, &account)
 	if err != nil {
-		return d.recordFailure(userID, account, err)
+		return 0, d.recordFailure(userID, account, fmt.Errorf("refresh access token: %w", err))
 	}
 	encrypted, size, err := d.encryptedExport(userID)
 	if err != nil {
-		return d.recordFailure(userID, account, err)
+		return 0, d.recordFailure(userID, account, err)
 	}
 	defer DiscardTempFile(encrypted)
-	return d.replaceDriveBackup(userID, &account, token, encrypted, size)
+	return size, d.replaceDriveBackup(userID, &account, token, encrypted, size)
 }
 
 // encryptedExport streams the user's archive through the encryptor into a
@@ -749,7 +759,7 @@ func (d *DriveBackupService) replaceDriveBackup(userID string, account *driveAcc
 	version := account.BackupVersion + 1
 	fileID, err := d.createFile(account, token, encrypted, size, version)
 	if err != nil {
-		return d.recordFailure(userID, *account, err)
+		return d.recordFailure(userID, *account, fmt.Errorf("upload backup version %d: %w", version, err))
 	}
 	return d.commitDriveBackup(userID, account, token, fileID, version, oldIDs)
 }
@@ -759,12 +769,18 @@ func (d *DriveBackupService) commitDriveBackup(userID string, account *driveAcco
 	account.FileID, account.BackupVersion, account.LastBackupAt, account.LastStatus, account.LastError = fileID, version, &now, "ok", ""
 	account.PreviousFileIDs = oldIDs
 	if err := d.saveAccount(userID, *account); err != nil {
-		_ = d.deleteFile(fileID, token)
-		return err
+		if deleteErr := d.deleteFile(fileID, token); deleteErr != nil {
+			slog.Warn("could not remove uploaded backup after a failed commit", "user_id", userID, "drive_file_id", fileID, "error", deleteErr.Error())
+		}
+		return fmt.Errorf("record uploaded backup version %d: %w", version, err)
 	}
 	remaining := make([]string, 0, len(oldIDs))
 	for _, oldID := range oldIDs {
-		if oldID != fileID && d.deleteFile(oldID, token) != nil {
+		if oldID == fileID {
+			continue
+		}
+		if err := d.deleteFile(oldID, token); err != nil {
+			slog.Warn("could not delete previous drive backup; will retry after the next backup", "user_id", userID, "drive_file_id", oldID, "error", err.Error())
 			remaining = append(remaining, oldID)
 		}
 	}
@@ -775,9 +791,13 @@ func (d *DriveBackupService) commitDriveBackup(userID string, account *driveAcco
 	return d.saveAccount(userID, *account)
 }
 
+// recordFailure stores a generic failure summary in the user-visible backup
+// status. The full error is logged by BackupNow, never stored for clients.
 func (d *DriveBackupService) recordFailure(userID string, account driveAccount, err error) error {
-	account.LastStatus, account.LastError = "error", err.Error()
-	_ = d.saveAccount(userID, account)
+	account.LastStatus, account.LastError = "error", publicBackupFailure
+	if saveErr := d.saveAccount(userID, account); saveErr != nil {
+		slog.Error("could not record google drive backup failure", "user_id", userID, "error", saveErr.Error())
+	}
 	return err
 }
 
@@ -808,10 +828,10 @@ func (d *DriveBackupService) createFile(account *driveAccount, token string, bod
 		return "", err
 	}
 	defer func() { _ = response.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", fmt.Errorf("google drive upload initialization failed (%d)", response.StatusCode)
+		return "", googleResponseError("drive upload initialization", response)
 	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
 	sessionURL, err := d.validateUploadSessionURL(response.Header.Get("Location"))
 	if err != nil {
 		return "", err
@@ -829,7 +849,7 @@ func (d *DriveBackupService) createFile(account *driveAccount, token string, bod
 func (d *DriveBackupService) doUploadInitialization(req *http.Request) (*http.Response, error) {
 	client := *d.client
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return client.Do(req)
+	return doRequest(&client, req)
 }
 
 func (d *DriveBackupService) validateUploadSessionURL(raw string) (string, error) {
@@ -847,27 +867,27 @@ func (d *DriveBackupService) deleteFile(id, token string) error {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	res, err := d.client.Do(req)
+	res, err := doRequest(d.client, req)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("google drive delete failed (%d)", res.StatusCode)
+		return googleResponseError("drive delete", res)
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 	return nil
 }
 
 func (d *DriveBackupService) doUpload(req *http.Request) (string, error) {
-	res, err := d.uploadClient.Do(req)
+	res, err := doRequest(d.uploadClient, req)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return "", fmt.Errorf("google drive upload failed (%d)", res.StatusCode)
+		return "", newGoogleAPIError("drive upload", res.StatusCode, body)
 	}
 	var out struct {
 		ID string `json:"id"`

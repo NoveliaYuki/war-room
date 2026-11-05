@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +62,7 @@ func NewJobService(repo *repository.Repository, cfg *config.Config) *JobService 
 
 func (s *JobService) mirrorAfterMutation() {
 	if err := s.MirrorDatabaseToJSON(); err != nil {
-		log.Printf("Warning: failed to update backup snapshot: %v", err)
+		slog.Warn("could not update recovery snapshot backup.json", "error", err.Error())
 	}
 }
 
@@ -1365,7 +1365,7 @@ func (s *JobService) MirrorDatabaseToJSON() error {
 	}
 
 	if err := writeBackupAtomically(s.cfg.BackupPath, data); err != nil {
-		log.Printf("Warning: Failed to commit backup.json: %v", err)
+		slog.Error("could not write recovery snapshot backup.json", "path", s.cfg.BackupPath, "error", err.Error())
 		return err
 	}
 

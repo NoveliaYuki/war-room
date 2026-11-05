@@ -1085,8 +1085,11 @@ func requireJobOwnedByUser(tx *sql.Tx, userID, jobID string) error {
 // it belongs to userID.
 func (r *Repository) SetCurrentStage(userID, stageID string) ([]models.Stage, error) {
 	stage, err := r.GetStageByID(userID, stageID)
-	if err != nil || stage == nil {
-		return nil, fmt.Errorf("stage not found: %s", stageID)
+	if err != nil {
+		return nil, fmt.Errorf("load stage %q: %w", stageID, err)
+	}
+	if stage == nil {
+		return nil, fmt.Errorf("stage %q: %w", stageID, sql.ErrNoRows)
 	}
 
 	tx, err := r.db.Begin()

@@ -28,6 +28,21 @@ function crossedBottomBoundary(midY, bottom, lastRect) {
   return midY > lastRect.top + lastRect.height / 2 || bottom >= lastRect.bottom;
 }
 
+/**
+ * Records the scroll offsets of el's scrolled ancestors and returns a function
+ * that puts them back. WebKit can shift a scroller while a dragged item is
+ * swapped for its placeholder, which would move the list under the finger.
+ */
+function captureAncestorScroll(el) {
+  const offsets = [];
+  for (let node = el; node; node = node.parentElement) {
+    if (node.scrollTop) offsets.push([node, node.scrollTop]);
+  }
+  return () => offsets.forEach(([node, top]) => {
+    if (node.scrollTop !== top) node.scrollTop = top;
+  });
+}
+
 /** Places a placeholder before the first item below the dragged midpoint. */
 function placeBetweenItems(items, listEl, placeholder, midY) {
   for (const target of items) {
@@ -192,6 +207,7 @@ export function enableQuestionReordering(listEl, stageId, onReordered) {
         .map((el) => el.getAttribute("data-qid"))
         .filter(Boolean);
 
+      const restoreLiftScroll = captureAncestorScroll(listEl);
       // Create drop placeholder matching exact geometry
       const placeholder = document.createElement("div");
       placeholder.className = "question-drop-placeholder";
@@ -211,6 +227,7 @@ export function enableQuestionReordering(listEl, stageId, onReordered) {
       item.style.pointerEvents = "none";
       item.style.boxSizing = "border-box";
       document.body.appendChild(item);
+      restoreLiftScroll();
 
       // Detect active scroll container
       const scrollContainer = listEl.scrollHeight > listEl.clientHeight ? listEl : listEl.closest(".split-pane-right");
@@ -312,8 +329,10 @@ export function enableQuestionReordering(listEl, stageId, onReordered) {
         window.removeEventListener("touchcancel", onPointerUp);
 
         // Snap item back into DOM where placeholder is
+        const restoreDropScroll = captureAncestorScroll(listEl);
         listEl.insertBefore(item, placeholder);
         placeholder.remove();
+        restoreDropScroll();
 
         item.classList.remove("is-dragging");
         item.style.position = "";

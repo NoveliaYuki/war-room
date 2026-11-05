@@ -2,8 +2,11 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
+
+	"war-room/backend/pkg/logging"
 )
 
 type contextKey int
@@ -50,18 +53,17 @@ func RequireSession(auth SessionAuthenticator, extraPublicPaths ...string) Middl
 				return
 			}
 			if isUnsafeMethod(r.Method) && r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				w.WriteHeader(http.StatusForbidden)
-				_, _ = w.Write([]byte(`{"error":"cross-site requests are not allowed"}`))
+				logging.RecordError(w, errors.New("session: blocked cross-site unsafe request"))
+				writeJSONError(w, http.StatusForbidden, "cross-site requests are not allowed")
 				return
 			}
 			userID, ok := auth.Authenticate(w, r)
 			if !ok {
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				w.WriteHeader(http.StatusUnauthorized)
-				_, _ = w.Write([]byte(`{"error":"sign in required"}`))
+				logging.RecordError(w, errors.New("session: missing, expired, or invalid session cookie"))
+				writeJSONError(w, http.StatusUnauthorized, "sign in required")
 				return
 			}
+			logging.RequestFrom(r.Context()).SetUserID(userID)
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDContextKey, userID)))
 		})
 	}

@@ -11,6 +11,7 @@ import { captureLoadingView, revealLoadedContent } from "./utils/loadingTransiti
 import { openDetailModal } from "./components/detailModal.js";
 import { openCvLibrary } from "./components/cvLibrary.js";
 import { openTechnologyLibrary } from "./components/technologyLibrary.js";
+import { bindJobImport, renderJobImportStatus, renderProcessEntry, renderTechnologySuggestions } from "./components/jobImport.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, setModalBackgroundScrollPosition, trapModalTab } from "./modalA11y.js";
@@ -85,6 +86,7 @@ let searchDebounceTimer = null;
 let processFilters = loadProcessFilters();
 let availableTechnologies = [];
 let technologiesLoaded = false;
+let jobImportEnabled = true;
 let searchPeriods = [];
 
 /** Infers the salary type from entered range bounds. */
@@ -252,6 +254,7 @@ async function loadAccountInfo() {
   try {
     accountInfo = await api.getAuthMe();
   } catch { accountInfo = null; }
+  jobImportEnabled = accountInfo?.job_import_enabled !== false;
   renderAccountAvatar(accountInfo);
   renderAccountIdentity(accountInfo);
 }
@@ -1123,6 +1126,13 @@ function resolveSubmittedSalaryType(data, minValue, maxValue) {
   return data.get("salary_type");
 }
 
+/** Returns the work details an import found, which have no visible form field. */
+function importedClassification(data) {
+  return Object.fromEntries(["work_arrangement", "employment_type"]
+    .map((name) => [name, data.get(name)])
+    .filter(([, value]) => value));
+}
+
 /** Converts the creation form into the backend job payload. */
 function buildJobPayload(form) {
   const data = new FormData(form);
@@ -1137,7 +1147,8 @@ function buildJobPayload(form) {
     salary_type: resolveSubmittedSalaryType(data, salaryMin, salaryMax),
     salary_min: salaryMin,
     salary_max: salaryMax,
-    salary_currency: "EUR",
+    salary_currency: data.get("salary_currency") || "EUR",
+    ...importedClassification(data),
     recruiter_type: data.get("recruiter_type"),
     recruiter_name: data.get("recruiter_name"),
     recruiter_agency: data.get("recruiter_agency"),
@@ -1157,10 +1168,11 @@ function buildJobPayload(form) {
 }
 
 /** Persists a submitted job form and reports the result to the user. */
-async function submitNewJobForm(event, form, closeForm) {
+async function submitNewJobForm(event, form, closeForm, technologyIds) {
   try {
     event.preventDefault();
-    await api.createJob(buildJobPayload(form));
+    const payload = buildJobPayload(form);
+    await api.createJob({ ...payload, technology_ids: await technologyIds() });
     showToast("Selection process created successfully!", "success");
     closeForm();
     setFilter("waiting");
@@ -1629,7 +1641,11 @@ function openNewProcessModal() {
       <h2 class="modal-title inline-icon-text">${icon("plus", 16)} Add New Selection Process</h2>
       <button class="modal-close-btn" type="button" aria-label="Close dialog">${icon("close", 14)}</button>
     </div>
-    <form id="new-process-form" class="process-form">
+    ${jobImportEnabled ? renderProcessEntry() : ""}
+    <form id="new-process-form" class="process-form" ${jobImportEnabled ? "hidden" : ""}>
+      <input type="hidden" name="work_arrangement" />
+      <input type="hidden" name="employment_type" />
+      ${renderJobImportStatus()}
       <div class="process-form-defaults" role="note">
         <span class="process-form-defaults-status status-pill waiting">Waiting</span>
         <span>New cards start in this status. Without a referral, today is recorded as the CV sent date and your latest uploaded CV is linked when available.</span>
@@ -1656,8 +1672,8 @@ function openNewProcessModal() {
       <h3 class="edit-section-heading">Job posting &amp; application links</h3>
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label" for="create-job-post-url">LinkedIn Post URL (Optional)</label>
-          <input id="create-job-post-url" type="url" name="job_post_url" placeholder="https://linkedin.com/jobs/view/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="create-job-post-url">Job Posting URL (Optional)</label>
+          <input id="create-job-post-url" type="url" name="job_post_url" placeholder="https://..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
           <label class="meta-label" for="create-application-url">Company Application Page (Optional)</label>
@@ -1678,8 +1694,10 @@ function openNewProcessModal() {
           </div>
           <div id="create-overview-preview" class="markdown-field-preview create-overview-preview markdown-preview" role="tabpanel" aria-labelledby="create-overview-tab-preview" tabindex="0" hidden></div>
         </div>
-        <span id="create-company-overview-help" class="process-form-helper">Paste the complete role description; use Preview to check its Markdown formatting.</span>
+        <span id="create-company-overview-help" class="process-form-helper">Paste the complete role description; formatting is kept. Use Preview to check it.</span>
       </div>
+
+      ${renderTechnologySuggestions()}
 
       <details class="process-form-disclosure">
         <summary class="process-form-disclosure-summary">
@@ -1687,7 +1705,7 @@ function openNewProcessModal() {
           ${icon("chevronDown", 16)}
         </summary>
         <div class="process-form-disclosure-content">
-          <div class="form-grid form-grid-three">
+          <div class="form-grid form-grid-salary">
             <div>
               <label class="meta-label" for="create-salary-type">Salary Type</label>
               <select id="create-salary-type" name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
@@ -1698,11 +1716,19 @@ function openNewProcessModal() {
               </select>
             </div>
             <div>
-              <label class="meta-label" for="create-salary-min">Minimum Salary (€)</label>
+              <label class="meta-label" for="create-salary-currency">Currency</label>
+              <select id="create-salary-currency" name="salary_currency" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
+                <option value="EUR" selected>EUR</option>
+                <option value="USD">USD</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </div>
+            <div>
+              <label class="meta-label" for="create-salary-min">Minimum Salary</label>
               <input id="create-salary-min" type="number" name="salary_min" placeholder="e.g. 80000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
             </div>
             <div>
-              <label class="meta-label" for="create-salary-max">Maximum Salary (€)</label>
+              <label class="meta-label" for="create-salary-max">Maximum Salary</label>
               <input id="create-salary-max" type="number" name="salary_max" placeholder="e.g. 110000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
             </div>
           </div>
@@ -1786,7 +1812,7 @@ function openNewProcessModal() {
   `;
 
   const form = modalEl.querySelector("#new-process-form");
-  const initialFocus = window.matchMedia?.("(max-width: 600px)").matches ? ".modal-close-btn" : "#create-position-title";
+  const initialFocus = window.matchMedia?.("(max-width: 600px)").matches ? ".modal-close-btn" : jobImportEnabled ? "#job-import-url" : "#create-position-title";
   activateModal(modalEl, initialFocus);
   const keywordInput = form.querySelector('input[name="keyword_note"]');
   const countEl = modalEl.querySelector("#keyword-char-count");
@@ -1848,7 +1874,8 @@ function openNewProcessModal() {
   };
   minInput?.addEventListener("input", updateSalaryTypeFromInputs);
   maxInput?.addEventListener("input", updateSalaryTypeFromInputs);
-  form.addEventListener("submit", (event) => submitNewJobForm(event, form, closeForm));
+  const jobImport = bindJobImport(form);
+  form.addEventListener("submit", (event) => submitNewJobForm(event, form, closeForm, jobImport.technologyIds));
 }
 
 statusFilterControls.forEach((control) => control.addEventListener("change", () => {

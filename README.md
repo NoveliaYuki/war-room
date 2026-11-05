@@ -64,6 +64,10 @@ Copy `.env.example` to `.env`. Compose uses these local settings:
 | `BACKEND_HOST` | `0.0.0.0` | API listen address inside its container |
 | `CORS_ALLOWED_ORIGINS` | localhost origins | Browser origins allowed by the API |
 | `LOGO_LOOKUP_ENABLED` | `false` | Allow remote company-favicon lookups |
+| `JOB_IMPORT_ENABLED` | `true` | Allow importing job postings from a link |
+| `LOG_LEVEL` | `info` | Backend log verbosity: `debug`, `info`, `warn`, or `error` |
+| `LOG_FORMAT` | `json` | Backend log format: `json` or `text` |
+| `LOG_MAX_SIZE`, `LOG_MAX_FILES` | `10m`, `5` | Docker log rotation for the app containers |
 | `AUTH_ALLOWED_EMAILS` | empty | Comma-separated Google accounts allowed to sign in |
 | `AUTH_TOKEN_ENCRYPTION_KEY` | empty | Encrypts stored Google tokens at rest |
 | `SESSION_COOKIE_SECURE` | `true` | Send the session cookie over HTTPS only |
@@ -102,6 +106,7 @@ To report a vulnerability, contact the maintainers privately through the hosting
 
 - If Docker cannot connect, start Docker Desktop or run `colima start` on macOS.
 - If a service is unhealthy, inspect `docker compose ps` and `docker compose logs --tail=200 backend frontend`.
+- When the app shows an error, find its full cause with `docker compose logs backend | grep <request_id>`. The ID is in the error response body and the `X-Request-ID` header. Failed Google Drive calls log Google's `google_reason` and an operator `hint`; audit events carry `"audit":true`.
 - If ports 3000 or 4040 are busy, stop the process using them and rerun `docker compose up --build -d`.
 
 ## Versioning

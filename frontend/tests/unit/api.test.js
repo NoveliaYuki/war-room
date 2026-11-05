@@ -108,6 +108,15 @@ describe('api', () => {
     await expect(api.deleteSearchPeriod('id')).rejects.toThrow('Failed to delete search period');
   });
 
+  it('returns import previews and exposes failure codes', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ technologies: [] }) });
+    await expect(api.previewJobImport({ url: 'https://a.example' })).resolves.toEqual({ technologies: [] });
+    global.fetch.mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Blocked', code: 'blocked', duplicate: { id: '1' } }) });
+    await expect(api.previewJobImport({})).rejects.toMatchObject({ message: 'Blocked', code: 'blocked', duplicate: { id: '1' } });
+    global.fetch.mockResolvedValueOnce({ ok: false, json: () => Promise.reject(new Error('invalid json')) });
+    await expect(api.previewJobImport({})).rejects.toThrow('Could not import that posting');
+  });
+
   it('reports the create endpoint fallback for unreadable and empty errors', async () => {
     global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.reject(new Error('invalid json')) });
     await expect(api.createJob({})).rejects.toThrow('Failed to create');
