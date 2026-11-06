@@ -183,7 +183,13 @@ func (a *AuthService) IssueSession(w http.ResponseWriter, userID string) error {
 // Authenticate implements middleware.SessionAuthenticator. An expired or
 // unrecognized cookie is treated as signed-out; a session nearing expiry is
 // silently extended and the cookie re-issued (the sliding-expiry policy).
+//
+// A request carrying an Authorization header is authenticated by API token
+// only; an invalid token never falls back to the session cookie.
 func (a *AuthService) Authenticate(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if header := r.Header.Get("Authorization"); header != "" {
+		return a.authenticateAPIToken(r, header)
+	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || cookie.Value == "" {
 		return "", false
@@ -228,11 +234,14 @@ func (a *AuthService) SignOut(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// SignOutAllSessions deletes every session for userID, across every device.
-// Revoking Google Drive access calls this too, because identity and the
-// Drive grant are now the same OAuth consent.
+// SignOutAllSessions deletes every session and API token for userID, across
+// every device. Revoking Google Drive access calls this too, because identity
+// and the Drive grant are now the same OAuth consent.
 func (a *AuthService) SignOutAllSessions(userID string) error {
-	_, err := a.db.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID)
+	if _, err := a.db.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	_, err := a.db.Exec(`DELETE FROM api_tokens WHERE user_id = ?`, userID)
 	return err
 }
 

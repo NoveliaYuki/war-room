@@ -23,6 +23,10 @@ docker compose --project-name war-room up --build --force-recreate -d frontend b
 
 After each reload for an app-affecting change, open both `http://localhost:3000` and `http://localhost:3000/?demo` in Google Chrome. Confirm the change appears and behaves correctly in both modes. Inspect the affected UI at relevant desktop and narrow viewport sizes, checking spacing, alignment, wrapping, and overlap. Do not hand off the change until both views have been checked; report any view that could not be verified. PRs limited to documentation or agent skills can skip reload and browser checks.
 
+## Agent access
+
+Agents edit a user's data through the MCP server at `http://localhost:3000/api/mcp`, authenticated by a personal API token (see the README's Agent access section). Create tokens with `docker compose --project-name war-room exec -T backend /server api-token create --email <email> --name <name> > <file>`, redirecting stdout to a `0600` file so the token never appears in a transcript or log. Register the server only with `claude mcp add --scope local`; never write a token to a checked-in file. Look up existing records with `list_jobs` or `get_job` before proposing a new one, and use `update_job` or `update_stage` with only the fields that change.
+
 ## Mobile browser setup
 
 Use the root `Brewfile` to manage host-side browser and mobile tooling with Homebrew. On a fresh Mac, trust the optional Wix simulator utility with `brew trust --formula wix/brew/applesimutils`, then run `brew bundle`. Install the Appium extensions once with `appium driver install uiautomator2` and `appium driver install xcuitest`. Start Appium with `./scripts/start-appium.sh`; it supplies the Brew Android SDK and OpenJDK paths, selects `/Applications/Xcode.app/Contents/Developer` for that process when present, and keeps the server bound to loopback. Check Android setup with the Brew SDK and Java paths exported and iOS setup with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer appium driver doctor xcuitest`.

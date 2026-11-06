@@ -204,6 +204,38 @@ func TestUserAvatarMigrationReportsInspectionAndAlterFailures(t *testing.T) {
 	}
 }
 
+func TestAPITokenMigrationPreservesUsersAndCascadesOnDelete(t *testing.T) {
+	db := openMigrationTestDB(t)
+	mustMigrationExec(t, db, schemaSQL)
+	mustMigrationSchema(t, db)
+	mustMigrationExec(t, db, "DROP TABLE api_tokens; DELETE FROM schema_migrations WHERE version = 24")
+	mustMigrationExec(t, db, `INSERT INTO users (id, google_sub, email) VALUES ('legacy-user', 'sub-1', 'legacy@example.com')`)
+
+	mustMigrationSchema(t, db)
+	mustMigrationExec(t, db, `INSERT INTO api_tokens (id, user_id, token_hash, expires_at) VALUES ('token-1', 'legacy-user', 'hash', 1)`)
+	var email string
+	if err := db.QueryRow("SELECT email FROM users WHERE id = 'legacy-user'").Scan(&email); err != nil || email != "legacy@example.com" {
+		t.Fatalf("migration should preserve users, email=%q err=%v", email, err)
+	}
+	mustMigrationExec(t, db, "PRAGMA foreign_keys = ON; DELETE FROM users WHERE id = 'legacy-user'")
+	var remaining int
+	if err := db.QueryRow("SELECT COUNT(*) FROM api_tokens").Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("deleting a user should delete its tokens, remaining=%d err=%v", remaining, err)
+	}
+}
+
+func TestAPITokenMigrationReportsTableAndIndexFailures(t *testing.T) {
+	for _, failure := range []string{"CREATE TABLE IF NOT EXISTS api_tokens", "CREATE INDEX IF NOT EXISTS idx_api_tokens_user"} {
+		t.Run(failure, func(t *testing.T) {
+			db := openMigrationTestDB(t)
+			mustMigrationExec(t, db, schemaSQL)
+			if err := migrateAPITokens(migrationTestExecutor{db: db, failExec: failure}); err == nil {
+				t.Fatalf("migration did not report failure for %q", failure)
+			}
+		})
+	}
+}
+
 func TestJobHistoryMigrationRecordsNewChangesWithoutInventingLegacyEvents(t *testing.T) {
 	db := openMigrationTestDB(t)
 	mustMigrationExec(t, db, schemaSQL)
