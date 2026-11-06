@@ -2,6 +2,7 @@ package backend_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,6 +37,21 @@ func closeIntegrationResource(t *testing.T, resource interface{ Close() error })
 }
 
 func setupTestServer(t *testing.T) (*httptest.Server, *config.Config, func()) {
+	stack := newIntegrationStack(t)
+	return stack.server, stack.cfg, stack.cleanup
+}
+
+// integrationStack is a full in-process API: routes, the production
+// middleware chain, and a signed-in cookie session on server.Client().
+type integrationStack struct {
+	server  *httptest.Server
+	cfg     *config.Config
+	db      *sql.DB
+	auth    *service.AuthService
+	cleanup func()
+}
+
+func newIntegrationStack(t *testing.T) integrationStack {
 	tmpDir, err := os.MkdirTemp("", "warroom_test_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -98,7 +114,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *config.Config, func()) {
 		}
 	}
 
-	return server, cfg, cleanup
+	return integrationStack{server: server, cfg: cfg, db: db, auth: authSvc, cleanup: cleanup}
 }
 
 func mintIntegrationSession(t *testing.T, server *httptest.Server) {

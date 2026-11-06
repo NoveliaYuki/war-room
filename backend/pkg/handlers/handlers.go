@@ -19,6 +19,7 @@ import (
 	"war-room/backend/pkg/config"
 	"war-room/backend/pkg/jobimport"
 	"war-room/backend/pkg/logging"
+	"war-room/backend/pkg/mcp"
 	"war-room/backend/pkg/middleware"
 	"war-room/backend/pkg/models"
 	"war-room/backend/pkg/repository"
@@ -95,28 +96,10 @@ func invalidPayload(w http.ResponseWriter, err error) {
 	publicError(w, http.StatusBadRequest, "Invalid JSON payload", fmt.Errorf("decode request body: %w", err))
 }
 
-// publicValidationErrors are service errors whose messages describe the
-// caller's own input and are written for end users.
-var publicValidationErrors = []error{
-	service.ErrInvalidField,
-	service.ErrPositionTitleRequired,
-	service.ErrQuestionTextRequired,
-	service.ErrInvalidMeetingDate,
-}
-
-func isPublicValidationError(err error) bool {
-	for _, target := range publicValidationErrors {
-		if errors.Is(err, target) {
-			return true
-		}
-	}
-	return false
-}
-
 // writeServiceError returns validation messages as 400 and hides every other
 // failure behind a generic 500.
 func writeServiceError(w http.ResponseWriter, err error) {
-	if isPublicValidationError(err) {
+	if service.IsValidationError(err) {
 		publicError(w, http.StatusBadRequest, err.Error(), err)
 		return
 	}
@@ -174,7 +157,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/questions/{id}", h.handleDeleteQuestion)
 
 	// Method-qualified so the routes don't conflict with the "GET /" static fallback.
-	mcpHandler := h.newMCPHandler()
+	mcpHandler := mcp.NewHandler(h.jobs)
 	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
 		mux.Handle(method+" /api/mcp", mcpHandler)
 	}

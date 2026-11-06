@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"war-room/backend/pkg/logging"
 )
 
 func newAPITokenTestUser(t *testing.T) (*AuthService, string) {
@@ -192,5 +196,40 @@ func TestAPITokenStorageFailuresAreReported(t *testing.T) {
 	}
 	if err := auth.SignOutAllSessions("user"); err == nil {
 		t.Fatal("SignOutAllSessions ignored a token deletion failure")
+	}
+}
+
+func TestAPITokenAuthenticationTagsTheRequestLog(t *testing.T) {
+	auth, _ := newAPITokenTestUser(t)
+	token, _ := mustCreateAPIToken(t, auth)
+	logged := logging.NewRequest()
+	request := bearerRequest("Bearer " + token)
+	request = request.WithContext(logging.WithRequest(request.Context(), logged))
+	if _, ok := auth.Authenticate(httptest.NewRecorder(), request); !ok {
+		t.Fatal("token was rejected")
+	}
+	if !slices.ContainsFunc(logged.Attrs(), func(attr slog.Attr) bool { return attr.Key == "auth" && attr.Value.String() == "api_token" }) {
+		t.Fatalf("request log attrs = %v, want auth=api_token", logged.Attrs())
+	}
+}
+
+func TestListAPITokensReportsUnreadableRows(t *testing.T) {
+	auth, userID := newAPITokenTestUser(t)
+	if _, err := auth.db.Exec(`INSERT INTO api_tokens (id, user_id, name, token_hash, created_at, expires_at) VALUES ('bad', ?, '', 'hash', 'not-a-time', 0)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.ListAPITokens("allowed@example.com"); err == nil {
+		t.Fatal("ListAPITokens returned a row it could not read")
+	}
+}
+
+func TestAPITokenCommandsReportAccountLookupFailures(t *testing.T) {
+	auth, _ := newAPITokenTestUser(t)
+	if _, err := auth.db.Exec(`ALTER TABLE users RENAME TO users_unavailable`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := auth.ListAPITokens("allowed@example.com")
+	if err == nil || errors.Is(err, ErrAPITokenUserNotFound) || errors.Is(err, ErrEmailNotAllowed) {
+		t.Fatalf("ListAPITokens error = %v, want the lookup failure", err)
 	}
 }
