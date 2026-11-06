@@ -35,6 +35,27 @@ docker compose down
 - Google Drive backup: signing in grants Drive access. Choose a Drive folder with Google Picker in **Data & Backups**, and War Room uploads a uniquely named encrypted backup when a job card is created or its status changes. Data & Backups also shows the selected destination and lets you change it before starting an upload. Drive requires Google OAuth credentials and `GOOGLE_BACKUP_ENCRYPTION_KEY`, plus optional Picker settings in `.env` (see `.env.example`). Portable encrypted export and import require only `GOOGLE_BACKUP_ENCRYPTION_KEY`. Keep the encryption key in a password manager or another safe place; without the same key, backups cannot be restored. War Room decrypts encrypted backups during import. Plain ZIP imports are rejected.
 - SQLite storage, schema migrations, and a recovery snapshot in a Docker volume.
 
+## Agent access (API tokens and MCP)
+
+The backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) server at `/api/mcp` so an agent can read and edit your jobs, stages, technologies, and CV versions without a browser. It authenticates with a personal API token tied to your account. The account must be on the allowlist and must have signed in with Google at least once.
+
+Create a token from the running backend. Only the token goes to stdout, so redirect it to a private file:
+
+```sh
+docker compose exec -T backend /server api-token create --email you@example.com --name my-agent --days 90 > war-room-token
+chmod 600 war-room-token
+```
+
+Tokens last 1 to 365 days (default 90). List them with `api-token list --email ...` and revoke one with `api-token revoke --email ... --id ID`. Revoking Google access in the app also deletes every API token for that account. Only a hash of each token is stored, and tokens are never included in backups.
+
+Register the server with Claude Code in local scope so the token stays out of the repository:
+
+```sh
+claude mcp add --transport http --scope local war-room http://localhost:3000/api/mcp --header "Authorization: Bearer $(cat war-room-token)"
+```
+
+Never put a token in a checked-in `.mcp.json`. Any request carrying an `Authorization` header is authenticated by that token alone; the session cookie is not used as a fallback.
+
 ## Static browser demo
 
 The repository also includes a frontend-only demo with fictional sample processes. It uses the same UI as the self-hosted app, stores records in the current browser's local storage and uploaded files in IndexedDB, and does not include or require the Go API. See [`frontend/demo/README.md`](frontend/demo/README.md) for details.

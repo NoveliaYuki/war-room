@@ -173,6 +173,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/questions/{id}", h.handleUpdateQuestion)
 	mux.HandleFunc("DELETE /api/questions/{id}", h.handleDeleteQuestion)
 
+	// Method-qualified so the routes don't conflict with the "GET /" static fallback.
+	mcpHandler := h.newMCPHandler()
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
+		mux.Handle(method+" /api/mcp", mcpHandler)
+	}
 	mux.HandleFunc("GET /api/meetings", h.handleGetMeetings)
 	mux.HandleFunc("GET /api/backup/export", h.handleExportBackup)
 	mux.HandleFunc("POST /api/backup/import", h.handleImportBackup)

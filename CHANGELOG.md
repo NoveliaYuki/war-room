@@ -1,3 +1,23 @@
+Version 0.3.0 — 2026-11-06 · Release: [v0.3.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.3.0)
+
+# Highlights
+- Let an agent read and edit your War Room data without a browser: the backend now serves a Model Context Protocol (MCP) server at `/api/mcp`.
+- Personal API tokens tied to your account authenticate scripts and agents. Create, list, and revoke them with the `api-token` command in the backend container.
+
+# What changed
+- Add the `api_tokens` table (migration 24). Only a SHA-256 hash of each token is stored; tokens last 1 to 365 days (default 90) and are never included in backups or Drive exports.
+- Add `/server api-token create|list|revoke --email EMAIL`. `create` prints only the token on stdout so it can be redirected to a private file. The account must be on the allowlist and must have signed in once.
+- Authenticate any request that carries an `Authorization` header by its bearer token alone, never falling back to the session cookie. Each use re-checks the allowlist and expiry, records the last-used time, and logs `auth=api_token`; rejected tokens write an `api_token.denied` audit event.
+- Revoking Google access now also deletes the account's API tokens.
+- Add MCP tools to list, read, create, and partially update jobs and stages, manage the technology catalog, and list CV versions. Every tool is scoped to the token's owner, rejects unknown fields, and hides internal errors behind a `request_id`.
+- Document token creation and `claude mcp add --scope local` registration in the README and AGENTS.md.
+
+# Upgrade notes
+- Rebuild the backend to apply migration 24. Then create a token with `docker compose exec -T backend /server api-token create --email you@example.com --name my-agent > war-room-token` and keep the file private. Never put a token in a checked-in `.mcp.json`.
+
+# References
+- [#5](https://github.com/NoveliaYuki/war-room/pull/5) / noissue
+
 Version 0.2.0 — 2026-11-04 · Release: [v0.2.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.2.0)
 
 # Highlights

@@ -265,7 +265,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 23
+const latestSchemaVersion = 24
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -452,7 +452,7 @@ func runFinalSchemaMigration(executor schemaExecutor, version int) error {
 }
 
 // runAuthSchemaMigration dispatches the mandatory-Google-Sign-In migrations
-// (v17-22), kept separate from runFinalSchemaMigration purely to stay under
+// (v17-24), kept separate from runFinalSchemaMigration purely to stay under
 // this codebase's cyclomatic complexity limit.
 func runAuthSchemaMigration(executor schemaExecutor, version int) error {
 	switch version {
@@ -470,6 +470,8 @@ func runAuthSchemaMigration(executor schemaExecutor, version int) error {
 		return migrateCVVersionSequencePerUser(executor)
 	case 23:
 		return migrateUserAvatarColumn(executor)
+	case 24:
+		return migrateAPITokens(executor)
 	default:
 		return fmt.Errorf("unknown migration version %d", version)
 	}
@@ -697,6 +699,30 @@ func migrateUserAvatarColumn(executor schemaExecutor) error {
 		return nil
 	}
 	return executeMigrationSQL(executor, "ALTER TABLE users ADD COLUMN avatar_updated_at INTEGER NOT NULL DEFAULT 0", "add users.avatar_updated_at")
+}
+
+// migrateAPITokens adds personal API tokens, which authenticate scripts and
+// MCP clients as their owning user. Only a SHA-256 hash of each token is
+// stored, and every token expires.
+func migrateAPITokens(executor schemaExecutor) error {
+	statements := []struct{ sql, description string }{
+		{`CREATE TABLE IF NOT EXISTS api_tokens (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name TEXT NOT NULL DEFAULT '',
+			token_hash TEXT NOT NULL UNIQUE,
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			last_used_at INTEGER NULL,
+			expires_at INTEGER NOT NULL
+		)`, "create api tokens table"},
+		{"CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id)", "index api tokens by user"},
+	}
+	for _, statement := range statements {
+		if err := executeMigrationSQL(executor, statement.sql, statement.description); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func migrateJobHistory(executor schemaExecutor) error {
