@@ -15,7 +15,7 @@ docker compose up --build -d
 
 Open <http://localhost:3000>. Check app health with `docker compose ps`; view browser-test output with `docker compose logs --tail=100 test`. The test backend uses temporary storage and never reads or changes the app database. Stop containers with `docker compose down`; this preserves app data. **Do not run `docker compose down --volumes` unless the user explicitly asks to delete the local database and uploads.**
 
-After every app-affecting change, rebuild and recreate the app containers so the running app uses the current files. Run `docker compose --project-name war-room up --build --force-recreate -d frontend backend` (include any other affected app service), then wait for `docker compose --project-name war-room ps` to report healthy services. Keep the same project name, port overrides, and CORS settings used by the active local stack. The standard local stack serves the app at `http://localhost:3000`.
+After every app-affecting change, rebuild and recreate the app containers so the running app uses the current files. Run `docker compose --project-name war-room up --build --force-recreate -d frontend backend` (include any other affected app service), then wait for `docker compose --project-name war-room ps` to report healthy services. Keep the same project name, port overrides, and CORS settings used by the active local stack. A worktree has no `.env`; when rebuilding the shared stack from one, pass the main checkout's file with `--env-file`, or the backend starts without its allowlist and keys. The standard local stack serves the app at `http://localhost:3000`.
 
 ```sh
 docker compose --project-name war-room up --build --force-recreate -d frontend backend
@@ -25,7 +25,9 @@ After each reload for an app-affecting change, open both `http://localhost:3000`
 
 ## Agent access
 
-Agents edit a user's data through the MCP server at `http://localhost:3000/api/mcp`, authenticated by a personal API token (see the README's Agent access section). Create tokens with `docker compose --project-name war-room exec -T backend /server api-token create --email <email> --name <name> > <file>`, redirecting stdout to a `0600` file so the token never appears in a transcript or log. Register the server only with `claude mcp add --scope local`; never write a token to a checked-in file. Look up existing records with `list_jobs` or `get_job` before proposing a new one, and use `update_job` or `update_stage` with only the fields that change.
+Agents edit a user's data through the MCP server at `http://localhost:3000/api/mcp`, authenticated by a personal API token (see the README's Agent access section). Create tokens with `docker compose --project-name war-room exec -T backend /server api-token create --email <email> --name <name> > <file>`, redirecting stdout to a `0600` file so the token never appears in a transcript or log. Register the server only with `claude mcp add --scope local`; never write a token to a checked-in file. Look up existing records with `list_jobs` or `get_job` before proposing a new one, and use `update_job` or `update_stage` with only the fields that change. Check or change live data through these tools or the token-authenticated API, not by reading the database inside a container.
+
+The MCP server lives in `backend/pkg/mcp/` with its unit tests; `backend/tests/integration/mcp_test.go` covers token authentication through the production middleware chain. Add a tool there, with unit and integration tests, rather than in `pkg/handlers`.
 
 ## Mobile browser setup
 

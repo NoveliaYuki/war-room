@@ -52,6 +52,21 @@ var ErrPositionTitleRequired = errors.New("position_title is required")
 // ErrQuestionTextRequired indicates an attempted update with blank question text.
 var ErrQuestionTextRequired = errors.New("question text is required")
 
+// validationErrors are errors whose messages describe the caller's own input
+// and are written for end users.
+var validationErrors = []error{ErrInvalidField, ErrPositionTitleRequired, ErrQuestionTextRequired, ErrInvalidMeetingDate}
+
+// IsValidationError reports whether err describes invalid caller input, so its
+// message may be shown to the client.
+func IsValidationError(err error) bool {
+	for _, target := range validationErrors {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
 // NewJobService creates a job service backed by repo and cfg.
 func NewJobService(repo *repository.Repository, cfg *config.Config) *JobService {
 	return &JobService{

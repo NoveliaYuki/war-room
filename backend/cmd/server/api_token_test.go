@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"war-room/backend/pkg/config"
+	"war-room/backend/pkg/database"
 	"war-room/backend/pkg/service"
 )
 
@@ -74,5 +78,43 @@ func TestAPITokenCommandRejectsBadUsageAndReportsErrors(t *testing.T) {
 		if code, stdout, _ := runCommand(failing, args...); code != 1 || stdout != "" {
 			t.Fatalf("args %v code=%d stdout=%q, want 1 with no stdout", args, code, stdout)
 		}
+	}
+}
+
+func TestAPITokenCLIUsesTheConfiguredDatabase(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("WARROOM_DATA_DIR", dataDir)
+	t.Setenv("AUTH_ALLOWED_EMAILS", "cli@example.com")
+	t.Setenv("LOG_LEVEL", "not-a-level")
+	var stdout, stderr bytes.Buffer
+	if code := runAPITokenCLI([]string{"list", "--email", "cli@example.com"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "sign in with Google") {
+		t.Fatalf("list before sign-in code=%d stderr=%q", code, stderr.String())
+	}
+
+	db, err := database.InitDB(config.Load())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, google_sub, email, name, picture_url) VALUES ('cli-user', 'sub', 'cli@example.com', 'CLI', '')`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	stdout.Reset()
+	if code := runAPITokenCLI([]string{"create", "--email", "cli@example.com", "--name", "agent"}, &stdout, &stderr); code != 0 || !strings.HasPrefix(stdout.String(), "wr_") {
+		t.Fatalf("create code=%d stdout prefix=%q", code, stdout.String()[:min(3, stdout.Len())])
+	}
+}
+
+func TestAPITokenCLIReportsAnUnusableDatabase(t *testing.T) {
+	dataDir := t.TempDir()
+	// A directory where the database file belongs cannot be opened as SQLite.
+	if err := os.Mkdir(filepath.Join(dataDir, "jobs.db"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARROOM_DATA_DIR", dataDir)
+	var stdout, stderr bytes.Buffer
+	if code := runAPITokenCLI([]string{"list", "--email", "cli@example.com"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "could not open database") {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
 	}
 }

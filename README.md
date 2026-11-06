@@ -66,6 +66,7 @@ Build the static demo from `frontend/` with `npm run build:demo`. The generated 
 
 - `frontend/` — static HTML, CSS, and JavaScript served by Nginx.
 - `backend/` — Go HTTP API, SQLite migrations, repositories, and services.
+- `backend/pkg/mcp/` — the Model Context Protocol server served at `/api/mcp`, with its tests.
 - `backend/tests/unit/` and `backend/tests/integration/` — backend unit and API integration tests.
 - `frontend/tests/unit/` — frontend unit tests.
 - `e2e/tests/` — Go Playwright browser tests.

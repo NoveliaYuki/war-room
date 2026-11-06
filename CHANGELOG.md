@@ -1,3 +1,21 @@
+Version 0.3.1 — 2026-11-06
+
+# Highlights
+- The MCP server now lives in its own Go package, `backend/pkg/mcp`, with its tests next to it.
+- New integration tests drive `/api/mcp` through the production middleware chain with real personal API tokens.
+
+# What changed
+- Move the MCP tools from `pkg/handlers` into `pkg/mcp`, which depends on a narrow job-service interface; `pkg/handlers` only mounts it.
+- Share the list of user-facing validation errors as `service.IsValidationError`, used by both the JSON API and the MCP tools.
+- Cover every MCP tool's success and error paths, empty lists, schema rejection, request-size limits, and user scoping, at 100% statement coverage for `pkg/mcp`.
+- Add integration tests for token-authenticated MCP and REST calls, cross-user isolation, and rejection of missing, unknown, malformed, revoked, expired, and no-longer-allowed tokens, including that an invalid token never falls back to the session cookie.
+- Test the `api-token` command against a real configured database, and the remaining token storage and request-logging paths.
+- Include `pkg/mcp` in the backend coverage gate.
+- Document where the MCP code lives, and that agents check live data through MCP instead of the container database.
+
+# References
+- [#6](https://github.com/NoveliaYuki/war-room/pull/6) / noissue
+
 Version 0.3.0 — 2026-11-06 · Release: [v0.3.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.3.0)
 
 # Highlights
