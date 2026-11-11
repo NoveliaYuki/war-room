@@ -239,7 +239,7 @@ describe('schedule view', () => {
       stage_type: 'Technical', position_title: 'Engineer', company_name: 'Acme',
     }]);
     await renderScheduleView(root, document.createElement('div'), document.createElement('div'), vi.fn());
-    expect(root.textContent).toMatch(/Tuesday, Oct 13, 2026/);
+    expect(root.textContent).toMatch(/Tue, Oct 13, 2026/);
   });
 
   it('renders empty, current, next, future, past, phone and unsafe URL cases', async () => {

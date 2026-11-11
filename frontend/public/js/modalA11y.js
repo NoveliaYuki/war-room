@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 const FOCUSABLE_SELECTOR = [
   'a[href]:not([tabindex="-1"])',
   'button:not([disabled]):not([tabindex="-1"])',
@@ -49,7 +51,7 @@ export function focusModalContents(modal, focusSelector) {
     modal.removeAttribute("aria-label");
   } else {
     modal.removeAttribute("aria-labelledby");
-    modal.setAttribute("aria-label", "Dialog");
+    modal.setAttribute("aria-label", t("common.dialog"));
   }
 
   const requested = focusSelector ? modal.querySelector(focusSelector) : null;

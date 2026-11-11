@@ -818,6 +818,22 @@ describe('application entry point', () => {
     expect(document.querySelector('#search-input').value).toBe('');
     expect(document.querySelector('#search-period-filter').value).toBe('all');
 
+    const { setLanguage } = await import('../../public/js/i18n.js');
+    const { default: catalan } = await import('../../public/js/locales/ca.js');
+    const rendersBeforeLanguageChange = mocks.renderCardGrid.mock.calls.length;
+    setLanguage('ca', { persist: false });
+    await vi.waitFor(() => expect(mocks.renderCardGrid.mock.calls.length).toBeGreaterThan(rendersBeforeLanguageChange));
+    const sortLabel = document.querySelector('#process-sort-current');
+    expect(sortLabel.textContent).toBe(catalan[sortLabel.dataset.i18n]);
+    expect(document.querySelector('#search-period-current').textContent).toBe('Tots els períodes');
+    expect(document.querySelector('#search-period-menu').textContent).toContain('Gestiona els períodes de cerca');
+    expect(document.querySelector('#process-filter-trigger').getAttribute('aria-label')).toMatch(/^Filtres; /);
+    expect(document.querySelector('#btn-theme-toggle').getAttribute('aria-label')).toMatch(/^Canvia al tema /);
+    expect(document.querySelector('#btn-menu-toggle').getAttribute('aria-label')).toMatch(/^(Obre|Tanca) el menú de navegació$/);
+    setLanguage('en', { persist: false });
+    await flush();
+    expect(document.querySelector('#search-period-current').textContent).toBe('All periods');
+
     document.querySelector('#app-load-retry').remove();
     await import('../../public/js/app.js?missing-retry-control');
     await flush();

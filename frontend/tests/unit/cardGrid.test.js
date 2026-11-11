@@ -77,7 +77,7 @@ describe('status-grouped process cards', () => {
     expect([...container.querySelectorAll('.process-status-group-heading')].map((item) => item.dataset.status))
       .toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
     expect([...container.querySelectorAll('.process-card .status-pill')].map((item) => item.textContent))
-      .toEqual(['accepted', 'ongoing', 'waiting', 'rejected']);
+      .toEqual(['Accepted', 'Ongoing', 'Waiting', 'Rejected']);
     expect(container.querySelectorAll('.quick-add-card')).toHaveLength(4);
     const children = [...container.children];
     const headingIndexes = children.map((item, index) => item.matches('.process-status-group-heading') ? index : -1).filter((index) => index >= 0);

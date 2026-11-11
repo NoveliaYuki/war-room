@@ -3,9 +3,13 @@
  * Loaded as an external module to comply with the Content Security Policy.
  */
 
+import { initializeDocumentLanguage } from "./i18n.js";
+import { bindLanguageSwitches } from "./components/languageSwitch.js";
+import { bindOptionGrids } from "./components/optionGrid.js";
 import { renderDetailLoadingSkeleton, renderScheduleLoadingState } from "./components/loadingViews.js";
 import { activateModal, restoreModalFocus } from "./modalA11y.js";
 import { markLoadingStarted } from "./utils/loadingTransition.js";
+import { bindValidationMessages } from "./utils/validationMessages.js";
 
 /** Restores the saved view's loading shell before requesting application data. */
 function showInitialLoadingView() {
@@ -42,6 +46,10 @@ function showInitialLoadingView() {
   activateModal(modal);
 }
 
+initializeDocumentLanguage();
+bindLanguageSwitches();
+bindOptionGrids();
+bindValidationMessages();
 showInitialLoadingView();
 
 const configuredMode = await fetch("/runtime-config.json", { cache: "no-store" })

@@ -4,15 +4,16 @@ import { icon } from "../icons.js";
 import { escapeAttr, escapeHtml } from "../utils/sanitize.js";
 import { showToast } from "../utils/toast.js";
 import { confirmAction } from "../utils/confirmDialog.js";
+import { getLocale, t } from "../i18n.js";
 
 /** Formats an upload timestamp for the user's locale. */
 export function formatCvUploadDate(value) {
-  if (value === null || value === undefined || value === "") return "Date unavailable";
+  if (value === null || value === undefined || value === "") return t("date.unavailable");
   const numeric = typeof value === "number" || /^\d+(?:\.\d+)?$/.test(String(value)) ? Number(value) : null;
   const timestamp = numeric === null ? value : (numeric < 1e12 ? numeric * 1000 : numeric);
   const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "Date unavailable";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+  if (Number.isNaN(date.getTime())) return t("date.unavailable");
+  return new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function versionsFrom(response) {
@@ -24,12 +25,12 @@ export async function openCvLibrary(modalEl, onClose) {
   const load = async (focusSelector = "#btn-cv-library-upload") => {
     modalEl.innerHTML = `
       <div class="modal-header data-transfer-header">
-        <div><div class="modal-title">CV Library</div><div class="modal-company">Manage the versions of your CV</div></div>
-        <button class="btn-secondary" id="btn-close-cv-library" type="button" aria-label="Close">${icon("close", 18)}</button>
+        <div><div class="modal-title">${escapeHtml(t("cv.title"))}</div><div class="modal-company">${escapeHtml(t("cv.subtitle"))}</div></div>
+        <button class="btn-secondary" id="btn-close-cv-library" type="button" aria-label="${escapeAttr(t("common.close"))}">${icon("close", 18)}</button>
       </div>
       <div class="data-transfer-content cv-library-content">
-        <div class="cv-library-toolbar"><button id="btn-cv-library-upload" class="btn-primary cv-upload-label" type="button">${icon("plus", 15)} Upload new version</button>
-          <input id="cv-library-upload-file" class="cv-library-file-input" type="file" accept="application/pdf,.pdf" aria-label="Choose a new CV version" tabindex="-1" />
+        <div class="cv-library-toolbar"><button id="btn-cv-library-upload" class="btn-primary cv-upload-label" type="button">${icon("plus", 15)} ${escapeHtml(t("cv.upload"))}</button>
+          <input id="cv-library-upload-file" class="cv-library-file-input" type="file" accept="application/pdf,.pdf" aria-label="${escapeAttr(t("cv.chooseFile"))}" tabindex="-1" />
         </div>
         <div class="data-transfer-status" id="cv-library-status" role="status" aria-live="polite"></div>
         <div id="cv-version-list" class="cv-version-list" aria-live="polite"></div>
@@ -41,14 +42,14 @@ export async function openCvLibrary(modalEl, onClose) {
       const file = input.files?.[0];
       if (!file) return;
       const status = modalEl.querySelector("#cv-library-status");
-      status.textContent = "Uploading CV version…";
+      status.textContent = t("cv.uploading");
       input.disabled = true;
       try {
         await api.uploadCvVersion(file);
-        showToast("CV version uploaded", "success");
+        showToast(t("cv.uploaded"), "success");
         await load("#btn-cv-library-upload");
       } catch (error) {
-        status.textContent = error.message || "Failed to upload CV version";
+        status.textContent = error.message || t("cv.uploadFailed");
         input.disabled = false;
         input.value = "";
         modalEl.querySelector("#btn-cv-library-upload")?.focus();
@@ -63,12 +64,12 @@ export async function openCvLibrary(modalEl, onClose) {
     const status = modalEl.querySelector("#cv-library-status");
     if (!list || !status) return;
     list.innerHTML = "";
-    status.textContent = "Loading CV versions…";
+    status.textContent = t("cv.loading");
     try {
       const versions = versionsFrom(await api.getCvVersions());
       status.textContent = "";
       if (!versions.length) {
-        list.innerHTML = `<div class="cv-library-empty" role="status"><span class="cv-library-empty-icon" aria-hidden="true">${icon("fileText", 20)}</span><div class="cv-library-empty-copy"><strong>No CV versions yet</strong><span>Upload your latest CV so it’s ready to attach to applications.</span></div></div>`;
+        list.innerHTML = `<div class="cv-library-empty" role="status"><span class="cv-library-empty-icon" aria-hidden="true">${icon("fileText", 20)}</span><div class="cv-library-empty-copy"><strong>${escapeHtml(t("cv.emptyTitle"))}</strong><span>${escapeHtml(t("cv.emptyBody"))}</span></div></div>`;
         return;
       }
       const latestVersion = versions.reduce((latest, version) => (
@@ -76,13 +77,13 @@ export async function openCvLibrary(modalEl, onClose) {
       ), null);
       list.innerHTML = versions.map((version) => `
         <article class="cv-version-row">
-          <div class="cv-version-info"><div class="cv-version-heading"><strong>CV v${escapeHtml(version.version_number)}</strong>${version.id === latestVersion?.id ? '<span class="cv-version-latest">Latest</span>' : ""}</div>
+          <div class="cv-version-info"><div class="cv-version-heading"><strong>${escapeHtml(t("cv.version", { version: version.version_number }))}</strong>${version.id === latestVersion?.id ? `<span class="cv-version-latest">${escapeHtml(t("cv.latest"))}</span>` : ""}</div>
             <span class="cv-version-filename" title="${escapeAttr(version.original_name)}">${escapeHtml(version.original_name)}</span>
-            <span class="cv-version-date">Uploaded ${escapeHtml(formatCvUploadDate(version.uploaded_at))}</span>
+            <span class="cv-version-date">${escapeHtml(t("cv.uploadedOn", { date: formatCvUploadDate(version.uploaded_at) }))}</span>
           </div>
           <div class="cv-version-actions">
-            <button class="btn-secondary cv-version-download" type="button" data-id="${escapeAttr(version.id)}" data-name="${escapeAttr(version.original_name)}" aria-label="Download CV version ${escapeAttr(version.version_number)}">${icon("download", 14)}<span>Download</span></button>
-            <button class="btn-danger cv-version-delete" type="button" data-id="${escapeAttr(version.id)}" data-version="${escapeAttr(version.version_number)}" aria-label="Delete CV version ${escapeAttr(version.version_number)}">${icon("trash", 14)}<span>Delete</span></button>
+            <button class="btn-secondary cv-version-download" type="button" data-id="${escapeAttr(version.id)}" data-name="${escapeAttr(version.original_name)}" aria-label="${escapeAttr(t("cv.downloadLabel", { version: version.version_number }))}">${icon("download", 14)}<span>${escapeHtml(t("common.download"))}</span></button>
+            <button class="btn-danger cv-version-delete" type="button" data-id="${escapeAttr(version.id)}" data-version="${escapeAttr(version.version_number)}" aria-label="${escapeAttr(t("cv.deleteLabel", { version: version.version_number }))}">${icon("trash", 14)}<span>${escapeHtml(t("common.delete"))}</span></button>
           </div>
         </article>`).join("");
       list.querySelectorAll(".cv-version-download").forEach((button) => button.addEventListener("click", async () => {
@@ -98,7 +99,7 @@ export async function openCvLibrary(modalEl, onClose) {
           anchor.remove();
           window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         } catch (error) {
-          showToast(error.message || "Failed to download CV", "error");
+          showToast(error.message || t("cv.downloadFailed"), "error");
         } finally {
           button.disabled = false;
         }
@@ -106,26 +107,26 @@ export async function openCvLibrary(modalEl, onClose) {
       list.querySelectorAll(".cv-version-delete").forEach((button) => button.addEventListener("click", async () => {
         const fallbackIndex = [...list.querySelectorAll(".cv-version-delete")].indexOf(button);
         const confirmed = await confirmAction({
-          title: `Delete CV v${button.dataset.version}?`,
-          message: "This version will be permanently removed from your CV library.",
-          confirmLabel: "Delete CV",
+          title: t("cv.deleteTitle", { version: button.dataset.version }),
+          message: t("cv.deleteMessage"),
+          confirmLabel: t("cv.deleteConfirm"),
           danger: true,
         });
         if (!confirmed) return;
         button.disabled = true;
         try {
           await api.deleteCvVersion(button.dataset.id);
-          showToast("CV version deleted", "success");
+          showToast(t("cv.deleted"), "success");
           await refreshList();
           focusCvVersionDelete(button.dataset.id, fallbackIndex);
         } catch (error) {
-          status.textContent = error.message || "Failed to delete CV version";
+          status.textContent = error.message || t("cv.deleteFailed");
           button.disabled = false;
         }
       }));
     } catch (error) {
-      status.textContent = error.message || "Failed to load CV versions";
-      list.innerHTML = '<button class="btn-secondary" id="btn-cv-library-retry" type="button">Try again</button>';
+      status.textContent = error.message || t("cv.loadFailed");
+      list.innerHTML = `<button class="btn-secondary" id="btn-cv-library-retry" type="button">${escapeHtml(t("common.tryAgain"))}</button>`;
       list.querySelector("#btn-cv-library-retry").addEventListener("click", refreshList);
     }
   }

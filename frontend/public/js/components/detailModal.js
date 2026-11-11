@@ -22,18 +22,12 @@ import { formatCvUploadDate } from "./cvLibrary.js";
 import { confirmAction } from "../utils/confirmDialog.js";
 import { formatCalendarDate } from "../utils/date.js";
 import { renderMeetingLinkContent } from "../utils/meetingLink.js";
+import { getLocale, t } from "../i18n.js";
+import { arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, isUndisclosedCompany, meetingFormatLabel, stageDescriptionText, stageName, stageTypeLabel, statusLabel } from "../utils/labels.js";
 
 const MEETING_LINK_FIELDS = new Map([
-  ["video", {
-    label: "Meeting Video URL (Teams, Meet, Zoom)",
-    hint: "Displays a direct 1-click 'Join Meeting' button in your schedule and active stage banner.",
-    placeholder: "https://meet.example.com/...",
-  }],
-  ["onsite", {
-    label: "Google Maps Link",
-    hint: "Displays a direct 1-click 'Open in Maps' button in your schedule and active stage banner.",
-    placeholder: "https://maps.app.goo.gl/...",
-  }],
+  ["video", { labelKey: "schedule.form.videoUrl", hintKey: "schedule.form.videoUrlHint", placeholder: "https://meet.example.com/..." }],
+  ["onsite", { labelKey: "schedule.form.mapsUrl", hintKey: "schedule.form.mapsUrlHint", placeholder: "https://maps.app.goo.gl/..." }],
 ]);
 const STAGE_TYPE_CLASSES = new Map([
   ["HR", "HR"],
@@ -50,7 +44,6 @@ const MIN_LEFT_PANE_PX = 340;
 const MIN_RIGHT_PANE_PX = 400;
 const SPLIT_GUTTER_PX = 14;
 const JOB_STATUS_CYCLE = ["waiting", "ongoing", "rejected", "accepted"];
-const JOB_STATUS_LABELS = { waiting: "Waiting", ongoing: "Ongoing", rejected: "Rejected", accepted: "Approved" };
 const OPEN_JOB_STORAGE_KEY = "war-room.open-job";
 const splitResizeObservers = new WeakMap();
 const stageTabResizeObservers = new WeakMap();
@@ -215,15 +208,15 @@ function createModalView(job) {
 
 /** Returns the accessible company label used in the modal header. */
 function renderCompanyLabel(companyName) {
-  return companyName.toLowerCase() === "unknown"
-    ? `<span class="inline-icon-text">${icon("building", 13)} Unknown Company (Undisclosed)</span>`
+  return isUndisclosedCompany(companyName)
+    ? `<span class="inline-icon-text">${icon("building", 13)} ${escapeHtml(t("company.unknownUndisclosed"))}</span>`
     : escapeHtml(companyName);
 }
 
 /** Returns the raw salary value used by inline editing. */
 function getSalaryRawValue(job) {
   if (job.salary_min && job.salary_max) return `${job.salary_min} - ${job.salary_max}`;
-  return job.salary_max || job.salary_min || "Salary undisclosed";
+  return job.salary_max || job.salary_min || t("salary.undisclosed");
 }
 
 /** Returns the next job status in the modal's click cycle. */
@@ -243,7 +236,7 @@ function renderMarkdownField(value, placeholder) {
 }
 
 /** Renders an optional job link only when it uses a safe web URL. */
-function renderJobPostLink(value, emptyLabel = "No link recorded") {
+function renderJobPostLink(value, emptyLabel = t("detail.noLink")) {
   if (safeUrl(value)) return `<a href="${escapeAttr(safeUrl(value))}" target="_blank" rel="noopener noreferrer" class="inline-icon-text detail-external-link" style="word-break: break-all; color: var(--accent-blue);">${escapeHtml(value)} ${icon("arrowUpRight", 11)}</a>`;
   return value ? escapeHtml(value) : `<span style="color: var(--text-muted); font-style: italic; font-size: 12px;">${escapeHtml(emptyLabel)}</span>`;
 }
@@ -251,26 +244,44 @@ function renderJobPostLink(value, emptyLabel = "No link recorded") {
 /** Renders application and first recruiter contact dates. */
 function renderProcessTimeline(job) {
   return `<div class="detail-section process-timeline-section">
-    <div class="section-title"><span>Process Dates</span></div>
+    <div class="section-title"><span>${escapeHtml(t("detail.processDates"))}</span></div>
     <div class="process-timeline-list">
-      <label class="process-timeline-item" for="application-sent-date"><span>Application / CV sent</span><input id="application-sent-date" type="date" data-process-date="application_sent_date" value="${escapeAttr(job.application_sent_date || "")}" /></label>
-      <label class="process-timeline-item" for="recruiter-first-contact-date"><span>First recruiter contact</span><input id="recruiter-first-contact-date" type="date" data-process-date="recruiter_first_contact_date" value="${escapeAttr(job.recruiter_first_contact_date || "")}" /></label>
+      <label class="process-timeline-item" for="application-sent-date"><span>${escapeHtml(t("detail.applicationSent"))}</span><input id="application-sent-date" type="date" data-process-date="application_sent_date" value="${escapeAttr(job.application_sent_date || "")}" /></label>
+      <label class="process-timeline-item" for="recruiter-first-contact-date"><span>${escapeHtml(t("detail.firstRecruiterContact"))}</span><input id="recruiter-first-contact-date" type="date" data-process-date="recruiter_first_contact_date" value="${escapeAttr(job.recruiter_first_contact_date || "")}" /></label>
     </div>
   </div>`;
 }
 
-const JOB_STATUS_HISTORY_LABELS = { waiting: "waiting", ongoing: "ongoing", accepted: "approved", rejected: "rejected" };
+const JOB_STATUS_HISTORY_KEYS = { waiting: "history.movedToWaiting", ongoing: "history.movedToOngoing", accepted: "history.movedToApproved", rejected: "history.movedToRejected" };
+const JOB_HISTORY_ACTION_KEYS = {
+  created: "history.created",
+  "changed company": "history.changedCompany",
+  "changed role": "history.changedRole",
+  "changed role highlights": "history.changedRoleHighlights",
+  "changed job description": "history.changedJobDescription",
+  "changed company and role overview": "history.changedOverview",
+};
+
+/** Translates a stored history action; unrecognized actions are shown as saved. */
+function describeJobHistoryAction(action) {
+  const text = String(action);
+  if (text.startsWith("moved to ")) {
+    const status = text.slice(9);
+    return JOB_STATUS_HISTORY_KEYS[status] ? t(JOB_STATUS_HISTORY_KEYS[status]) : t("history.movedTo", { status });
+  }
+  return JOB_HISTORY_ACTION_KEYS[text] ? t(JOB_HISTORY_ACTION_KEYS[text]) : text;
+}
 
 /** Formats recent activity relatively and older activity as a dated timestamp. */
 function formatJobHistoryDate(timestamp) {
   const date = new Date(Number(timestamp) * 1000);
   if (!Number.isFinite(date.getTime())) return "";
   const elapsedMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
-  if (elapsedMinutes < 1) return "just now";
-  if (elapsedMinutes < 60) return new Intl.RelativeTimeFormat(undefined, { numeric: "always" }).format(-elapsedMinutes, "minute");
+  if (elapsedMinutes < 1) return t("history.justNow");
+  if (elapsedMinutes < 60) return new Intl.RelativeTimeFormat(getLocale(), { numeric: "always" }).format(-elapsedMinutes, "minute");
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return new Intl.RelativeTimeFormat(undefined, { numeric: "always" }).format(-elapsedHours, "hour");
-  const parts = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+  if (elapsedHours < 24) return new Intl.RelativeTimeFormat(getLocale(), { numeric: "always" }).format(-elapsedHours, "hour");
+  const parts = new Intl.DateTimeFormat(getLocale(), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
   return `${values.weekday} ${values.day} ${values.month} ${values.hour}:${values.minute}`;
 }
@@ -283,20 +294,18 @@ function renderJobHistory(job) {
   if (!hasCreatedEvent && createdAt > 0) history.push({ occurred_at: createdAt, action: "created" });
   const hasStatusEvent = history.some((event) => String(event.action || "").startsWith("moved to "));
   const statusChangedAt = Number(job.status_changed_at);
-  if (!hasStatusEvent && statusChangedAt > createdAt && JOB_STATUS_HISTORY_LABELS[job.status]) {
-    history.push({ occurred_at: statusChangedAt, action: `moved to ${JOB_STATUS_HISTORY_LABELS[job.status]}` });
+  if (!hasStatusEvent && statusChangedAt > createdAt && JOB_STATUS_HISTORY_KEYS[job.status]) {
+    history.push({ occurred_at: statusChangedAt, action: `moved to ${job.status}` });
   }
   const entries = history
     .filter((event) => Number(event.occurred_at) > 0 && event.action)
     .sort((a, b) => Number(b.occurred_at) - Number(a.occurred_at));
   if (!entries.length) return "";
   return `<details class="detail-section card-history-section">
-    <summary class="card-history-toggle"><span>Card History</span><span class="card-history-toggle-meta"><span>${entries.length}</span><span class="card-history-chevron">${icon("chevronDown", 12)}</span></span></summary>
+    <summary class="card-history-toggle"><span>${escapeHtml(t("history.title"))}</span><span class="card-history-toggle-meta"><span>${entries.length}</span><span class="card-history-chevron">${icon("chevronDown", 12)}</span></span></summary>
     <ol class="card-history-list">${entries.map((event) => {
       const timestamp = Number(event.occurred_at);
-      const label = String(event.action).startsWith("moved to ")
-        ? `moved to ${JOB_STATUS_HISTORY_LABELS[String(event.action).slice(9)] || String(event.action).slice(9)}`
-        : event.action;
+      const label = describeJobHistoryAction(event.action);
       return `<li class="card-history-item"><span>${escapeHtml(label)}</span><time datetime="${escapeAttr(new Date(timestamp * 1000).toISOString())}">${escapeHtml(formatJobHistoryDate(timestamp))}</time></li>`;
     }).join("")}</ol>
   </details>`;
@@ -306,36 +315,42 @@ function renderJobHistory(job) {
 function renderJobDescription(job) {
   return `<div class="detail-section">
     <div class="section-title">
-      <span class="inline-icon-text">${icon("clipboard", 13)} Original Reachout / Description</span>
-      ${job.description ? '<button class="btn-secondary btn-toggle-reachout" style="padding: 2px 8px; font-size: 11px;">Toggle</button>' : ''}
-      <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="description">Edit</button>
+      <span class="inline-icon-text">${icon("clipboard", 13)} ${escapeHtml(t("detail.originalDescription"))}</span>
+      ${job.description ? `<button class="btn-secondary btn-toggle-reachout" style="padding: 2px 8px; font-size: 11px;">${escapeHtml(t("detail.toggle"))}</button>` : ''}
+      <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="description">${escapeHtml(t("common.edit"))}</button>
     </div>
-    <div id="reachout-text-container" class="editable-description markdown-preview" data-raw-value="${escapeAttr(job.description || '')}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); max-height: 260px; overflow-y: auto; display: none;">${renderMarkdownField(job.description, 'Add the original job posting or recruiter message.')}</div>
+    <div id="reachout-text-container" class="editable-description markdown-preview" data-raw-value="${escapeAttr(job.description || '')}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); max-height: 260px; overflow-y: auto; display: none;">${renderMarkdownField(job.description, t("detail.descriptionEmpty"))}</div>
   </div>`;
 }
 
 /** Renders the general attachment chips. */
 function renderGeneralAttachments(attachments) {
-  if (!attachments.length) return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No additional files attached (e.g. job spec PDF, company research, notes).</div>';
+  if (!attachments.length) return `<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">${escapeHtml(t("detail.noGeneralFiles"))}</div>`;
   return attachments.map((att) => `<div class="attachment-chip">
     <div class="attachment-meta"><span>${icon("fileText", 14)}</span><div>
       <div class="attachment-name" title="${escapeAttr(att.original_name)}">${escapeHtml(att.original_name)}</div>
-      <div class="attachment-size">${(att.file_size / 1024).toFixed(1)} KB • General File</div>
+      <div class="attachment-size">${escapeHtml(formatFileSize(att.file_size))} • ${escapeHtml(t("detail.generalFile"))}</div>
     </div></div>
     <div style="display: flex; gap: 6px;">
-      <a href="${escapeAttr(att.download_url || "#")}" class="stage-action-btn" title="Download" download="${escapeAttr(att.original_name)}">${icon("download", 12)}</a>
-      <button class="stage-action-btn btn-del-attachment" data-id="${escapeAttr(att.id)}" title="Remove">${icon("close", 11)}</button>
+      <a href="${escapeAttr(att.download_url || "#")}" class="stage-action-btn" title="${escapeAttr(t("common.download"))}" download="${escapeAttr(att.original_name)}">${icon("download", 12)}</a>
+      <button class="stage-action-btn btn-del-attachment" data-id="${escapeAttr(att.id)}" title="${escapeAttr(t("common.remove"))}">${icon("close", 11)}</button>
     </div>
   </div>`).join("");
+}
+
+/** Formats an attachment size in kilobytes with the active locale's decimal separator. */
+function formatFileSize(bytes) {
+  const kilobytes = new Intl.NumberFormat(getLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / 1024);
+  return t("detail.fileSizeKb", { size: kilobytes });
 }
 
 /** Renders the selected shared CV version without mixing library management into job details. */
 function renderSelectedCvVersion(job) {
   const version = job.selected_cv_version;
   const summary = version
-    ? `<span class="job-cv-version">CV v${escapeHtml(version.version_number)}${version.original_name ? ` · ${escapeHtml(version.original_name)}` : ""}</span>`
-    : '<span class="job-cv-version is-empty">No CV version selected</span>';
-  return `<div class="job-cv-row" id="job-cv-row"><span class="inline-icon-text">${icon("fileText", 13)} CV sent</span>${summary}<button type="button" class="btn-secondary job-cv-change" aria-label="Change CV version">${version ? "Change" : "Select"}</button><button type="button" class="btn-secondary job-cv-manage">Manage CV versions</button></div>`;
+    ? `<span class="job-cv-version">${escapeHtml(t("cv.version", { version: version.version_number }))}${version.original_name ? ` · ${escapeHtml(version.original_name)}` : ""}</span>`
+    : `<span class="job-cv-version is-empty">${escapeHtml(t("detail.noCvSelected"))}</span>`;
+  return `<div class="job-cv-row" id="job-cv-row"><span class="inline-icon-text">${icon("fileText", 13)} ${escapeHtml(t("detail.cvSent"))}</span>${summary}<button type="button" class="btn-secondary job-cv-change" aria-label="${escapeAttr(t("detail.changeCvVersion"))}">${escapeHtml(t(version ? "detail.change" : "detail.select"))}</button><button type="button" class="btn-secondary job-cv-manage">${escapeHtml(t("detail.manageCvVersions"))}</button></div>`;
 }
 
 /** Renders recruiter metadata for the active stage. */
@@ -343,21 +358,21 @@ function renderStageRecruiterDetails(view) {
   const { stageRecruiterType, stageRecruiterName, stageRecruiterAgency, stageRecruiterContact } = view;
   const contactUrl = safeUrl(stageRecruiterContact);
   const contactValue = !stageRecruiterContact
-    ? '<span style="color: var(--text-muted); font-style: italic;">None recorded</span>'
+    ? `<span style="color: var(--text-muted); font-style: italic;">${escapeHtml(t("detail.noneRecorded"))}</span>`
     : contactUrl
-      ? `<a href="${escapeAttr(contactUrl)}" target="_blank" rel="noopener noreferrer" class="inline-icon-text detail-external-link">${stageRecruiterContact.toLowerCase().includes("linkedin") ? "LinkedIn Profile" : "Contact Link"} ${icon("externalLink", 11)}</a>`
+      ? `<a href="${escapeAttr(contactUrl)}" target="_blank" rel="noopener noreferrer" class="inline-icon-text detail-external-link">${escapeHtml(t(stageRecruiterContact.toLowerCase().includes("linkedin") ? "detail.linkedInProfile" : "detail.contactLink"))} ${icon("externalLink", 11)}</a>`
       : escapeHtml(stageRecruiterContact);
   return `<div class="meta-grid">
-    <div class="meta-item"><span class="meta-label">Relationship / Role</span>
-      <select class="stage-recruiter-source-select" aria-label="Relationship / Role">
-        <option value="none" ${stageRecruiterType === "none" ? "selected" : ""}>Direct / Company Member</option>
-        <option value="internal" ${stageRecruiterType === "internal" ? "selected" : ""}>Internal Recruiter</option>
-        <option value="external" ${stageRecruiterType === "external" ? "selected" : ""}>External Agency / Headhunter</option>
+    <div class="meta-item"><span class="meta-label">${escapeHtml(t("detail.relationship"))}</span>
+      <select class="stage-recruiter-source-select" aria-label="${escapeAttr(t("detail.relationship"))}">
+        <option value="none" ${stageRecruiterType === "none" ? "selected" : ""}>${escapeHtml(t("detail.relationship.none"))}</option>
+        <option value="internal" ${stageRecruiterType === "internal" ? "selected" : ""}>${escapeHtml(t("detail.relationship.internal"))}</option>
+        <option value="external" ${stageRecruiterType === "external" ? "selected" : ""}>${escapeHtml(t("detail.relationship.external"))}</option>
       </select>
     </div>
-    <div class="meta-item"><span class="meta-label">Person's Name</span><span class="meta-value editable-stage-recruiter-name" data-raw-value="${escapeAttr(stageRecruiterName)}">${renderOptionalText(stageRecruiterName, '<span style="color: var(--text-muted); font-style: italic;">No contact name</span>')}</span></div>
-    <div class="meta-item"><span class="meta-label">Agency / Department</span><span class="meta-value editable-stage-recruiter-agency" data-raw-value="${escapeAttr(stageRecruiterAgency)}">${renderOptionalText(stageRecruiterAgency, '<span style="color: var(--text-muted); font-style: italic;">None</span>')}</span></div>
-    <div class="meta-item"><span class="meta-label">Contact / LinkedIn URL</span><span class="meta-value editable-stage-recruiter-contact" data-raw-value="${escapeAttr(stageRecruiterContact)}">${contactValue}</span></div>
+    <div class="meta-item"><span class="meta-label">${escapeHtml(t("detail.personName"))}</span><span class="meta-value editable-stage-recruiter-name" data-raw-value="${escapeAttr(stageRecruiterName)}">${renderOptionalText(stageRecruiterName, `<span style="color: var(--text-muted); font-style: italic;">${escapeHtml(t("detail.noContactName"))}</span>`)}</span></div>
+    <div class="meta-item"><span class="meta-label">${escapeHtml(t("detail.agencyDepartment"))}</span><span class="meta-value editable-stage-recruiter-agency" data-raw-value="${escapeAttr(stageRecruiterAgency)}">${renderOptionalText(stageRecruiterAgency, `<span style="color: var(--text-muted); font-style: italic;">${escapeHtml(t("detail.none"))}</span>`)}</span></div>
+    <div class="meta-item"><span class="meta-label">${escapeHtml(t("detail.contactUrl"))}</span><span class="meta-value editable-stage-recruiter-contact" data-raw-value="${escapeAttr(stageRecruiterContact)}">${contactValue}</span></div>
   </div>`;
 }
 
@@ -365,14 +380,14 @@ function renderStageRecruiterDetails(view) {
 function renderInterviewerRow(interviewer, index) {
   return `<div class="interviewer-row" data-idx="${index}"><div class="interviewer-info">
     <span class="interviewer-name editable-stage-interviewer-name" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.name)}">${escapeHtml(interviewer.name)}</span>
-    <span class="interviewer-role editable-stage-interviewer-role" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.role || "")}">• ${interviewer.role ? escapeHtml(interviewer.role) : "Add role"}</span>
-    <span class="interviewer-note editable-stage-interviewer-note" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.notes || "")}">${interviewer.notes ? `(${escapeHtml(interviewer.notes)})` : '<span style="color: var(--text-muted); font-style: italic;">(Add note)</span>'}</span>
-  </div><button class="stage-action-btn btn-del-stage-interviewer" data-idx="${index}" style="color: var(--text-muted);" title="Remove interviewer" aria-label="Remove ${escapeAttr(interviewer.name)} from this stage">${icon("close", 11)}</button></div>`;
+    <span class="interviewer-role editable-stage-interviewer-role" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.role || "")}">• ${escapeHtml(interviewer.role || t("interviewer.addRole"))}</span>
+    <span class="interviewer-note editable-stage-interviewer-note" data-idx="${index}" data-raw-value="${escapeAttr(interviewer.notes || "")}">${interviewer.notes ? `(${escapeHtml(interviewer.notes)})` : `<span style="color: var(--text-muted); font-style: italic;">(${escapeHtml(t("interviewer.addNote"))})</span>`}</span>
+  </div><button class="stage-action-btn btn-del-stage-interviewer" data-idx="${index}" style="color: var(--text-muted);" title="${escapeAttr(t("interviewer.remove"))}" aria-label="${escapeAttr(t("interviewer.removeLabel", { name: interviewer.name }))}">${icon("close", 11)}</button></div>`;
 }
 
 /** Renders the interviewer roster or its empty state. */
 function renderInterviewerRoster(interviewers) {
-  if (!interviewers.length) return '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No interviewers added for this stage yet.</div>';
+  if (!interviewers.length) return `<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">${escapeHtml(t("interviewer.none"))}</div>`;
   return interviewers.map(renderInterviewerRow).join("");
 }
 
@@ -380,16 +395,14 @@ function renderInterviewerRoster(interviewers) {
 function renderStageAttachmentRows(view) {
   const { stageAttachments, activeStageIndex } = view;
   if (!stageAttachments.length) {
-    return activeStageIndex === 0
-      ? '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No screening documents attached.</div>'
-      : '<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">No files attached for this round (e.g. challenge solutions, notes, presentation).</div>';
+    return `<div style="font-size: 12px; color: var(--text-muted); font-style: italic;">${escapeHtml(t(activeStageIndex === 0 ? "detail.noScreeningDocuments" : "detail.noRoundFiles"))}</div>`;
   }
   return stageAttachments.map((att) => `<div class="attachment-chip"><div class="attachment-meta"><span>${icon("fileText", 14)}</span><div>
     <div class="attachment-name" title="${escapeAttr(att.original_name)}">${escapeHtml(att.original_name)}</div>
-    <div class="attachment-size">${(att.file_size / 1024).toFixed(1)} KB • ${activeStageIndex === 0 ? "Screening Document" : `Step ${activeStageIndex + 1}`}</div>
+    <div class="attachment-size">${escapeHtml(formatFileSize(att.file_size))} • ${escapeHtml(activeStageIndex === 0 ? t("detail.screeningDocument") : t("stage.step", { number: activeStageIndex + 1 }))}</div>
   </div></div><div style="display: flex; gap: 6px;">
-    <a href="${escapeAttr(att.download_url || "#")}" class="stage-action-btn" title="Download" download="${escapeAttr(att.original_name)}">${icon("download", 12)}</a>
-    <button class="stage-action-btn btn-del-attachment" data-id="${escapeAttr(att.id)}" title="Remove">${icon("close", 11)}</button>
+    <a href="${escapeAttr(att.download_url || "#")}" class="stage-action-btn" title="${escapeAttr(t("common.download"))}" download="${escapeAttr(att.original_name)}">${icon("download", 12)}</a>
+    <button class="stage-action-btn btn-del-attachment" data-id="${escapeAttr(att.id)}" title="${escapeAttr(t("common.remove"))}">${icon("close", 11)}</button>
   </div></div>`).join("");
 }
 
@@ -505,32 +518,28 @@ function renderModalHeader(view) {
       <div class="modal-header-main">
         <div class="modal-avatar">${avatarHtml}</div>
         <div class="modal-title-area">
-          <div class="modal-company ${job.company_name.toLowerCase() === 'unknown' ? 'is-unknown' : ''}">
-            <span class="editable-company-name" data-raw-value="${escapeAttr(job.company_name)}">${renderCompanyLabel(job.company_name)}</span>
-            <button type="button" class="editable-job-status" aria-label="Job status: ${escapeAttr(JOB_STATUS_LABELS[job.status] || job.status)}. Click to change status." title="Click to cycle job status"><span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(JOB_STATUS_LABELS[job.status] || job.status)}</span></button>
+          <div class="modal-company ${isUndisclosedCompany(job.company_name) ? 'is-unknown' : ''}">
+            <span class="editable-company-name" data-raw-value="${escapeAttr(editableCompanyName(job.company_name))}">${renderCompanyLabel(job.company_name)}</span>
+            <button type="button" class="editable-job-status" aria-label="${escapeAttr(t("detail.statusLabel", { status: detailStatusLabel(job.status) }))}" title="${escapeAttr(t("detail.statusTitle"))}"><span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(detailStatusLabel(job.status))}</span></button>
           </div>
           <h2 class="modal-title editable-position-title" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h2>
         </div>
         <div class="modal-meta-pills">
-            <button type="button" class="salary-tag editable-salary ${job.salary_type === 'unknown' ? 'undisclosed' : ''} inline-icon-text" data-raw-value="${escapeAttr(getSalaryRawValue(job))}" aria-label="Salary: ${escapeAttr(formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency))}. Click to edit." title="Click to edit salary">
+            <button type="button" class="salary-tag editable-salary ${job.salary_type === 'unknown' ? 'undisclosed' : ''} inline-icon-text" data-raw-value="${escapeAttr(getSalaryRawValue(job))}" aria-label="${escapeAttr(t("detail.salaryLabel", { salary: formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency) }))}" title="${escapeAttr(t("detail.salaryTitle"))}" data-edit-titled>
               ${escapeHtml(formatSalary(job.salary_type, job.salary_min, job.salary_max, job.salary_currency))}
             </button>
-            <button type="button" class="referral-tag ${job.is_referral ? 'is-referral' : 'not-referral'} editable-modal-referral inline-icon-text" data-id="${escapeAttr(job.id)}" title="Click to toggle referral status" aria-label="${job.is_referral ? 'Referral' : 'No referral'}. Click to toggle.">
-              ${icon("userCheck", 12)} ${job.is_referral ? 'Referral' : 'No referral'}
+            <button type="button" class="referral-tag ${job.is_referral ? 'is-referral' : 'not-referral'} editable-modal-referral inline-icon-text" data-id="${escapeAttr(job.id)}" title="${escapeAttr(t("detail.referralTitle"))}" aria-label="${escapeAttr(t("detail.referralLabel", { label: t(job.is_referral ? "referral.yes" : "referral.none") }))}">
+              ${icon("userCheck", 12)} ${escapeHtml(t(job.is_referral ? "referral.yes" : "referral.none"))}
             </button>
-            ${renderJobMetadataTag("employment-type-tag", "Employment type", "employment_type", job.employment_type, {
-              permanent: "Permanent",
-              b2b: "B2B",
-              permanent_b2b: "Permanent / B2B",
+            ${renderJobMetadataTag("employment-type-tag", "employment_type", employmentTypeLabel(job.employment_type), {
+              title: t("detail.employmentTypeTitle"), field: t("detail.employmentType"),
             })}
-            ${renderJobMetadataTag("work-arrangement-tag", "Work arrangement", "work_arrangement", job.work_arrangement, {
-              remote: "Remote",
-              hybrid: "Hybrid",
-              on_site: "On-site",
+            ${renderJobMetadataTag("work-arrangement-tag", "work_arrangement", arrangementLabel(job.work_arrangement), {
+              title: t("detail.workArrangementTitle"), field: t("detail.workArrangement"),
             })}
         </div>
         <div class="modal-header-actions">
-          <button class="modal-close-btn" type="button" aria-label="Close dialog" title="Close (Esc)">${icon("close", 14)}</button>
+          <button class="modal-close-btn" type="button" aria-label="${escapeAttr(t("common.closeDialog"))}" title="${escapeAttr(t("detail.closeTitle"))}">${icon("close", 14)}</button>
         </div>
       </div>
     </div>
@@ -539,10 +548,15 @@ function renderModalHeader(view) {
   `;
 }
 
+/** Returns the detail header's status wording, where accepted reads as approved. */
+function detailStatusLabel(status) {
+  return status === "accepted" ? t("detail.statusApproved") : statusLabel(status);
+}
+
 /** Renders employment and work arrangement badges in the job detail header. */
-function renderJobMetadataTag(className, title, field, value, labels) {
-  const label = labels[value] || "Not specified";
-  return `<button type="button" class="${className}" data-cycle-field="${field}" title="Click to change ${escapeAttr(title.toLowerCase())}" aria-label="${escapeAttr(title)}: ${escapeAttr(label)}. Click to change.">${escapeHtml(label)}</button>`;
+function renderJobMetadataTag(className, field, valueLabel, labels) {
+  const label = valueLabel || t("detail.notSpecified");
+  return `<button type="button" class="${className}" data-cycle-field="${field}" title="${escapeAttr(labels.title)}" aria-label="${escapeAttr(t("detail.cycleLabel", { field: labels.field, value: label }))}">${escapeHtml(label)}</button>`;
 }
 
 /** Renders employer and role information inside the general process section. */
@@ -550,43 +564,43 @@ function renderJobDetailsSection(view) {
   const { job, generalAttachments } = view;
   return `
         <section class="process-subsection job-details-group">
-          <div class="process-subsection-header"><span class="group-title inline-icon-text">${icon("building", 13)} Job Details</span></div>
+          <div class="process-subsection-header"><span class="group-title inline-icon-text">${icon("building", 13)} ${escapeHtml(t("detail.jobDetails"))}</span></div>
 
           ${renderProcessTimeline(job)}
           ${renderJobHistory(job)}
 
           <div class="detail-section">
-            <div class="section-title"><span>Role Highlights</span></div>
+            <div class="section-title"><span>${escapeHtml(t("detail.roleHighlights"))}</span></div>
             <div class="keyword-note-box editable-keywords" data-raw-value="${escapeAttr(job.keyword_note || '')}">
-              ${renderOptionalText(job.keyword_note, '<span style="color: var(--text-muted); font-style: italic;">No keywords added</span>')}
+              ${renderOptionalText(job.keyword_note, `<span style="color: var(--text-muted); font-style: italic;">${escapeHtml(t("detail.noKeywords"))}</span>`)}
             </div>
           </div>
 
           <div class="detail-section technology-detail-section">
-            <div class="section-title"><span class="inline-icon-text">${icon("fileText", 13)} Tech Stack</span><span class="technology-count">${(job.technologies || []).length}</span></div>
+            <div class="section-title"><span class="inline-icon-text">${icon("fileText", 13)} ${escapeHtml(t("detail.techStack"))}</span><span class="technology-count">${(job.technologies || []).length}</span></div>
             <div class="technology-assigned-list">${renderTechnologyChips(job.technologies || [])}</div>
-            <label class="technology-search-label" for="technology-assignment-search">Add technologies from the catalog</label>
-            <input id="technology-assignment-search" class="technology-assignment-search" type="search" autocomplete="off" placeholder="Search technologies…" aria-controls="technology-assignment-options" />
-            <div id="technology-assignment-options" class="technology-assignment-options" role="listbox" aria-label="Available technologies" hidden></div>
-            <button type="button" class="btn-secondary technology-catalog-manage">Manage technology catalog</button>
+            <label class="technology-search-label" for="technology-assignment-search">${escapeHtml(t("detail.addTechnologies"))}</label>
+            <input id="technology-assignment-search" class="technology-assignment-search" type="search" autocomplete="off" placeholder="${escapeAttr(t("detail.searchTechnologies"))}" aria-controls="technology-assignment-options" />
+            <div id="technology-assignment-options" class="technology-assignment-options" role="listbox" aria-label="${escapeAttr(t("detail.availableTechnologies"))}" hidden></div>
+            <button type="button" class="btn-secondary technology-catalog-manage">${escapeHtml(t("technologies.manageCatalog"))}</button>
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span class="inline-icon-text">${icon("externalLink", 12)} Job Post & Spec Links</span></div>
+            <div class="section-title"><span class="inline-icon-text">${icon("externalLink", 12)} ${escapeHtml(t("detail.jobLinks"))}</span></div>
             <div class="job-post-link-fields">
               <div class="job-post-link-field">
-                <div class="meta-label">LinkedIn Post</div>
+                <div class="meta-label">${escapeHtml(t("detail.linkedInPost"))}</div>
                 <div class="meta-item" style="background: var(--bg-surface-elevated); padding: 9px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
                   <span class="meta-value editable-job-post-url" data-raw-value="${escapeAttr(job.job_post_url || '')}">
-                    ${renderJobPostLink(job.job_post_url, "No LinkedIn post link recorded")}
+                    ${renderJobPostLink(job.job_post_url, t("detail.noLinkedInPost"))}
                   </span>
                 </div>
               </div>
               <div class="job-post-link-field">
-                <div class="meta-label">Company Application Page</div>
+                <div class="meta-label">${escapeHtml(t("detail.applicationPage"))}</div>
                 <div class="meta-item" style="background: var(--bg-surface-elevated); padding: 9px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
                   <span class="meta-value editable-application-url" data-raw-value="${escapeAttr(job.application_url || '')}">
-                    ${renderJobPostLink(job.application_url, "No company application link recorded")}
+                    ${renderJobPostLink(job.application_url, t("detail.noApplicationLink"))}
                   </span>
                 </div>
               </div>
@@ -595,19 +609,19 @@ function renderJobDetailsSection(view) {
 
           <div class="detail-section">
             <div class="section-title">
-              <span class="inline-icon-text">${icon("building", 13)} Company & Role Overview</span>
-              <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="company_overview" aria-label="Edit company and role overview">Edit</button>
+              <span class="inline-icon-text">${icon("building", 13)} ${escapeHtml(t("form.companyOverview"))}</span>
+              <button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="company_overview" aria-label="${escapeAttr(t("detail.editOverview"))}">${escapeHtml(t("common.edit"))}</button>
             </div>
-            <div id="company-overview-display" class="editable-overview markdown-preview" data-raw-value="${escapeAttr(job.company_overview || '')}">${renderMarkdownField(job.company_overview, 'Summarize what the company does and what the role involves.')}</div>
+            <div id="company-overview-display" class="editable-overview markdown-preview" data-raw-value="${escapeAttr(job.company_overview || '')}">${renderMarkdownField(job.company_overview, t("detail.overviewEmpty"))}</div>
           </div>
 
           ${renderJobDescription(job)}
 
           <div class="detail-section">
             <div class="section-title">
-              <span class="inline-icon-text">${icon("fileText", 13)} Files (${generalAttachments.length})</span>
+              <span class="inline-icon-text">${icon("fileText", 13)} ${escapeHtml(t("detail.files", { count: generalAttachments.length }))}</span>
               <label class="btn-secondary inline-icon-text" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
-                ${icon("plus", 11)} Attach
+                ${icon("plus", 11)} ${escapeHtml(t("detail.attach"))}
                 <input type="file" id="file-upload-general-input" style="display: none;" />
               </label>
             </div>
@@ -621,34 +635,34 @@ function renderJobDetailsSection(view) {
 }
 
 function renderTechnologyChips(technologies) {
-  if (!technologies.length) return '<span class="technology-empty">No technologies assigned yet.</span>';
-  return technologies.map((technology) => `<button type="button" class="technology-assigned-chip" data-remove-technology="${escapeAttr(technology.id)}" aria-label="Remove ${escapeAttr(technology.name)} from this process">${escapeHtml(technology.name)} <span aria-hidden="true">×</span></button>`).join("");
+  if (!technologies.length) return `<span class="technology-empty">${escapeHtml(t("detail.noTechnologies"))}</span>`;
+  return technologies.map((technology) => `<button type="button" class="technology-assigned-chip" data-remove-technology="${escapeAttr(technology.id)}" aria-label="${escapeAttr(t("detail.removeTechnology", { name: technology.name }))}">${escapeHtml(technology.name)} <span aria-hidden="true">×</span></button>`).join("");
 }
 
 /** Renders personal preparation notes within the general process section. */
 function renderMyNotesSection(job) {
   return `
         <section class="process-subsection my-notes-group">
-          <div class="process-subsection-header"><span class="group-title inline-icon-text">${icon("fileText", 13)} My Notes</span></div>
+          <div class="process-subsection-header"><span class="group-title inline-icon-text">${icon("fileText", 13)} ${escapeHtml(t("detail.myNotes"))}</span></div>
 
           <div class="detail-section">
-            <div class="section-title"><span>${icon("compass", 13)} Why I Want to Change Company</span></div>
-            <div id="reasons-to-change-display" class="note-value editable-reasons-to-change" data-raw-value="${escapeAttr(job.reasons_to_change || '')}">${renderOptionalText(job.reasons_to_change, '<span class="empty-note">Add your motivations and talking points.</span>')}</div>
+            <div class="section-title"><span>${icon("compass", 13)} ${escapeHtml(t("detail.reasonsToChange"))}</span></div>
+            <div id="reasons-to-change-display" class="note-value editable-reasons-to-change" data-raw-value="${escapeAttr(job.reasons_to_change || '')}">${renderOptionalText(job.reasons_to_change, `<span class="empty-note">${escapeHtml(t("detail.reasonsEmpty"))}</span>`)}</div>
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span>${icon("user", 13)} Relevant Experience</span><button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="experience_notes">Edit</button></div>
-            <div id="experience-notes-display" class="note-value editable-experience-notes markdown-preview" data-raw-value="${escapeAttr(job.experience_notes || '')}">${renderMarkdownField(job.experience_notes, 'Add experience and examples relevant to this role.')}</div>
+            <div class="section-title"><span>${icon("user", 13)} ${escapeHtml(t("form.relevantExperience"))}</span><button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="experience_notes">${escapeHtml(t("common.edit"))}</button></div>
+            <div id="experience-notes-display" class="note-value editable-experience-notes markdown-preview" data-raw-value="${escapeAttr(job.experience_notes || '')}">${renderMarkdownField(job.experience_notes, t("detail.experienceEmpty"))}</div>
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span>${icon("euro", 13)} Expected Salary for This Offer</span></div>
-            <div id="expected-salary-display" class="note-value note-value-compact editable-expected-salary" data-raw-value="${escapeAttr(job.expected_salary || '')}">${renderOptionalText(job.expected_salary, '<span class="empty-note">Add your target for this specific opportunity.</span>')}</div>
+            <div class="section-title"><span>${icon("euro", 13)} ${escapeHtml(t("form.expectedSalary"))}</span></div>
+            <div id="expected-salary-display" class="note-value note-value-compact editable-expected-salary" data-raw-value="${escapeAttr(job.expected_salary || '')}">${renderOptionalText(job.expected_salary, `<span class="empty-note">${escapeHtml(t("detail.expectedSalaryEmpty"))}</span>`)}</div>
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span>${icon("fileText", 13)} My Notes / Anything Else</span><button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="interview_notes">Edit</button></div>
-            <div id="interview-notes-display" class="note-value editable-interview-notes markdown-preview" data-raw-value="${escapeAttr(job.interview_notes || '')}">${renderMarkdownField(job.interview_notes, 'Write anything else you want to remember about this selection process.')}</div>
+            <div class="section-title"><span>${icon("fileText", 13)} ${escapeHtml(t("detail.otherNotes"))}</span><button type="button" class="btn-secondary markdown-field-edit" data-markdown-field="interview_notes">${escapeHtml(t("common.edit"))}</button></div>
+            <div id="interview-notes-display" class="note-value editable-interview-notes markdown-preview" data-raw-value="${escapeAttr(job.interview_notes || '')}">${renderMarkdownField(job.interview_notes, t("detail.otherNotesEmpty"))}</div>
           </div>
         </section>
   `;
@@ -659,8 +673,8 @@ function renderGeneralProcessSection(view) {
   return `
     <div class="left-pane-section-group general-process-group">
       <div class="group-header">
-        <span class="group-title inline-icon-text">${icon("building", 13)} General Selection Process</span>
-        <button class="btn-secondary btn-edit-details inline-icon-text" style="padding: 2px 8px; font-size: 11px;">${icon("edit", 11)} Edit Details</button>
+        <span class="group-title inline-icon-text">${icon("building", 13)} ${escapeHtml(t("detail.generalProcess"))}</span>
+        <button class="btn-secondary btn-edit-details inline-icon-text" style="padding: 2px 8px; font-size: 11px;">${icon("edit", 11)} ${escapeHtml(t("detail.editDetails"))}</button>
       </div>
       ${renderJobDetailsSection(view)}
       ${renderMyNotesSection(view.job)}
@@ -677,44 +691,44 @@ function renderActiveStageFocus(view) {
         <div class="left-pane-section-group stage-focus-group">
           <div class="group-header">
             <div class="inline-icon-text" style="min-width: 0; flex: 1; align-items: center; flex-wrap: wrap; gap: 6px;">
-              <span class="group-title inline-icon-text">${icon("user", 13)} Round Details</span>
+              <span class="group-title inline-icon-text">${icon("user", 13)} ${escapeHtml(t("stage.roundDetails"))}</span>
               <span style="color: var(--text-muted); font-size: 11px;">•</span>
-              <span class="stage-round-subtitle" title="Step ${activeStageIndex + 1}: ${escapeAttr(activeStage.custom_title || activeStage.stage_type)}">Step ${activeStageIndex + 1}: ${escapeHtml(activeStage.custom_title || activeStage.stage_type)}</span>
+              <span class="stage-round-subtitle" title="${escapeAttr(t("stage.stepTitle", { number: activeStageIndex + 1, title: stageName(activeStage) }))}">${escapeHtml(t("stage.stepTitle", { number: activeStageIndex + 1, title: stageName(activeStage) }))}</span>
             </div>
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span class="inline-icon-text">${icon("fileText", 13)} Conversation Notes</span></div>
-            <div class="note-value editable-stage-notes" data-raw-value="${escapeAttr(activeStage.notes || "")}">${renderOptionalText(activeStage.notes, '<span class="empty-note">Double-click to add notes from this conversation.</span>')}</div>
+            <div class="section-title"><span class="inline-icon-text">${icon("fileText", 13)} ${escapeHtml(t("stage.conversationNotes"))}</span></div>
+            <div class="note-value editable-stage-notes" data-raw-value="${escapeAttr(activeStage.notes || "")}">${renderOptionalText(activeStage.notes, `<span class="empty-note">${escapeHtml(t("stage.notesEmpty"))}</span>`)}</div>
           </div>
 
           <div class="detail-section">
-            <div class="section-title"><span class="inline-icon-text">${icon("user", 13)} Recruiter / Contact for this Round</span></div>
+            <div class="section-title"><span class="inline-icon-text">${icon("user", 13)} ${escapeHtml(t("stage.roundContact"))}</span></div>
             ${renderStageRecruiterDetails(view)}
           </div>
 
           <div class="detail-section">
             <div class="section-title">
-              <span class="inline-icon-text">${icon("users", 13)} Interviewers in this Round (${stageInterviewers.length})</span>
-              <button type="button" class="btn-secondary btn-add-stage-interviewer inline-icon-text">${icon("plus", 11)} Add Interviewer</button>
+              <span class="inline-icon-text">${icon("users", 13)} ${escapeHtml(t("interviewer.heading", { count: stageInterviewers.length }))}</span>
+              <button type="button" class="btn-secondary btn-add-stage-interviewer inline-icon-text">${icon("plus", 11)} ${escapeHtml(t("interviewer.add"))}</button>
             </div>
             <div class="interviewers-list">${renderInterviewerRoster(stageInterviewers)}</div>
             <form class="stage-interviewer-form" hidden>
-              <label>Interviewer name<input name="name" type="text" maxlength="120" autocomplete="name" required /></label>
-              <label>Role or specialty<input name="role" type="text" maxlength="120" placeholder="e.g. Engineering Lead" /></label>
-              <label class="stage-interviewer-notes">Notes<textarea name="notes" rows="2" maxlength="1000" placeholder="Optional context to remember"></textarea></label>
+              <label>${escapeHtml(t("interviewer.name"))}<input name="name" type="text" maxlength="120" autocomplete="name" required /></label>
+              <label>${escapeHtml(t("interviewer.role"))}<input name="role" type="text" maxlength="120" placeholder="${escapeAttr(t("interviewer.rolePlaceholder"))}" /></label>
+              <label class="stage-interviewer-notes">${escapeHtml(t("interviewer.notes"))}<textarea name="notes" rows="2" maxlength="1000" placeholder="${escapeAttr(t("interviewer.notesPlaceholder"))}"></textarea></label>
               <div class="stage-interviewer-form-actions">
-                <button class="btn-secondary" type="button" data-cancel-interviewer>Cancel</button>
-                <button class="btn-primary" type="submit">Save interviewer</button>
+                <button class="btn-secondary" type="button" data-cancel-interviewer>${escapeHtml(t("common.cancel"))}</button>
+                <button class="btn-primary" type="submit">${escapeHtml(t("interviewer.save"))}</button>
               </div>
             </form>
           </div>
 
           <div class="detail-section">
             <div class="section-title">
-              <span class="inline-icon-text">${icon("fileText", 13)} ${activeStageIndex === 0 ? 'Screening Documents' : `Step ${activeStageIndex + 1} Documents`} (${stageAttachments.length})</span>
+              <span class="inline-icon-text">${icon("fileText", 13)} ${escapeHtml(activeStageIndex === 0 ? t("stage.screeningDocuments", { count: stageAttachments.length }) : t("stage.stepDocuments", { number: activeStageIndex + 1, count: stageAttachments.length }))}</span>
               ${activeStageIndex > 0 ? `<label class="btn-secondary inline-icon-text" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
-                ${icon("plus", 11)} Attach
+                ${icon("plus", 11)} ${escapeHtml(t("detail.attach"))}
                 <input type="file" id="file-upload-stage-input" style="display: none;" />
               </label>` : ''}
             </div>
@@ -734,23 +748,23 @@ function renderStageTabs(view) {
   return `
         <div class="stage-navigation">
           <div class="stage-tabs-scroll">
-            <div class="stages-tab-bar" role="tablist" aria-label="Interview stages">
+            <div class="stages-tab-bar" role="tablist" aria-label="${escapeAttr(t("stage.tabsLabel"))}">
               ${stages
                 .map(
                   (s, idx) => `
             <button type="button" id="stage-tab-${idx}" class="stage-tab-item ${idx === activeStageIndex ? 'active' : ''}" role="tab" aria-selected="${idx === activeStageIndex}" aria-controls="stage-panel" tabindex="${idx === activeStageIndex ? '0' : '-1'}" data-idx="${idx}">
               <span class="stage-tab-index">${idx + 1}</span>
-              <span>${escapeHtml(s.custom_title || s.stage_type)}</span>
-              ${s.status === 'current' ? '<span class="stage-current-chip">Current</span>' : ''}
+              <span>${escapeHtml(stageName(s))}</span>
+              ${s.status === 'current' ? `<span class="stage-current-chip">${escapeHtml(t("stage.current"))}</span>` : ''}
               ${s.status === 'completed' ? '<span class="stage-tab-status-icon">✓</span>' : ''}
-              <span class="stage-tab-qcount">${(s.questions || []).length} Qs</span>
+              <span class="stage-tab-qcount">${escapeHtml(t("stage.questionCount", { count: (s.questions || []).length }))}</span>
             </button>
           `
                 )
                 .join('')}
             </div>
           </div>
-          ${stages.length ? `<button class="btn-tab-add-stage inline-icon-text" id="btn-add-stage-tab" type="button" aria-label="Add interview stage" title="Add interview stage">${icon("plus", 11)} Add Stage</button>` : ""}
+          ${stages.length ? `<button class="btn-tab-add-stage inline-icon-text" id="btn-add-stage-tab" type="button" aria-label="${escapeAttr(t("stage.addLabel"))}" title="${escapeAttr(t("stage.addLabel"))}">${icon("plus", 11)} ${escapeHtml(t("stage.add"))}</button>` : ""}
         </div>
 
 
@@ -801,12 +815,8 @@ function bindMobileDetailPaneSwitch(modalEl) {
 
 /** Renders one cohesive section of the job detail modal. */
 function renderStageSchedule(stage) {
-  const formats = new Map([
-    ["phone", `${icon("phone", 12)} Phone Call`],
-    ["onsite", `${icon("building", 12)} On-Site`],
-    ["video", `${icon("video", 12)} Video Call`],
-  ]);
-  const format = formats.get(stage.meeting_type) || formats.get("video");
+  const icons = new Map([["phone", "phone"], ["onsite", "building"], ["video", "video"]]);
+  const format = `${icon(icons.get(stage.meeting_type) || "video", 12)} ${escapeHtml(meetingFormatLabel(stage.meeting_type))}`;
   const meetingType = getMeetingTypeClass(stage.meeting_type);
   const formatTag = `<span class="meeting-format-pill pill-${meetingType} inline-icon-text">${format}</span>`;
   if (!stage.meeting_date && !stage.meeting_time) {
@@ -819,9 +829,9 @@ function renderStageSchedule(stage) {
 /** Renders a stage's meeting link, or a prompt for an on-site meeting still missing its Maps link. */
 function renderStageMeetingLink(stage) {
   const meetingUrl = safeUrl(stage.meeting_url);
-  if (meetingUrl) return `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-meeting-inline inline-icon-text">${renderMeetingLinkContent(stage.meeting_type, "Join Call", 12)}</a>`;
+  if (meetingUrl) return `<a href="${escapeAttr(meetingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-join-meeting-inline inline-icon-text">${renderMeetingLinkContent(stage.meeting_type, t("meeting.joinCall"), 12)}</a>`;
   if (stage.meeting_type !== "onsite") return "";
-  return `<button type="button" class="btn-add-maps-link inline-icon-text">${icon("pin", 12)} Add Maps Link</button>`;
+  return `<button type="button" class="btn-add-maps-link inline-icon-text">${icon("pin", 12)} ${escapeHtml(t("meeting.addMapsLink"))}</button>`;
 }
 
 /** Maps a meeting format to an allowed style class suffix. */
@@ -833,14 +843,14 @@ function getMeetingTypeClass(type) {
 function renderStageActionButtons(view) {
   const { activeStage, activeStageIndex, stages } = view;
   const current = activeStage.status === "current";
-  const stageName = activeStage.custom_title || activeStage.stage_type;
-  const moveDown = activeStageIndex < stages.length - 1 ? `<button class="stage-action-btn" id="btn-move-stage-down" title="Move Down" aria-label="Move ${escapeAttr(stageName)} stage down">${icon("chevronDown", 12)}</button>` : "";
+  const name = stageName(activeStage);
+  const moveDown = activeStageIndex < stages.length - 1 ? `<button class="stage-action-btn" id="btn-move-stage-down" title="${escapeAttr(t("stage.moveDownShort"))}" aria-label="${escapeAttr(t("stage.moveDownLabel", { stage: name }))}">${icon("chevronDown", 12)}</button>` : "";
   const currentLabel = current
-    ? `${icon("pin", 12)} <span class="stage-current-label-full">Current Step</span><span class="stage-current-label-compact">Current</span> ${icon("check", 12)}`
-    : `${icon("target", 12)} <span class="stage-current-label-full">Set as Current Step</span><span class="stage-current-label-compact">Set Current</span>`;
-  const scheduleLabel = activeStage.meeting_date || activeStage.meeting_time ? "Edit Schedule" : "Add Schedule";
+    ? `${icon("pin", 12)} <span class="stage-current-label-full">${escapeHtml(t("stage.currentStep"))}</span><span class="stage-current-label-compact">${escapeHtml(t("stage.current"))}</span> ${icon("check", 12)}`
+    : `${icon("target", 12)} <span class="stage-current-label-full">${escapeHtml(t("stage.setCurrentStep"))}</span><span class="stage-current-label-compact">${escapeHtml(t("stage.setCurrent"))}</span>`;
+  const scheduleLabel = escapeHtml(t(activeStage.meeting_date || activeStage.meeting_time ? "stage.editSchedule" : "stage.addSchedule"));
   const scheduleIcon = activeStage.meeting_date || activeStage.meeting_time ? "edit" : "calendar";
-  return `<button class="btn-stage-current ${current ? "is-current" : ""}" id="btn-toggle-current-stage" title="Click to mark this as your current step in the process"><span class="inline-icon-text">${currentLabel}</span></button><button type="button" class="stage-action-btn btn-edit-meeting-schedule inline-icon-text" title="${scheduleLabel}">${icon(scheduleIcon, 11)} ${scheduleLabel}</button>${moveDown}<button class="stage-action-btn" id="btn-delete-stage" title="Delete Stage" aria-label="Delete ${escapeAttr(stageName)} stage" style="color: var(--status-rejected);">${icon("close", 12)}</button>`;
+  return `<button class="btn-stage-current ${current ? "is-current" : ""}" id="btn-toggle-current-stage" title="${escapeAttr(t("stage.setCurrentTitle"))}"><span class="inline-icon-text">${currentLabel}</span></button><button type="button" class="stage-action-btn btn-edit-meeting-schedule inline-icon-text" title="${scheduleLabel}">${icon(scheduleIcon, 11)} ${scheduleLabel}</button>${moveDown}<button class="stage-action-btn" id="btn-delete-stage" title="${escapeAttr(t("stage.deleteTitle"))}" aria-label="${escapeAttr(t("stage.deleteLabel", { stage: name }))}" style="color: var(--status-rejected);">${icon("close", 12)}</button>`;
 }
 
 /** Renders a single question row in the stage workspace. */
@@ -848,56 +858,57 @@ function renderStageQuestion(question) {
   const questionLabel = escapeAttr(question.question);
   return `<div class="question-item" data-qid="${escapeAttr(question.id)}"><div class="question-row-top">
     <div class="question-text editable-question-text" data-qid="${escapeAttr(question.id)}" data-raw-value="${questionLabel}" style="font-weight: 500; font-size: 14px;">${escapeHtml(question.question)}</div>
-    <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="Delete question" aria-label="Delete interview question: ${questionLabel}">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="Drag to reorder questions" aria-label="Reorder interview question: ${questionLabel}">${icon("gripLines", 14)}</button></div>
-  </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" aria-label="Notes for interview question: ${questionLabel}" placeholder="Log the interviewer's answer or your notes...">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
+    <div style="display: flex; align-items: center; gap: 4px;"><button type="button" class="question-delete-btn q-del" data-qid="${escapeAttr(question.id)}" title="${escapeAttr(t("questions.delete"))}" aria-label="${escapeAttr(t("questions.deleteLabel", { question: question.question }))}">${icon("close", 11)}</button><button type="button" class="question-drag-handle q-grip" data-qid="${escapeAttr(question.id)}" title="${escapeAttr(t("questions.dragHint"))}" aria-label="${escapeAttr(t("questions.reorderLabel", { question: question.question }))}">${icon("gripLines", 14)}</button></div>
+  </div><textarea class="question-answer-box q-notes" data-qid="${escapeAttr(question.id)}" aria-label="${escapeAttr(t("questions.notesLabel", { question: question.question }))}" placeholder="${escapeAttr(t("questions.answerPlaceholder"))}">${escapeHtml(question.answer_notes || "")}</textarea></div>`;
 }
 
 /** Renders questions or the stage question empty state. */
 function renderStageQuestions(questions) {
-  if (!questions.length) return '<div style="text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px;">No questions added yet for this interview. Add your questions above!</div>';
+  if (!questions.length) return `<div style="text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px;">${escapeHtml(t("questions.empty"))}</div>`;
   return questions.map(renderStageQuestion).join("");
 }
 
 /** Renders the question editor for an active stage. */
 function renderStageQuestionWorkspace(stage) {
   return `<div class="questions-workspace"><div class="questions-workspace-header"><div class="questions-workspace-title inline-icon-text">
-    <span>${icon("chat", 14)} Questions to Ask this Interviewer</span><span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">(${stage.questions.length})</span>
-  </div></div><form id="active-add-question-form" class="add-question-form" style="margin-top: 0;"><input type="text" class="add-question-input" aria-label="New interview question" placeholder="Type a question to ask..." required /><button type="submit" class="btn-primary btn-add-question inline-icon-text" style="padding: 7px 16px; font-size: 12px;">${icon("plus", 12)} Add Question</button></form>
+    <span>${icon("chat", 14)} ${escapeHtml(t("questions.heading"))}</span><span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">(${stage.questions.length})</span>
+  </div></div><form id="active-add-question-form" class="add-question-form" style="margin-top: 0;"><input type="text" class="add-question-input" aria-label="${escapeAttr(t("questions.newLabel"))}" placeholder="${escapeAttr(t("questions.newPlaceholder"))}" required /><button type="submit" class="btn-primary btn-add-question inline-icon-text" style="padding: 7px 16px; font-size: 12px;">${icon("plus", 12)} ${escapeHtml(t("questions.add"))}</button></form>
   <div class="questions-list" style="overflow-y: auto; max-height: calc(100vh - 350px); padding-right: 4px;">${renderStageQuestions(stage.questions)}</div></div>`;
 }
 
 /** Renders the active stage detail banner. */
 function renderActiveStageHero(view) {
   const { activeStage, activeStageIndex, stages } = view;
-  const title = activeStage.custom_title || activeStage.stage_type;
-  const description = renderOptionalText(activeStage.description, "No stage description");
-  return `<div class="stage-hero-banner"><div class="stage-hero-left"><span class="stage-type-badge ${getStageTypeClass(activeStage.stage_type)}">${escapeHtml(activeStage.stage_type)}</span><div>
-    <div class="stage-hero-title editable-stage-title" data-raw-value="${escapeAttr(title)}">${escapeHtml(title)}</div><div class="stage-hero-desc editable-stage-desc" data-raw-value="${escapeAttr(activeStage.description || "")}">${description}</div>
+  const title = stageName(activeStage);
+  const descriptionText = stageDescriptionText(activeStage.description || "");
+  const description = renderOptionalText(descriptionText, escapeHtml(t("stage.noDescription")));
+  return `<div class="stage-hero-banner"><div class="stage-hero-left"><span class="stage-type-badge ${getStageTypeClass(activeStage.stage_type)}">${escapeHtml(stageTypeLabel(activeStage.stage_type))}</span><div>
+    <div class="stage-hero-title editable-stage-title" data-raw-value="${escapeAttr(title)}">${escapeHtml(title)}</div><div class="stage-hero-desc editable-stage-desc" data-raw-value="${escapeAttr(descriptionText)}">${description}</div>
     </div></div><div class="stage-hero-schedule">${renderStageSchedule(activeStage)}</div><div class="stage-hero-actions">${renderStageActionButtons(view)}</div></div>`;
 }
 
 /** Renders the active stage editor or the no-stages prompt. */
 function renderActiveStageWorkspace(view) {
-  if (!view.activeStage) return `<div class="stage-empty-state"><div class="stage-empty-state-copy"><p>No interview stages configured yet.</p><p class="stage-empty-state-guidance">Add only steps listed in the job posting or confirmed by the employer. You can add them later.</p></div><button class="btn-primary inline-icon-text stage-empty-state-action" id="btn-init-first-stage">${icon("plus", 12)} Add First Stage</button></div>`;
+  if (!view.activeStage) return `<div class="stage-empty-state"><div class="stage-empty-state-copy"><p>${escapeHtml(t("stage.noneConfigured"))}</p><p class="stage-empty-state-guidance">${escapeHtml(t("stage.emptyGuidance"))}</p></div><button class="btn-primary inline-icon-text stage-empty-state-action" id="btn-init-first-stage">${icon("plus", 12)} ${escapeHtml(t("stage.addFirst"))}</button></div>`;
   return `<div id="stage-panel" class="stage-panel" role="tabpanel" aria-labelledby="stage-tab-${view.activeStageIndex}" tabindex="0">${renderActiveStageHero(view)}<div class="stage-round-content">${renderActiveStageFocus(view)}${renderStageQuestionWorkspace(view.activeStage)}</div></div>`;
 }
 
 /** Renders an in-context form for recording a confirmed interview stage. */
 function renderStageCreateForm() {
   return `<form class="stage-create-form">
-    <p class="stage-create-help">Add stages confirmed by the employer. Leave details blank when they are unknown.</p>
+    <p class="stage-create-help">${escapeHtml(t("stage.createHelp"))}</p>
     <div class="stage-create-fields">
-      <label class="stage-create-field"><span>Stage title</span><input name="custom_title" type="text" maxlength="120" placeholder="e.g. System design interview" required /></label>
-      <label class="stage-create-field"><span>Stage type</span><select name="stage_type" required>
-        <option value="" selected disabled>Choose a type</option>
-        <option value="HR">HR / Screening</option>
-        <option value="Technical">Technical</option>
-        <option value="Cultural">Cultural / Leadership</option>
-        <option value="Offer &amp; Decision">Offer &amp; Decision</option>
+      <label class="stage-create-field"><span>${escapeHtml(t("stage.titleField"))}</span><input name="custom_title" type="text" maxlength="120" placeholder="${escapeAttr(t("stage.titleFieldPlaceholder"))}" required /></label>
+      <label class="stage-create-field"><span>${escapeHtml(t("stage.typeField"))}</span><select name="stage_type" required>
+        <option value="" selected disabled>${escapeHtml(t("stage.chooseType"))}</option>
+        <option value="HR">${escapeHtml(t("stageType.option.hr"))}</option>
+        <option value="Technical">${escapeHtml(t("stageType.option.technical"))}</option>
+        <option value="Cultural">${escapeHtml(t("stageType.option.cultural"))}</option>
+        <option value="Offer &amp; Decision">${escapeHtml(t("stageType.option.offerDecision"))}</option>
       </select></label>
-      <label class="stage-create-field stage-create-description"><span>Description <small>Optional</small></span><input name="description" type="text" maxlength="500" placeholder="e.g. System design and coding" /></label>
+      <label class="stage-create-field stage-create-description"><span>${escapeHtml(t("stage.descriptionField"))} <small>${escapeHtml(t("common.optional"))}</small></span><input name="description" type="text" maxlength="500" placeholder="${escapeAttr(t("stage.descriptionPlaceholder"))}" /></label>
     </div>
-    <div class="stage-create-actions"><p class="stage-create-error" role="alert" hidden></p><button class="btn-secondary stage-create-cancel" type="button">Cancel</button><button class="btn-primary stage-create-save" type="submit">Add stage</button></div>
+    <div class="stage-create-actions"><p class="stage-create-error" role="alert" hidden></p><button class="btn-secondary stage-create-cancel" type="button">${escapeHtml(t("common.cancel"))}</button><button class="btn-primary stage-create-save" type="submit">${escapeHtml(t("stage.addSubmit"))}</button></div>
   </form>`;
 }
 
@@ -978,7 +989,7 @@ function bindTechnologyAssignmentEditor(context) {
     const query = input.value.trim().toLowerCase();
     const matches = catalog.filter((item) => !query || [item.name, ...(item.aliases || [])].some((term) => term.toLowerCase().includes(query)));
     options.hidden = false;
-    options.innerHTML = matches.length ? matches.map((item) => `<button type="button" class="technology-option ${selectedIDs.has(item.id) ? "is-selected" : ""}" role="option" aria-selected="${selectedIDs.has(item.id)}" data-technology-id="${escapeAttr(item.id)}"><span>${escapeHtml(item.name)}</span><span>${selectedIDs.has(item.id) ? "Added" : "Add"}</span></button>`).join("") : '<div class="technology-empty">No matching technologies.</div>';
+    options.innerHTML = matches.length ? matches.map((item) => `<button type="button" class="technology-option ${selectedIDs.has(item.id) ? "is-selected" : ""}" role="option" aria-selected="${selectedIDs.has(item.id)}" data-technology-id="${escapeAttr(item.id)}"><span>${escapeHtml(item.name)}</span><span>${escapeHtml(t(selectedIDs.has(item.id) ? "detail.technologyAdded" : "common.add"))}</span></button>`).join("") : `<div class="technology-empty">${escapeHtml(t("detail.noMatchingTechnologies"))}</div>`;
   };
   const saveAssignments = async (id, shouldAdd) => {
     if (shouldAdd) selectedIDs.add(id); else selectedIDs.delete(id);
@@ -991,11 +1002,11 @@ function bindTechnologyAssignmentEditor(context) {
       if (onGlobalRefresh) await onGlobalRefresh();
     } catch (error) {
       if (shouldAdd) selectedIDs.delete(id); else selectedIDs.add(id);
-      showToast(error.message || "Could not update tech stack", "error");
+      showToast(error.message || t("detail.techStackUpdateFailed"), "error");
       renderOptions();
     }
   };
-  void Promise.resolve().then(() => api.getTechnologies()).then((items) => { catalog = Array.isArray(items) ? items : []; renderOptions(); options.hidden = true; }).catch((error) => showToast(error.message || "Could not load technology catalog", "error"));
+  void Promise.resolve().then(() => api.getTechnologies()).then((items) => { catalog = Array.isArray(items) ? items : []; renderOptions(); options.hidden = true; }).catch((error) => showToast(error.message || t("detail.catalogLoadFailed"), "error"));
   input.addEventListener("focus", renderOptions);
   input.addEventListener("input", renderOptions);
   options.addEventListener("click", (event) => {
@@ -1025,13 +1036,13 @@ function bindJobCvSelection({ modalEl, job, refreshModal }) {
         !latest || Number(version.version_number) > Number(latest.version_number) ? version : latest
       ), null);
       const currentId = job.selected_cv_version?.id || "";
-      row.innerHTML = `<label class="job-cv-picker-label" for="job-cv-version-select">CV sent</label>
-        <select id="job-cv-version-select" aria-label="CV version sent to this job">
-          <option value="">No CV selected</option>
-          ${versions.map((version) => `<option value="${escapeAttr(version.id)}" ${version.id === currentId ? "selected" : ""}>CV v${escapeHtml(version.version_number)}${version.id === latestVersion?.id ? " · Latest" : ""} · ${escapeHtml(version.original_name || "CV")} · ${escapeHtml(formatCvUploadDate(version.uploaded_at))}</option>`).join("")}
+      row.innerHTML = `<label class="job-cv-picker-label" for="job-cv-version-select">${escapeHtml(t("detail.cvSent"))}</label>
+        <select id="job-cv-version-select" aria-label="${escapeAttr(t("detail.cvPickerLabel"))}">
+          <option value="">${escapeHtml(t("detail.noCvOption"))}</option>
+          ${versions.map((version) => `<option value="${escapeAttr(version.id)}" ${version.id === currentId ? "selected" : ""}>${escapeHtml(t("cv.version", { version: version.version_number }))}${version.id === latestVersion?.id ? ` · ${escapeHtml(t("cv.latest"))}` : ""} · ${escapeHtml(version.original_name || "CV")} · ${escapeHtml(formatCvUploadDate(version.uploaded_at))}</option>`).join("")}
         </select>
-        <button type="button" class="btn-primary job-cv-save">Save</button>
-        <button type="button" class="btn-secondary job-cv-cancel">Cancel</button>
+        <button type="button" class="btn-primary job-cv-save">${escapeHtml(t("common.save"))}</button>
+        <button type="button" class="btn-secondary job-cv-cancel">${escapeHtml(t("common.cancel"))}</button>
         <span class="job-cv-picker-status" role="status" aria-live="polite"></span>`;
       const select = row.querySelector("#job-cv-version-select");
       select.focus();
@@ -1044,13 +1055,13 @@ function bindJobCvSelection({ modalEl, job, refreshModal }) {
           await api.setJobCvVersion(job.id, select.value || null);
           await refreshModal();
         } catch (error) {
-          status.textContent = error.message || "Could not update the CV selection";
+          status.textContent = error.message || t("detail.cvUpdateFailed");
           saveButton.disabled = false;
         }
       });
     } catch (error) {
       trigger.disabled = false;
-      showToast(error.message || "Could not load CV versions", "error");
+      showToast(error.message || t("cv.loadFailed"), "error");
     }
   });
 }
@@ -1083,9 +1094,9 @@ function bindBasicModalActions(context) {
   modalEl.querySelector(".btn-delete-job")?.addEventListener("click", async () => {
     try {
       const confirmed = await confirmAction({
-        title: "Delete selection process?",
-        message: `${job.company_name} — ${job.position_title} will be permanently removed.`,
-        confirmLabel: "Delete process",
+        title: t("process.deleteTitle"),
+        message: t("process.deleteMessage", { company: companyText(job.company_name), position: job.position_title }),
+        confirmLabel: t("process.deleteConfirm"),
         danger: true,
       });
       if (!confirmed) return;
@@ -1118,7 +1129,7 @@ function bindPrimaryJobEditors(context) {
   const elTitle = modalEl.querySelector(".editable-position-title");
   if (elTitle) {
     makeInlineEditable(elTitle, {
-      placeholder: "Position Title",
+      placeholder: t("form.positionTitle"),
       onSave: async (newVal) => {
         if (!newVal) return;
         await api.updateJob(job.id, { position_title: newVal });
@@ -1130,7 +1141,7 @@ function bindPrimaryJobEditors(context) {
   const elCompany = modalEl.querySelector(".editable-company-name");
   if (elCompany) {
     makeInlineEditable(elCompany, {
-      placeholder: "Company Name",
+      placeholder: t("form.companyName"),
       onSave: async (newVal) => {
         await api.updateJob(job.id, { company_name: newVal || "Unknown" });
         refreshModal();
@@ -1142,7 +1153,7 @@ function bindPrimaryJobEditors(context) {
   if (elSalary) {
     makeInlineEditable(elSalary, {
       eventName: "click",
-      placeholder: "e.g. 70k - 90k, up to 85k, undisclosed",
+      placeholder: t("detail.salaryPlaceholder"),
       onSave: async (newVal) => {
         const parsed = parseSalaryInput(newVal);
         await api.updateJob(job.id, parsed);
@@ -1161,7 +1172,7 @@ function bindPrimaryJobEditors(context) {
         const nextVal = !job.is_referral;
         await api.updateJob(job.id, { is_referral: nextVal });
         if (typeof window !== "undefined" && typeof window.showToast === "function") {
-          window.showToast(nextVal ? "Marked as Referral" : "Marked as Non-referral", "success", 1200);
+          window.showToast(t(nextVal ? "referral.marked" : "referral.unmarked"), "success", 1200);
         }
         refreshModal();
       } catch (err) {
@@ -1202,7 +1213,7 @@ function bindJobTextEditors(context) {
   const elKeywords = modalEl.querySelector(".editable-keywords");
   if (elKeywords) {
     makeInlineEditable(elKeywords, {
-      placeholder: "Keywords, tech stack, 100-char summary...",
+      placeholder: t("detail.keywordsPlaceholder"),
       maxLength: 100,
       onSave: async (newVal) => {
         await api.updateJob(job.id, { keyword_note: newVal });
@@ -1218,7 +1229,7 @@ function bindJobTextEditors(context) {
     makeInlineEditable(elReasons, {
       multiline: true,
       rows: 5,
-      placeholder: "Why do you want to change company? Write your key talking points and motivations here...",
+      placeholder: t("detail.reasonsPlaceholder"),
       onSave: async (newVal) => {
         await api.updateJob(job.id, { reasons_to_change: newVal });
         refreshModal();
@@ -1229,7 +1240,7 @@ function bindJobTextEditors(context) {
   const elExpectedSalary = modalEl.querySelector(".editable-expected-salary");
   if (elExpectedSalary) {
     makeInlineEditable(elExpectedSalary, {
-      placeholder: "e.g. €85k base + equity",
+      placeholder: t("form.expectedSalaryPlaceholder"),
       onSave: async (newVal) => {
         await api.updateJob(job.id, { expected_salary: newVal });
         refreshModal();
@@ -1237,8 +1248,8 @@ function bindJobTextEditors(context) {
     });
   }
 
-  bindEditableJobURL(modalEl, job, refreshModal, ".editable-job-post-url", "job_post_url", "https://linkedin.com/jobs/view/...");
-  bindEditableJobURL(modalEl, job, refreshModal, ".editable-application-url", "application_url", "https://company.com/careers/...");
+  bindEditableJobURL(modalEl, job, refreshModal, ".editable-job-post-url", "job_post_url", "https://linkedin.com/jobs/…");
+  bindEditableJobURL(modalEl, job, refreshModal, ".editable-application-url", "application_url", t("form.applicationUrlPlaceholder"));
 }
 
 function bindEditableJobURL(modalEl, job, refreshModal, selector, field, placeholder) {
@@ -1265,7 +1276,7 @@ function bindProcessDateFields({ modalEl, job, refreshModal }) {
       } catch (error) {
         input.value = job[field] || "";
         input.disabled = false;
-        showToast(error.message || "Could not save process date", "error");
+        showToast(error.message || t("detail.dateSaveFailed"), "error");
       }
     });
   });
@@ -1274,10 +1285,10 @@ function bindProcessDateFields({ modalEl, job, refreshModal }) {
 /** Binds Markdown editing to the overview, notes, and original description fields. */
 function bindMarkdownEditors({ modalEl, job, refreshModal }) {
   const fields = [
-    { field: "company_overview", selector: ".editable-overview", label: "Company and role overview", empty: "Summarize what the company does and what the role involves." },
-    { field: "experience_notes", selector: ".editable-experience-notes", label: "Relevant experience", empty: "Add experience and examples relevant to this role." },
-    { field: "interview_notes", selector: ".editable-interview-notes", label: "My notes and anything else", empty: "Write anything else you want to remember about this selection process." },
-    { field: "description", selector: ".editable-description", label: "Original job description", empty: "Add the original job posting or recruiter message." },
+    { field: "company_overview", selector: ".editable-overview", label: t("markdown.field.companyOverview"), empty: t("detail.overviewEmpty") },
+    { field: "experience_notes", selector: ".editable-experience-notes", label: t("markdown.field.experience"), empty: t("detail.experienceEmpty") },
+    { field: "interview_notes", selector: ".editable-interview-notes", label: t("markdown.field.otherNotes"), empty: t("detail.otherNotesEmpty") },
+    { field: "description", selector: ".editable-description", label: t("markdown.field.description"), empty: t("detail.descriptionEmpty") },
   ];
 
   fields.forEach(({ field, selector, label, empty }) => {
@@ -1299,15 +1310,15 @@ function openMarkdownFieldEditor({ element, job, field, label, empty, refreshMod
   const originalValue = element.dataset.rawValue || "";
   element.innerHTML = `
     <div class="markdown-field-editor">
-      <div class="markdown-editor-tabs" role="tablist" aria-label="${escapeAttr(label)} editor mode">
-        <button id="markdown-tab-source" type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="markdown-source-panel" tabindex="0">Markdown</button>
-        <button id="markdown-tab-preview" type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="markdown-field-preview" tabindex="-1">Preview</button>
+      <div class="markdown-editor-tabs" role="tablist" aria-label="${escapeAttr(t("markdown.editorMode", { field: label }))}">
+        <button id="markdown-tab-source" type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="markdown-source-panel" tabindex="0">${escapeHtml(t("markdown.source"))}</button>
+        <button id="markdown-tab-preview" type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="markdown-field-preview" tabindex="-1">${escapeHtml(t("markdown.preview"))}</button>
       </div>
       <div id="markdown-source-panel" class="markdown-source-panel" role="tabpanel" aria-labelledby="markdown-tab-source">
-        <textarea id="markdown-field-input" class="markdown-field-input" aria-label="${escapeAttr(label)} Markdown" placeholder="${escapeAttr(empty)}"></textarea>
+        <textarea id="markdown-field-input" class="markdown-field-input" aria-label="${escapeAttr(t("markdown.inputLabel", { field: label }))}" placeholder="${escapeAttr(empty)}"></textarea>
       </div>
       <div id="markdown-field-preview" class="markdown-field-preview markdown-preview" role="tabpanel" aria-labelledby="markdown-tab-preview" tabindex="0" hidden></div>
-      <div class="markdown-editor-footer"><span>Markdown supported. Enter saves; Shift+Enter adds a line.</span><div><button type="button" class="btn-secondary markdown-editor-cancel">Cancel</button><button type="button" class="btn-primary markdown-editor-save">Save</button></div></div>
+      <div class="markdown-editor-footer"><span>${escapeHtml(t("markdown.footer"))}</span><div><button type="button" class="btn-secondary markdown-editor-cancel">${escapeHtml(t("common.cancel"))}</button><button type="button" class="btn-primary markdown-editor-save">${escapeHtml(t("common.save"))}</button></div></div>
     </div>`;
   const editor = element.querySelector(".markdown-field-editor");
   const input = element.querySelector(".markdown-field-input");
@@ -1340,7 +1351,7 @@ function openMarkdownFieldEditor({ element, job, field, label, empty, refreshMod
       finished = false;
       element.dataset.editing = "true";
       document.addEventListener("pointerdown", onOutsidePointer, true);
-      showToast(error.message || `Could not save ${label.toLowerCase()}`, "error");
+      showToast(error.message || t("markdown.saveFailed", { field: label.toLocaleLowerCase(getLocale()) }), "error");
     }
   };
   function onOutsidePointer(event) {
@@ -1357,7 +1368,7 @@ function openMarkdownFieldEditor({ element, job, field, label, empty, refreshMod
     const isPreview = index === 1;
     sourcePanel.hidden = isPreview;
     preview.hidden = !isPreview;
-    if (isPreview) preview.innerHTML = renderMarkdownField(input.value, "Nothing to preview yet.");
+    if (isPreview) preview.innerHTML = renderMarkdownField(input.value, t("markdown.nothingToPreview"));
     tabs.forEach((item, itemIndex) => {
       item.classList.toggle("is-active", itemIndex === index);
       item.setAttribute("aria-selected", String(itemIndex === index));
@@ -1447,7 +1458,7 @@ function bindStageRecruiterFields(context) {
   const elStageRecruiterName = modalEl.querySelector(".editable-stage-recruiter-name");
   if (elStageRecruiterName && activeStage) {
     makeInlineEditable(elStageRecruiterName, {
-      placeholder: "Recruiter / contact name",
+      placeholder: t("detail.recruiterNamePlaceholder"),
       onSave: async (newVal) => {
         await api.updateStage(activeStage.id, { recruiter_name: newVal });
         if (activeStageIndex === 0) {
@@ -1461,7 +1472,7 @@ function bindStageRecruiterFields(context) {
   const elStageRecruiterAgency = modalEl.querySelector(".editable-stage-recruiter-agency");
   if (elStageRecruiterAgency && activeStage) {
     makeInlineEditable(elStageRecruiterAgency, {
-      placeholder: "Agency or department",
+      placeholder: t("detail.agencyPlaceholder"),
       onSave: async (newVal) => {
         await api.updateStage(activeStage.id, { recruiter_agency: newVal });
         if (activeStageIndex === 0) {
@@ -1475,7 +1486,7 @@ function bindStageRecruiterFields(context) {
   const elStageRecruiterContact = modalEl.querySelector(".editable-stage-recruiter-contact");
   if (elStageRecruiterContact && activeStage) {
     makeInlineEditable(elStageRecruiterContact, {
-      placeholder: "Email, phone or LinkedIn URL",
+      placeholder: t("detail.contactPlaceholder"),
       onSave: async (newVal) => {
         await api.updateStage(activeStage.id, { recruiter_contact: newVal });
         if (activeStageIndex === 0) {
@@ -1497,7 +1508,7 @@ function bindInterviewerActions(context) {
     modalEl.querySelectorAll(".editable-stage-interviewer-name").forEach((el) => {
       const idx = parseInt(el.getAttribute("data-idx"), 10);
       makeInlineEditable(el, {
-        placeholder: "Interviewer Name",
+        placeholder: t("interviewer.name"),
         onSave: async (newVal) => {
           if (!newVal || !stageInterviewers[idx]) return;
           const roster = [...stageInterviewers];
@@ -1511,7 +1522,7 @@ function bindInterviewerActions(context) {
     modalEl.querySelectorAll(".editable-stage-interviewer-role").forEach((el) => {
       const idx = parseInt(el.getAttribute("data-idx"), 10);
       makeInlineEditable(el, {
-        placeholder: "Role / Specialty",
+        placeholder: t("interviewer.role"),
         onSave: async (newVal) => {
           if (!stageInterviewers[idx]) return;
           const roster = [...stageInterviewers];
@@ -1525,7 +1536,7 @@ function bindInterviewerActions(context) {
     modalEl.querySelectorAll(".editable-stage-interviewer-note").forEach((el) => {
       const idx = parseInt(el.getAttribute("data-idx"), 10);
       makeInlineEditable(el, {
-        placeholder: "Notes about interviewer",
+        placeholder: t("interviewer.notesInlinePlaceholder"),
         onSave: async (newVal) => {
           if (!stageInterviewers[idx]) return;
           const roster = [...stageInterviewers];
@@ -1616,9 +1627,9 @@ function bindAttachmentAndStageNavigation(context) {
       try {
         const attId = btn.getAttribute("data-id");
         const confirmed = await confirmAction({
-          title: "Delete attachment?",
-          message: "This file will be permanently removed from the selection process.",
-          confirmLabel: "Delete attachment",
+          title: t("detail.deleteAttachmentTitle"),
+          message: t("detail.deleteAttachmentMessage"),
+          confirmLabel: t("detail.deleteAttachmentConfirm"),
           danger: true,
         });
         if (!confirmed) return;
@@ -1696,7 +1707,7 @@ function bindStageCreation({ modalEl, job, stages, refreshModal }) {
         await refreshModal();
         window.requestAnimationFrame(() => modalEl.querySelector(`#stage-tab-${activeStageIndex}`)?.focus());
       } catch (err) {
-        error.textContent = err.message || "Could not add this interview stage.";
+        error.textContent = err.message || t("stage.addFailed");
         error.hidden = false;
         submit.disabled = false;
       }
@@ -1743,11 +1754,10 @@ function bindActiveStageActions(context) {
 
     modalEl.querySelector("#btn-delete-stage")?.addEventListener("click", async () => {
       try {
-        const stageName = activeStage.custom_title || activeStage.stage_type;
         const confirmed = await confirmAction({
-          title: "Delete interview stage?",
-          message: `${stageName} and its interview details will be permanently removed.`,
-          confirmLabel: "Delete stage",
+          title: t("stage.deleteConfirmTitle"),
+          message: t("stage.deleteMessage", { stage: stageName(activeStage) }),
+          confirmLabel: t("stage.deleteConfirm"),
           danger: true,
         });
         if (!confirmed) return;
@@ -1820,7 +1830,7 @@ function bindActiveStageInlineEditors(context) {
         multiline: true,
         rows: 4,
         maxLength: 10000,
-        placeholder: "Add notes from this conversation...",
+        placeholder: t("stage.notesPlaceholder"),
         onSave: async (newVal) => {
           await api.updateStage(activeStage.id, { notes: newVal });
           refreshModal();
@@ -1831,7 +1841,7 @@ function bindActiveStageInlineEditors(context) {
     const elStageTitle = modalEl.querySelector(".editable-stage-title");
     if (elStageTitle) {
       makeInlineEditable(elStageTitle, {
-        placeholder: "Stage Title",
+        placeholder: t("stage.titleField"),
         onSave: async (newVal) => {
           if (!newVal) return;
           await api.updateStage(activeStage.id, { custom_title: newVal });
@@ -1843,7 +1853,7 @@ function bindActiveStageInlineEditors(context) {
     const elStageDesc = modalEl.querySelector(".editable-stage-desc");
     if (elStageDesc) {
       makeInlineEditable(elStageDesc, {
-        placeholder: "Stage description",
+        placeholder: t("stage.descriptionInlinePlaceholder"),
         onSave: async (newVal) => {
           await api.updateStage(activeStage.id, { description: newVal });
           refreshModal();
@@ -1854,7 +1864,7 @@ function bindActiveStageInlineEditors(context) {
     modalEl.querySelectorAll(".editable-question-text").forEach((elQ) => {
       const qid = elQ.getAttribute("data-qid");
       makeInlineEditable(elQ, {
-        placeholder: "Interview Question",
+        placeholder: t("questions.inlinePlaceholder"),
         onSave: async (newVal) => {
           if (!newVal) return;
           await api.updateQuestion(qid, { question: newVal });
@@ -1901,19 +1911,19 @@ function renderModalContent(modalEl, backdropEl, job, onGlobalRefresh) {
   modalEl.dataset.mobileDetailPane = mobilePane;
   modalEl.innerHTML = `
 ${renderModalHeader(view)}
-    <div class="mobile-detail-view-switch" role="group" aria-label="Choose detail section">
-      <button class="mobile-detail-view-button" type="button" data-mobile-pane="overview" aria-pressed="${mobilePane === "overview"}">Job details</button>
-      <button class="mobile-detail-view-button" type="button" data-mobile-pane="stages" aria-pressed="${mobilePane === "stages"}">Interview stages</button>
+    <div class="mobile-detail-view-switch" role="group" aria-label="${escapeAttr(t("detail.mobileSwitchLabel"))}">
+      <button class="mobile-detail-view-button" type="button" data-mobile-pane="overview" aria-pressed="${mobilePane === "overview"}">${escapeHtml(t("detail.mobileJobDetails"))}</button>
+      <button class="mobile-detail-view-button" type="button" data-mobile-pane="stages" aria-pressed="${mobilePane === "stages"}">${escapeHtml(t("stage.tabsLabel"))}</button>
     </div>
     <div class="modal-split-layout">
       <div class="split-pane-left">
 ${renderGeneralProcessSection(view)}
         <div class="left-pane-actions">
-          <button class="btn-danger btn-delete-job" style="font-size: 12px; padding: 6px 12px;">Delete Selection Process</button>
-          <button class="btn-secondary btn-close-modal" style="font-size: 12px; padding: 6px 14px;">Done</button>
+          <button class="btn-danger btn-delete-job" style="font-size: 12px; padding: 6px 12px;">${escapeHtml(t("detail.deleteProcess"))}</button>
+          <button class="btn-secondary btn-close-modal" style="font-size: 12px; padding: 6px 14px;">${escapeHtml(t("common.done"))}</button>
         </div>
       </div>
-      <div class="split-pane-resizer" role="separator" tabindex="0" aria-label="Resize job details and interview workspace" aria-orientation="vertical" aria-valuemin="${MIN_SPLIT_RATIO}" aria-valuemax="${MAX_SPLIT_RATIO}" aria-valuenow="${DEFAULT_SPLIT_RATIO}">
+      <div class="split-pane-resizer" role="separator" tabindex="0" aria-label="${escapeAttr(t("detail.resizeLabel"))}" aria-orientation="vertical" aria-valuemin="${MIN_SPLIT_RATIO}" aria-valuemax="${MAX_SPLIT_RATIO}" aria-valuenow="${DEFAULT_SPLIT_RATIO}">
         <span class="split-pane-resizer-arrows" aria-hidden="true">${icon("chevronLeft", 12)}${icon("chevronRight", 12)}</span>
       </div>
       <div class="split-pane-right">
@@ -1936,129 +1946,129 @@ ${renderActiveStageWorkspace(view)}
 /** Renders the editable general job form. */
 function renderEditDetailsMarkup(job, periods = []) {
   const searchPeriodOptions = [
-    '<option value="">No period</option>',
-    ...periods.map((period) => `<option value="${escapeAttr(period.id)}" ${period.id === job.search_period_id ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</option>`),
+    `<option value="">${escapeHtml(t("searchPeriods.none"))}</option>`,
+    ...periods.map((period) => `<option value="${escapeAttr(period.id)}" ${period.id === job.search_period_id ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || t("searchPeriods.present"))}</option>`),
   ].join("");
   return `
     <div class="modal-header">
-      <h2 class="modal-title">Edit Selection Process Details</h2>
-      <button class="modal-close-btn" type="button" aria-label="Close dialog">&times;</button>
+      <h2 class="modal-title">${escapeHtml(t("editProcess.heading"))}</h2>
+      <button class="modal-close-btn" type="button" aria-label="${escapeAttr(t("common.closeDialog"))}">&times;</button>
     </div>
     <form class="edit-process-form process-form">
-      <h3 class="edit-section-heading">Job details</h3>
+      <h3 class="edit-section-heading">${escapeHtml(t("editProcess.jobDetails"))}</h3>
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label" for="edit-company-name">Company Name</label>
-          <input id="edit-company-name" type="text" name="company_name" value="${escapeAttr(job.company_name)}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-          <span style="font-size: 11px; color: var(--text-muted);">Leave empty or 'Unknown' if undisclosed by recruiter</span>
+          <label class="meta-label" for="edit-company-name">${escapeHtml(t("form.companyName"))}</label>
+          <input id="edit-company-name" type="text" name="company_name" value="${escapeAttr(editableCompanyName(job.company_name))}" placeholder="${escapeAttr(t("company.unknown"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(t("editProcess.companyHelp"))}</span>
         </div>
         <div>
-          <label class="meta-label" for="edit-position-title">Position Title</label>
+          <label class="meta-label" for="edit-position-title">${escapeHtml(t("form.positionTitle"))}</label>
           <input id="edit-position-title" type="text" name="position_title" value="${escapeAttr(job.position_title)}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid form-grid-three">
         <div>
-          <label class="meta-label" for="edit-salary-type">Salary Range Type</label>
+          <label class="meta-label" for="edit-salary-type">${escapeHtml(t("editProcess.salaryRangeType"))}</label>
           <select id="edit-salary-type" name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-            <option value="limited" ${selectedAttribute(job.salary_type, "limited")}>Limited Range (Min - Max)</option>
-            <option value="no_min" ${selectedAttribute(job.salary_type, "no_min")}>Up to Max (No Minimum)</option>
-            <option value="no_max" ${selectedAttribute(job.salary_type, "no_max")}>From Min (No Maximum)</option>
-            <option value="unknown" ${selectedAttribute(job.salary_type, "unknown")}>Unknown / Undisclosed</option>
+            <option value="limited" ${selectedAttribute(job.salary_type, "limited")}>${escapeHtml(t("salaryType.limited"))}</option>
+            <option value="no_min" ${selectedAttribute(job.salary_type, "no_min")}>${escapeHtml(t("salaryType.noMin"))}</option>
+            <option value="no_max" ${selectedAttribute(job.salary_type, "no_max")}>${escapeHtml(t("salaryType.noMax"))}</option>
+            <option value="unknown" ${selectedAttribute(job.salary_type, "unknown")}>${escapeHtml(t("salaryType.unknown"))}</option>
           </select>
         </div>
         <div>
-          <label class="meta-label" for="edit-salary-min">Minimum Salary (€)</label>
-          <input id="edit-salary-min" type="number" name="salary_min" value="${formValue(job, "salary_min")}" placeholder="e.g. 70000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-salary-min">${escapeHtml(t("editProcess.minimumSalaryEur"))}</label>
+          <input id="edit-salary-min" type="number" name="salary_min" value="${formValue(job, "salary_min")}" placeholder="${escapeAttr(t("editProcess.minimumSalaryPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label" for="edit-salary-max">Maximum Salary (€)</label>
-          <input id="edit-salary-max" type="number" name="salary_max" value="${formValue(job, "salary_max")}" placeholder="e.g. 95000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-salary-max">${escapeHtml(t("editProcess.maximumSalaryEur"))}</label>
+          <input id="edit-salary-max" type="number" name="salary_max" value="${formValue(job, "salary_max")}" placeholder="${escapeAttr(t("editProcess.maximumSalaryPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid form-grid-three">
         <div>
-          <label class="meta-label" for="edit-recruiter-type">Recruiter Relationship</label>
+          <label class="meta-label" for="edit-recruiter-type">${escapeHtml(t("editProcess.recruiterRelationship"))}</label>
           <select id="edit-recruiter-type" name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-            <option value="none" ${selectedAttribute(job.recruiter_type, "none")}>Direct / None</option>
-            <option value="internal" ${selectedAttribute(job.recruiter_type, "internal")}>Internal Company Recruiter</option>
-            <option value="external" ${selectedAttribute(job.recruiter_type, "external")}>External Headhunter / Agency</option>
+            <option value="none" ${selectedAttribute(job.recruiter_type, "none")}>${escapeHtml(t("editProcess.recruiter.none"))}</option>
+            <option value="internal" ${selectedAttribute(job.recruiter_type, "internal")}>${escapeHtml(t("editProcess.recruiter.internal"))}</option>
+            <option value="external" ${selectedAttribute(job.recruiter_type, "external")}>${escapeHtml(t("editProcess.recruiter.external"))}</option>
           </select>
         </div>
         <div>
-          <label class="meta-label" for="edit-recruiter-name">Recruiter Name (Optional)</label>
-          <input id="edit-recruiter-name" type="text" name="recruiter_name" value="${formValue(job, "recruiter_name")}" placeholder="Recruiter / contact name" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-recruiter-name">${escapeHtml(t("form.recruiterNameOptional"))}</label>
+          <input id="edit-recruiter-name" type="text" name="recruiter_name" value="${formValue(job, "recruiter_name")}" placeholder="${escapeAttr(t("detail.recruiterNamePlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label" for="edit-recruiter-agency">Agency Name (If External)</label>
-          <input id="edit-recruiter-agency" type="text" name="recruiter_agency" value="${formValue(job, "recruiter_agency")}" placeholder="Agency or department" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-recruiter-agency">${escapeHtml(t("editProcess.agencyName"))}</label>
+          <input id="edit-recruiter-agency" type="text" name="recruiter_agency" value="${formValue(job, "recruiter_agency")}" placeholder="${escapeAttr(t("detail.agencyPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label" for="edit-job-post-url">LinkedIn Post URL (Optional)</label>
-          <input id="edit-job-post-url" type="url" name="job_post_url" value="${formValue(job, "job_post_url")}" placeholder="https://linkedin.com/jobs/view/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-job-post-url">${escapeHtml(t("editProcess.linkedInUrl"))}</label>
+          <input id="edit-job-post-url" type="url" name="job_post_url" value="${formValue(job, "job_post_url")}" placeholder="https://linkedin.com/jobs/…" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label" for="edit-application-url">Company Application Page (Optional)</label>
-          <input id="edit-application-url" type="url" name="application_url" value="${formValue(job, "application_url")}" placeholder="https://company.com/careers/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="edit-application-url">${escapeHtml(t("form.applicationPageOptional"))}</label>
+          <input id="edit-application-url" type="url" name="application_url" value="${formValue(job, "application_url")}" placeholder="${escapeAttr(t("form.applicationUrlPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
       <div>
-        <label class="meta-label" for="edit-company-domain">Company Domain (For Logo)</label>
+        <label class="meta-label" for="edit-company-domain">${escapeHtml(t("form.companyDomain"))}</label>
         <input id="edit-company-domain" type="text" name="company_domain" value="${formValue(job, "company_domain")}" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
       </div>
 
       ${periods.length ? `<div>
-        <label class="meta-label" for="edit-search-period">Search Period</label>
+        <label class="meta-label" for="edit-search-period">${escapeHtml(t("form.searchPeriod"))}</label>
         <select id="edit-search-period" name="search_period_id">${searchPeriodOptions}</select>
       </div>` : ""}
 
       <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
         <input type="checkbox" name="is_referral" id="edit-is-referral" ${checkedAttribute(job.is_referral)} style="accent-color: #c084fc; width: 16px; height: 16px; cursor: pointer;" />
         <label for="edit-is-referral" style="font-size: 13px; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; gap: 6px;">
-          ${icon("userCheck", 13)} Candidate Referral (Mark this process as a direct referral)
+          ${icon("userCheck", 13)} ${escapeHtml(t("editProcess.referral"))}
         </label>
       </div>
 
       <div>
-        <label class="meta-label" for="edit-role-highlights">Role Highlights (MAX 100 CHARACTERS)</label>
-        <input id="edit-role-highlights" type="text" name="keyword_note" maxlength="100" value="${formValue(job, "keyword_note")}" placeholder="Location • Focus area • Key details" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
+        <label class="meta-label" for="edit-role-highlights">${escapeHtml(t("editProcess.roleHighlights"))}</label>
+        <input id="edit-role-highlights" type="text" name="keyword_note" maxlength="100" value="${formValue(job, "keyword_note")}" placeholder="${escapeAttr(t("editProcess.roleHighlightsPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text" for="edit-company-overview">${icon("building", 13)} Company & Role Overview</label>
-        <textarea id="edit-company-overview" class="role-description-textarea" name="company_overview" rows="4" aria-describedby="edit-company-overview-help" placeholder="Paste the full role description from the job posting." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "company_overview")}</textarea>
-        <span id="edit-company-overview-help" class="process-form-helper">Markdown formatting is supported.</span>
+        <label class="meta-label inline-icon-text" for="edit-company-overview">${icon("building", 13)} ${escapeHtml(t("form.companyOverview"))}</label>
+        <textarea id="edit-company-overview" class="role-description-textarea" name="company_overview" rows="4" aria-describedby="edit-company-overview-help" placeholder="${escapeAttr(t("form.companyOverviewPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "company_overview")}</textarea>
+        <span id="edit-company-overview-help" class="process-form-helper">${escapeHtml(t("editProcess.markdownSupported"))}</span>
       </div>
 
-      <h3 class="edit-section-heading">My notes</h3>
+      <h3 class="edit-section-heading">${escapeHtml(t("editProcess.myNotes"))}</h3>
       <div>
-        <label class="meta-label inline-icon-text" for="edit-reasons-to-change">${icon("compass", 13)} Why I Want to Change Company (Top FAQ & Talking Points)</label>
-        <textarea id="edit-reasons-to-change" name="reasons_to_change" rows="4" placeholder="Why do you want to change company? Key motivations, strategic rationale, growth drivers..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "reasons_to_change")}</textarea>
-      </div>
-
-      <div>
-        <label class="meta-label inline-icon-text" for="edit-experience-notes">${icon("user", 13)} Relevant Experience</label>
-        <textarea id="edit-experience-notes" name="experience_notes" rows="4" placeholder="Experience and examples that match this role..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "experience_notes")}</textarea>
+        <label class="meta-label inline-icon-text" for="edit-reasons-to-change">${icon("compass", 13)} ${escapeHtml(t("editProcess.reasonsToChange"))}</label>
+        <textarea id="edit-reasons-to-change" name="reasons_to_change" rows="4" placeholder="${escapeAttr(t("form.reasonsToChangePlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "reasons_to_change")}</textarea>
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text" for="edit-expected-salary">${icon("euro", 13)} Expected Salary for This Offer</label>
-        <input id="edit-expected-salary" type="text" name="expected_salary" value="${formValue(job, "expected_salary")}" placeholder="e.g. €85k base + equity" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+        <label class="meta-label inline-icon-text" for="edit-experience-notes">${icon("user", 13)} ${escapeHtml(t("form.relevantExperience"))}</label>
+        <textarea id="edit-experience-notes" name="experience_notes" rows="4" placeholder="${escapeAttr(t("form.relevantExperiencePlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "experience_notes")}</textarea>
       </div>
 
       <div>
-        <label class="meta-label inline-icon-text" for="edit-interview-notes">${icon("fileText", 13)} My Notes / Anything Else</label>
-        <textarea id="edit-interview-notes" name="interview_notes" rows="4" placeholder="Write anything else you want to remember about this selection process..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "interview_notes")}</textarea>
+        <label class="meta-label inline-icon-text" for="edit-expected-salary">${icon("euro", 13)} ${escapeHtml(t("form.expectedSalary"))}</label>
+        <input id="edit-expected-salary" type="text" name="expected_salary" value="${formValue(job, "expected_salary")}" placeholder="${escapeAttr(t("form.expectedSalaryPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+      </div>
+
+      <div>
+        <label class="meta-label inline-icon-text" for="edit-interview-notes">${icon("fileText", 13)} ${escapeHtml(t("detail.otherNotes"))}</label>
+        <textarea id="edit-interview-notes" name="interview_notes" rows="4" placeholder="${escapeAttr(t("form.myNotesPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;">${formValue(job, "interview_notes")}</textarea>
       </div>
 
       <div class="form-actions">
-        <button type="button" class="btn-secondary btn-cancel-edit">Cancel</button>
-        <button type="submit" class="btn-primary">Save Changes</button>
+        <button type="button" class="btn-secondary btn-cancel-edit">${escapeHtml(t("common.cancel"))}</button>
+        <button type="submit" class="btn-primary">${escapeHtml(t("common.saveChanges"))}</button>
       </div>
     </form>
   `;
@@ -2182,7 +2192,7 @@ function openScheduleStageForm(modalEl, backdropEl, job, stage, onSaved) {
   const defaultDate = stage.meeting_date || formatLocalDateInput(new Date());
   const defaultType = stage.meeting_type || "video";
   const hasExistingSchedule = Boolean(stage.meeting_date || stage.meeting_time || stage.meeting_url);
-  const title = hasExistingSchedule ? "Edit Interview Schedule" : "Schedule Interview";
+  const title = t(hasExistingSchedule ? "schedule.form.editTitle" : "schedule.form.newTitle", { stage: stageName(stage) });
 
   modalEl.innerHTML = getScheduleStageFormMarkup(stage, defaultDate, defaultType, title, hasExistingSchedule);
 
@@ -2190,31 +2200,31 @@ function openScheduleStageForm(modalEl, backdropEl, job, stage, onSaved) {
 }
 
 function getScheduleStageFormMarkup(stage, defaultDate, defaultType, title, hasExistingSchedule) {
-  const formatOption = (value, selectedType, label) => `<option value="${value}" ${selectedType === value ? "selected" : ""}>${label}</option>`;
+  const formatOption = (value, selectedType, label) => `<option value="${value}" ${selectedType === value ? "selected" : ""}>${escapeHtml(label)}</option>`;
   return `
     <div class="modal-header">
-      <h2 class="modal-title inline-icon-text">${icon("calendar", 16)} ${title}: ${escapeHtml(stage.custom_title || stage.stage_type)}</h2>
-      <button class="modal-close-btn" type="button" aria-label="Close dialog">${icon("close", 14)}</button>
+      <h2 class="modal-title inline-icon-text">${icon("calendar", 16)} ${escapeHtml(title)}</h2>
+      <button class="modal-close-btn" type="button" aria-label="${escapeAttr(t("common.closeDialog"))}">${icon("close", 14)}</button>
     </div>
     <form id="schedule-stage-form" class="process-form">
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label" for="schedule-meeting-date">Interview Date</label>
+          <label class="meta-label" for="schedule-meeting-date">${escapeHtml(t("schedule.form.date"))}</label>
           <input id="schedule-meeting-date" type="date" name="meeting_date" value="${escapeAttr(defaultDate)}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label" for="schedule-meeting-time">Interview Time / Window</label>
-          <input id="schedule-meeting-time" type="text" name="meeting_time" value="${escapeAttr(stage.meeting_time || '')}" placeholder="e.g. 15:30 - 16:00 or 11:00 AM CEST" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="schedule-meeting-time">${escapeHtml(t("schedule.form.time"))}</label>
+          <input id="schedule-meeting-time" type="text" name="meeting_time" value="${escapeAttr(stage.meeting_time || '')}" placeholder="${escapeAttr(t("schedule.form.timePlaceholder"))}" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
 
       <div class="form-grid">
         <div>
-          <label class="meta-label" for="sel-meeting-type">Interview format</label>
+          <label class="meta-label" for="sel-meeting-type">${escapeHtml(t("schedule.form.format"))}</label>
           <select name="meeting_type" id="sel-meeting-type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-            ${formatOption("phone", defaultType, "Phone call")}
-            ${formatOption("video", defaultType, "Video call")}
-            ${formatOption("onsite", defaultType, "On-site")}
+            ${formatOption("phone", defaultType, t("schedule.form.phone"))}
+            ${formatOption("video", defaultType, t("schedule.form.video"))}
+            ${formatOption("onsite", defaultType, t("schedule.form.onsite"))}
           </select>
         </div>
       </div>
@@ -2226,15 +2236,15 @@ function getScheduleStageFormMarkup(stage, defaultDate, defaultType, title, hasE
       </div>
 
       <div>
-        <label class="meta-label" for="schedule-meeting-notes">Conversation Notes</label>
-        <textarea id="schedule-meeting-notes" name="notes" rows="3" placeholder="Record notes from the conversation..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical;">${escapeHtml(stage.notes || '')}</textarea>
+        <label class="meta-label" for="schedule-meeting-notes">${escapeHtml(t("stage.conversationNotes"))}</label>
+        <textarea id="schedule-meeting-notes" name="notes" rows="3" placeholder="${escapeAttr(t("schedule.form.notesPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical;">${escapeHtml(stage.notes || '')}</textarea>
       </div>
 
       <div class="schedule-form-actions${hasExistingSchedule ? "" : " schedule-form-actions-new"}">
-        ${hasExistingSchedule ? '<button type="button" class="btn-secondary btn-clear-schedule" style="color: var(--status-rejected);">Clear Schedule</button>' : ""}
+        ${hasExistingSchedule ? `<button type="button" class="btn-secondary btn-clear-schedule" style="color: var(--status-rejected);">${escapeHtml(t("schedule.form.clear"))}</button>` : ""}
         <div class="form-actions">
-          <button type="button" class="btn-secondary btn-cancel-schedule">Cancel</button>
-          <button type="submit" class="btn-primary">${hasExistingSchedule ? "Save Changes" : "Save Schedule"}</button>
+          <button type="button" class="btn-secondary btn-cancel-schedule">${escapeHtml(t("common.cancel"))}</button>
+          <button type="submit" class="btn-primary">${escapeHtml(t(hasExistingSchedule ? "common.saveChanges" : "schedule.form.save"))}</button>
         </div>
       </div>
     </form>
@@ -2277,17 +2287,17 @@ function applyMeetingLinkField(form, meetingType) {
   form.querySelector("#video-link-row").hidden = !linkField;
   input.disabled = !linkField;
   if (!linkField) return;
-  form.querySelector("#schedule-meeting-url-label").textContent = linkField.label;
-  form.querySelector("#schedule-meeting-url-hint").textContent = linkField.hint;
+  form.querySelector("#schedule-meeting-url-label").textContent = t(linkField.labelKey);
+  form.querySelector("#schedule-meeting-url-hint").textContent = t(linkField.hintKey);
   input.placeholder = linkField.placeholder;
 }
 
 async function clearStageSchedule(stage, onSaved) {
   try {
     const confirmed = await confirmAction({
-      title: "Clear interview schedule?",
-      message: "The date, time, and meeting link for this stage will be removed.",
-      confirmLabel: "Clear schedule",
+      title: t("schedule.form.clearTitle"),
+      message: t("schedule.form.clearMessage"),
+      confirmLabel: t("schedule.form.clearConfirm"),
     });
     if (!confirmed) return;
     await api.scheduleMeeting(stage.id, {

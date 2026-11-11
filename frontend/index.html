@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="/public/js/theme.js"></script>
-  <title>War Room | Selection Process Command Center</title>
+  <script src="/public/js/language.js"></script>
+  <title data-i18n="app.documentTitle">War Room | Selection Process Command Center</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2338bdf8%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/><circle cx=%2212%22 cy=%2212%22 r=%226%22/><circle cx=%2212%22 cy=%2212%22 r=%222%22/></svg>" />
 
   <link rel="stylesheet" href="/public/css/variables.css" />
@@ -17,11 +18,11 @@
   <link rel="stylesheet" href="/public/css/animations.css" />
 </head>
 <body>
-  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <a class="skip-link" href="#main-content" data-i18n="app.skipToContent">Skip to main content</a>
   <div class="app-container">
     <header class="app-header">
       <div class="header-inner">
-        <button id="btn-menu-toggle" class="menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="header-controls" aria-expanded="false">
+        <button id="btn-menu-toggle" class="menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="header-controls" aria-expanded="false" data-i18n-aria-label="header.openMenu">
           <svg class="svg-icon menu-icon-open" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
           <svg class="svg-icon menu-icon-close" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -42,17 +43,17 @@
 
         <div class="header-controls" id="header-controls">
           <div class="account-menu">
-            <button id="btn-account-menu" class="account-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu-panel" aria-label="Account and appearance">
+            <button id="btn-account-menu" class="account-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu-panel" aria-label="Account and appearance" data-i18n-aria-label="account.menuLabel">
               <span id="account-avatar" class="account-avatar" aria-hidden="true">
                 <img id="account-avatar-img" alt="" hidden referrerpolicy="no-referrer" />
                 <span id="account-avatar-fallback">?</span>
               </span>
-              <span id="account-menu-label" class="account-menu-label">Account</span>
+              <span id="account-menu-label" class="account-menu-label" data-i18n="account.fallbackName">Account</span>
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="m2 4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </button>
-            <div id="account-menu-panel" class="account-menu-panel" role="menu" aria-label="Account and appearance" hidden>
+            <div id="account-menu-panel" class="account-menu-panel" role="menu" aria-label="Account and appearance" data-i18n-aria-label="account.menuLabel" hidden>
               <div id="account-identity" class="account-identity" hidden>
-                <button id="btn-change-avatar" class="account-identity-avatar" type="button" aria-label="Change profile picture" title="Change profile picture">
+                <button id="btn-change-avatar" class="account-identity-avatar" type="button" aria-label="Change profile picture" title="Change profile picture" data-i18n-aria-label="account.changePhoto" data-i18n-title="account.changePhoto">
                   <img id="account-identity-avatar-img" alt="" hidden referrerpolicy="no-referrer" />
                   <span id="account-identity-avatar-fallback" aria-hidden="true">?</span>
                   <span class="account-identity-avatar-hint" aria-hidden="true">
@@ -66,26 +67,33 @@
               </div>
               <button id="btn-remove-avatar" class="account-menu-item account-identity-remove" type="button" hidden>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                <span>Use Google photo instead</span>
+                <span data-i18n="account.useGooglePhoto">Use Google photo instead</span>
               </button>
-              <input id="avatar-upload-file" class="account-avatar-file-input" type="file" accept="image/png,image/jpeg" tabindex="-1" aria-label="Choose a new profile picture" hidden />
+              <input id="avatar-upload-file" class="account-avatar-file-input" type="file" accept="image/png,image/jpeg" tabindex="-1" aria-label="Choose a new profile picture" data-i18n-aria-label="account.choosePhoto" hidden />
               <div id="google-account-section" class="account-section"></div>
               <div class="account-divider" role="separator"></div>
-              <p class="account-group-heading" role="presentation">Preferences</p>
+              <p class="account-group-heading" role="presentation" data-i18n="account.preferences">Preferences</p>
               <div class="account-prefs-row">
                 <button id="btn-theme-toggle" class="account-menu-item theme-toggle-row" type="button" aria-label="Switch to light theme" title="Switch to light theme">
                   <svg class="svg-icon theme-icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
                   <svg class="svg-icon theme-icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/></svg>
-                  <span>Theme: <span id="theme-current-label">Dark</span></span>
+                  <span id="theme-current-label" data-i18n="theme.currentDark">Theme: Dark</span>
                 </button>
+                <div class="account-language" role="group" aria-labelledby="account-language-label">
+                  <span id="account-language-label" class="account-language-label">
+                    <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <span data-i18n="language.label">Language</span>
+                  </span>
+                  <div class="language-switch" data-language-switch="menu"></div>
+                </div>
                 <button id="btn-data-management-menu" class="account-menu-item" type="button">
                   <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                  <span>Data &amp; backups</span>
+                  <span data-i18n="account.dataBackups">Data &amp; backups</span>
                 </button>
               </div>
               <button id="btn-sign-out" class="account-menu-item account-menu-item-danger" type="button">
                 <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                <span>Sign out</span>
+                <span data-i18n="account.signOut">Sign out</span>
               </button>
             </div>
           </div>
@@ -95,122 +103,127 @@
 
     <main id="main-content">
       <div id="app-load-error" class="app-load-error" role="alert" hidden>
-        <div class="app-load-error-copy"><strong>Couldn’t refresh the board</strong><span>Your current view may be out of date. Try again to load the latest data.</span></div>
-        <button id="app-load-retry" class="btn-secondary app-load-error-retry" type="button">Try again</button>
+        <div class="app-load-error-copy"><strong data-i18n="board.refreshErrorTitle">Couldn’t refresh the board</strong><span data-i18n="board.refreshErrorBody">Your current view may be out of date. Try again to load the latest data.</span></div>
+        <button id="app-load-retry" class="btn-secondary app-load-error-retry" type="button" data-i18n="common.tryAgain">Try again</button>
       </div>
-      <p class="demo-inactivity-note" role="note"><strong>Demo rule:</strong> Waiting cards with 30 days without saved activity move to Rejected automatically. Open Filters and choose Rejected to see the example.</p>
-      <nav class="board-view-switch" aria-label="Board views">
-        <button id="tab-board" class="board-view-option active" type="button" aria-pressed="true">Board</button>
+      <p class="demo-inactivity-note" role="note"><strong data-i18n="demo.ruleLabel">Demo rule:</strong> <span data-i18n="demo.inactivityRule">Waiting cards with 30 days without saved activity move to Rejected automatically. Open Filters and choose Rejected to see the example.</span></p>
+      <nav class="board-view-switch" aria-label="Board views" data-i18n-aria-label="board.views">
+        <button id="tab-board" class="board-view-option active" type="button" aria-pressed="true" data-i18n="board.board">Board</button>
         <button class="board-view-option" data-filter="schedule" id="tab-schedule" type="button" aria-pressed="false">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-          <span>Schedule</span><span class="tab-count" id="count-meetings">0</span>
+          <span data-i18n="board.schedule">Schedule</span><span class="tab-count" id="count-meetings">0</span>
         </button>
-        <span id="view-loading-status" class="view-loading-status" role="status" hidden>Loading…</span>
+        <span id="view-loading-status" class="view-loading-status" role="status" hidden data-i18n="common.loading">Loading…</span>
       </nav>
       <div class="process-toolbar" id="process-toolbar">
         <div class="toolbar-search-filter">
           <div class="process-filter-control">
             <button id="process-filter-trigger" class="process-filter-trigger" type="button" aria-expanded="false" aria-controls="process-filter-panel">
               <svg class="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="12" r="2"/></svg>
-              <span>Filters</span><span id="process-filter-count" class="process-filter-count" hidden>0</span>
+              <span data-i18n="filters.title">Filters</span><span id="process-filter-count" class="process-filter-count" hidden>0</span>
             </button>
-            <div id="process-filter-panel" class="process-filter-panel" aria-label="Filters" hidden>
-              <div class="process-filter-panel-header"><strong>Filters</strong><button class="process-filter-close" type="button" aria-label="Close filters"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m18 6-12 12M6 6l12 12"/></svg></button></div>
+            <div id="process-filter-panel" class="process-filter-panel" aria-label="Filters" data-i18n-aria-label="filters.title" hidden>
+              <div class="process-filter-panel-header"><strong data-i18n="filters.title">Filters</strong><button class="process-filter-close" type="button" aria-label="Close filters" data-i18n-aria-label="filters.close"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m18 6-12 12M6 6l12 12"/></svg></button></div>
               <div class="process-filter-panel-content">
-                <section class="process-filter-active" aria-label="Active filters" hidden>
-                  <h3>Active filters</h3>
+                <section class="process-filter-active" aria-label="Active filters" data-i18n-aria-label="filters.active" hidden>
+                  <h3 data-i18n="filters.active">Active filters</h3>
                   <div class="process-filter-chips" data-mobile-filter-chips aria-live="polite"></div>
                 </section>
-                <fieldset class="process-filter-status"><legend>Status</legend>
-                  <div class="status-filter-options">
-                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="accepted" /><span>Accepted</span><span class="tab-count" id="count-accepted">0</span></label>
-                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="ongoing" /><span>Ongoing</span><span class="tab-count" id="count-ongoing">0</span></label>
-                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="waiting" /><span>Waiting</span><span class="tab-count" id="count-waiting">0</span></label>
-                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="rejected" /><span>Rejected</span><span class="tab-count" id="count-rejected">0</span></label>
-                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="all" /><span>All statuses</span><span class="tab-count" id="count-all">0</span></label>
+                <fieldset class="process-filter-status"><legend data-i18n="filters.status">Status</legend>
+                  <div class="status-filter-options filter-option-grid">
+                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="accepted" /><span data-i18n="status.accepted">Accepted</span><span class="tab-count" id="count-accepted">0</span></label>
+                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="ongoing" /><span data-i18n="status.ongoing">Ongoing</span><span class="tab-count" id="count-ongoing">0</span></label>
+                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="waiting" /><span data-i18n="status.waiting">Waiting</span><span class="tab-count" id="count-waiting">0</span></label>
+                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="rejected" /><span data-i18n="status.rejected">Rejected</span><span class="tab-count" id="count-rejected">0</span></label>
+                    <label class="status-filter-option"><input type="checkbox" name="process-status-filter" value="all" /><span data-i18n="filters.allStatuses">All statuses</span><span class="tab-count" id="count-all">0</span></label>
                   </div>
                 </fieldset>
-              <fieldset class="process-filter-period"><legend>Search period</legend>
+              <fieldset class="process-filter-period"><legend data-i18n="filters.searchPeriod">Search period</legend>
                 <div id="search-period-control" class="search-period-control search-period-select-wrap">
                   <input id="search-period-filter" type="hidden" value="all" />
-                  <button id="search-period-trigger" class="search-period-trigger" type="button" aria-label="Search period: All periods" title="Search period: All periods" aria-haspopup="menu" aria-expanded="false" aria-controls="search-period-menu">
+                  <button id="search-period-trigger" class="search-period-trigger" type="button" aria-label="Search period: All periods" title="Search period: All periods" data-i18n-aria-label="searchPeriods.triggerAll" data-i18n-title="searchPeriods.triggerAll" aria-haspopup="menu" aria-expanded="false" aria-controls="search-period-menu">
                     <svg class="search-period-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
-                    <span id="search-period-current">All periods</span>
+                    <span id="search-period-current" data-i18n="searchPeriods.all">All periods</span>
                     <svg class="search-period-select-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                   </button>
-                  <div id="search-period-menu" class="search-period-menu" role="menu" aria-label="Search periods" hidden></div>
+                  <div id="search-period-menu" class="search-period-menu" role="menu" aria-label="Search periods" data-i18n-aria-label="searchPeriods.menuLabel" hidden></div>
                 </div>
               </fieldset>
-              <fieldset class="process-filter-arrangements"><legend>Work arrangement</legend>
-                <label><input type="checkbox" name="process-filter-arrangement" value="remote" />Remote</label>
-                <label><input type="checkbox" name="process-filter-arrangement" value="hybrid" />Hybrid</label>
-                <label><input type="checkbox" name="process-filter-arrangement" value="on_site" />On-site</label>
+              <fieldset class="process-filter-arrangements"><legend data-i18n="filters.workArrangement">Work arrangement</legend>
+                <div class="filter-option-grid filter-option-grid-3">
+                  <label><input type="checkbox" name="process-filter-arrangement" value="remote" /><span data-i18n="arrangement.remote">Remote</span></label>
+                  <label><input type="checkbox" name="process-filter-arrangement" value="hybrid" /><span data-i18n="arrangement.hybrid">Hybrid</span></label>
+                  <label><input type="checkbox" name="process-filter-arrangement" value="on_site" /><span data-i18n="arrangement.onSite">On-site</span></label>
+                </div>
               </fieldset>
-              <fieldset class="process-filter-referral"><legend>Referral</legend>
-                <label><input type="radio" name="process-filter-referral" id="process-filter-any-referral" />Any</label>
-                <label><input type="radio" name="process-filter-referral" id="process-filter-referral" />Direct referral</label>
-                <label><input type="radio" name="process-filter-referral" id="process-filter-no-referral" />No referral</label>
+              <fieldset class="process-filter-referral"><legend data-i18n="filters.referral">Referral</legend>
+                <div class="filter-option-grid filter-option-grid-3">
+                  <label><input type="radio" name="process-filter-referral" id="process-filter-any-referral" /><span data-i18n="filters.any">Any</span></label>
+                  <label><input type="radio" name="process-filter-referral" id="process-filter-referral" /><span data-i18n="filters.directReferral">Direct referral</span></label>
+                  <label><input type="radio" name="process-filter-referral" id="process-filter-no-referral" /><span data-i18n="referral.none">No referral</span></label>
+                </div>
               </fieldset>
-              <label class="process-filter-single">Expected salary
-                <input id="process-filter-expected-salary" type="text" placeholder="e.g. €85k, negotiable" autocomplete="off" />
+              <label class="process-filter-single"><span data-i18n="filters.expectedSalary">Expected salary</span>
+                <input id="process-filter-expected-salary" type="text" placeholder="e.g. €85k, negotiable" data-i18n-placeholder="filters.expectedSalaryPlaceholder" autocomplete="off" />
               </label>
-              <fieldset class="process-filter-salary"><legend>Job posting salary range</legend>
-                <label>Minimum<input id="process-filter-posted-salary-min" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" /></label>
-                <label>Maximum<input id="process-filter-posted-salary-max" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" /></label>
-                <label class="process-filter-currency">Currency<select id="process-filter-currency"><option value="">Any</option><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option></select></label>
+              <fieldset class="process-filter-salary"><legend data-i18n="filters.postingSalary">Job posting salary range</legend>
+                <label><span data-i18n="filters.minimum">Minimum</span><input id="process-filter-posted-salary-min" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" data-i18n-placeholder="filters.any" /></label>
+                <label><span data-i18n="filters.maximum">Maximum</span><input id="process-filter-posted-salary-max" type="number" min="0" step="1000" inputmode="numeric" placeholder="Any" data-i18n-placeholder="filters.any" /></label>
+                <label class="process-filter-currency"><span data-i18n="filters.currency">Currency</span><select id="process-filter-currency"><option value="" data-i18n="filters.any">Any</option><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option></select></label>
               </fieldset>
-              <fieldset class="process-filter-technologies"><legend>Tech stack</legend>
-                <input id="process-filter-technology-search" type="search" aria-label="Search technologies" placeholder="Search technologies" autocomplete="off" />
+              <fieldset class="process-filter-technologies"><legend data-i18n="filters.techStack">Tech stack</legend>
+                <input id="process-filter-technology-search" type="search" aria-label="Search technologies" placeholder="Search technologies" data-i18n-aria-label="filters.searchTechnologies" data-i18n-placeholder="filters.searchTechnologies" autocomplete="off" />
                 <div id="process-filter-technology-options" class="process-filter-technology-options" aria-describedby="process-filter-technologies-help"></div>
-                <button id="btn-technology-library" class="btn-secondary process-manage-technologies" type="button">Manage technology catalog</button>
+                <button id="btn-technology-library" class="btn-secondary process-manage-technologies" type="button" data-i18n="technologies.manageCatalog">Manage technology catalog</button>
               </fieldset>
-              <p id="process-filter-technologies-help" class="process-filter-note">Select one or more technologies; matching roles must include all selected technologies.</p>
+              <p id="process-filter-technologies-help" class="process-filter-note" data-i18n="filters.techHelp">Select one or more technologies; matching roles must include all selected technologies.</p>
               </div>
               <div id="process-filter-panel-footer" class="process-filter-panel-footer">
-                <button id="process-filter-clear" class="process-filter-clear" type="button" hidden>Clear filters</button>
-                <button class="process-filter-done" type="button">Done</button>
+                <button id="process-filter-clear" class="process-filter-clear" type="button" hidden data-i18n="filters.clear">Clear filters</button>
+                <button class="process-filter-done" type="button" data-i18n="common.done">Done</button>
               </div>
             </div>
           </div>
           <div class="search-wrapper process-search">
-            <button type="button" class="search-focus" aria-label="Focus search field">
+            <button type="button" class="search-focus" aria-label="Focus search field" data-i18n-aria-label="search.focus">
               <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
             </button>
-            <input type="text" id="search-input" class="search-input" aria-label="Search selection processes" placeholder="Search jobs…" />
+            <input type="text" id="search-input" class="search-input" aria-label="Search selection processes" placeholder="Search jobs…" data-i18n-aria-label="search.label" data-i18n-placeholder="search.placeholder" />
             <span class="search-shortcut">/</span>
           </div>
-          <button id="btn-new-process" class="btn-primary new-process-trigger" title="New Selection Process" aria-label="New Selection Process">
+          <button id="btn-new-process" class="btn-primary new-process-trigger" title="New Selection Process" aria-label="New Selection Process" data-i18n-title="newProcess.title" data-i18n-aria-label="newProcess.title">
             <span class="inline-icon-text">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              <span class="new-process-label">New Process</span>
+              <span class="new-process-label" data-i18n="newProcess.short">New Process</span>
             </span>
           </button>
         </div>
-        <div id="process-toolbar-active-state" class="process-toolbar-active-state" role="group" aria-label="Active filters" hidden>
-          <div id="process-filter-chips" class="process-filter-chips" aria-label="Active filters" aria-live="polite"></div>
+        <div id="process-toolbar-active-state" class="process-toolbar-active-state" role="group" aria-label="Active filters" data-i18n-aria-label="filters.active" hidden>
+          <div id="process-filter-chips" class="process-filter-chips" aria-label="Active filters" data-i18n-aria-label="filters.active" aria-live="polite"></div>
         </div>
         <span id="process-filter-summary" class="process-filter-summary" aria-live="polite"></span>
         <div class="toolbar-view-controls">
           <div class="process-sort-control">
-            <button id="process-sort-trigger" class="process-sort-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="process-sort-menu" aria-label="Sort processes: newest first">
-              <span id="process-sort-current">Newest</span>
+            <button id="process-sort-trigger" class="process-sort-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="process-sort-menu" aria-label="Sort processes: newest added first" data-i18n-aria-label="sort.full.added-newest">
+              <span class="process-sort-compact" aria-hidden="true" data-i18n="sort.compact">Sort</span>
+              <span id="process-sort-current" data-i18n="sort.short.added-newest">Added · Newest</span>
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="m2 4 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </button>
-            <div id="process-sort-menu" class="process-sort-menu" role="menu" aria-label="Sort processes" hidden>
-              <span class="process-sort-menu-heading" role="presentation">Date added</span>
-              <button type="button" role="menuitemradio" data-sort-mode="added-newest">Newest first</button>
-              <button type="button" role="menuitemradio" data-sort-mode="added-oldest">Oldest first</button>
-              <span class="process-sort-menu-heading" role="presentation">Status changed</span>
-              <button type="button" role="menuitemradio" data-sort-mode="status-newest">Newest first</button>
-              <button type="button" role="menuitemradio" data-sort-mode="status-oldest">Oldest first</button>
-              <span class="process-sort-menu-heading" role="presentation">Interview stage</span>
-              <button type="button" role="menuitemradio" data-sort-mode="advanced">Most advanced stage first</button>
-              <button type="button" role="menuitemradio" data-sort-mode="early">Least advanced stage first</button>
-              <span class="process-sort-menu-heading" role="presentation">Card order</span>
-              <button type="button" role="menuitemradio" data-sort-mode="manual">Manual order</button>
+            <div id="process-sort-menu" class="process-sort-menu" role="menu" aria-label="Sort processes" data-i18n-aria-label="sort.menuLabel" hidden>
+              <span class="process-sort-menu-heading" role="presentation" data-i18n="sort.dateAdded">Date added</span>
+              <button type="button" role="menuitemradio" data-sort-mode="added-newest" data-i18n="sort.newestFirst">Newest first</button>
+              <button type="button" role="menuitemradio" data-sort-mode="added-oldest" data-i18n="sort.oldestFirst">Oldest first</button>
+              <span class="process-sort-menu-heading" role="presentation" data-i18n="sort.statusChanged">Status changed</span>
+              <button type="button" role="menuitemradio" data-sort-mode="status-newest" data-i18n="sort.newestFirst">Newest first</button>
+              <button type="button" role="menuitemradio" data-sort-mode="status-oldest" data-i18n="sort.oldestFirst">Oldest first</button>
+              <span class="process-sort-menu-heading" role="presentation" data-i18n="sort.interviewStage">Interview stage</span>
+              <button type="button" role="menuitemradio" data-sort-mode="advanced" data-i18n="sort.mostAdvancedFirst">Most advanced stage first</button>
+              <button type="button" role="menuitemradio" data-sort-mode="early" data-i18n="sort.leastAdvancedFirst">Least advanced stage first</button>
+              <span class="process-sort-menu-heading" role="presentation" data-i18n="sort.cardOrder">Card order</span>
+              <button type="button" role="menuitemradio" data-sort-mode="manual" data-i18n="sort.manualOrder">Manual order</button>
             </div>
           </div>
         </div>
@@ -218,7 +231,7 @@
       <p id="card-reorder-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></p>
       <div id="cards-grid" class="cards-grid" aria-busy="true">
         <div class="board-loading-state" role="status" aria-live="polite">
-          <span class="sr-only">Loading selection processes</span>
+          <span class="sr-only" data-i18n="board.loadingProcesses">Loading selection processes</span>
           <div class="board-skeleton-grid" aria-hidden="true">
             <div class="board-skeleton-card"><span class="board-skeleton-logo"></span><span class="board-skeleton-heading"></span><span class="board-skeleton-title"></span><span class="board-skeleton-meta"></span><span class="board-skeleton-rule"></span><span class="board-skeleton-section-label"></span><span class="board-skeleton-line"></span><span class="board-skeleton-line is-short"></span><span class="board-skeleton-date"></span><div class="board-skeleton-tech"><span class="board-skeleton-section-label"></span><div class="board-skeleton-tech-tags"><span></span><span></span><span></span><span></span></div></div><span class="board-skeleton-stage"></span></div>
             <div class="board-skeleton-card"><span class="board-skeleton-logo"></span><span class="board-skeleton-heading"></span><span class="board-skeleton-title"></span><span class="board-skeleton-meta"></span><span class="board-skeleton-rule"></span><span class="board-skeleton-section-label"></span><span class="board-skeleton-line"></span><span class="board-skeleton-line is-short"></span><span class="board-skeleton-date"></span><div class="board-skeleton-tech"><span class="board-skeleton-section-label"></span><div class="board-skeleton-tech-tags"><span></span><span></span><span></span><span></span></div></div><span class="board-skeleton-stage"></span></div>
@@ -249,11 +262,12 @@
         </svg>
       </div>
       <h1 class="sign-in-title">War Room</h1>
-      <p id="sign-in-message" class="sign-in-message">Sign in with the authorized Google account to continue.</p>
+      <p id="sign-in-message" class="sign-in-message" data-i18n="signIn.message">Sign in with the authorized Google account to continue.</p>
       <a id="btn-google-signin" class="google-signin-button sign-in-button" href="/api/google/connect">
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.48a5.54 5.54 0 0 1-2.4 3.63v3.02h3.88c2.27-2.09 3.56-5.17 3.56-8.84Z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.96-2.9l-3.88-3.02c-1.08.73-2.46 1.15-4.08 1.15-3.14 0-5.8-2.12-6.75-4.96H1.24v3.11A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" d="M5.25 14.27A7.2 7.2 0 0 1 4.86 12c0-.79.14-1.56.39-2.27V6.62H1.24A12 12 0 0 0 0 12c0 1.94.46 3.77 1.24 5.38l4.01-3.11Z"/><path fill="#EA4335" d="M12 4.77c1.76 0 3.34.6 4.58 1.78l3.44-3.44C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.24 6.62l4.01 3.11C6.2 6.89 8.86 4.77 12 4.77Z"/></svg>
-        <span>Sign in with Google</span>
+        <span data-i18n="signIn.button">Sign in with Google</span>
       </a>
+      <div class="sign-in-language language-switch" role="group" aria-label="Language" data-i18n-aria-label="language.label" data-language-switch="buttons"></div>
     </div>
   </div>
 

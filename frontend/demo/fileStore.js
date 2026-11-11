@@ -1,3 +1,5 @@
+import { t } from "../public/js/i18n.js";
+
 const DB_NAME = "war-room-demo-files-v1";
 
 function openDatabase() {
@@ -5,7 +7,7 @@ function openDatabase() {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => request.result.createObjectStore("attachments");
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(new Error("Browser file storage is unavailable."));
+    request.onerror = () => reject(new Error(t("errors.fileStorageUnavailable")));
   });
 }
 
@@ -15,8 +17,8 @@ function transact(mode, operation) {
     const store = transaction.objectStore("attachments");
     const result = operation(store);
     transaction.oncomplete = () => { database.close(); resolve(result?.result); };
-    transaction.onerror = () => { database.close(); reject(new Error("Browser file storage failed.")); };
-    transaction.onabort = () => { database.close(); reject(new Error("Browser file storage failed.")); };
+    transaction.onerror = () => { database.close(); reject(new Error(t("errors.fileStorageFailed"))); };
+    transaction.onabort = () => { database.close(); reject(new Error(t("errors.fileStorageFailed"))); };
   }));
 }
 

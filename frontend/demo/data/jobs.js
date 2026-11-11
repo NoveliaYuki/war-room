@@ -1,30 +1,7 @@
 /** Browser-only sample records for the interactive demo. */
 import { formatLocalDate, getDemoMeetingDayOffset } from "./meetingDates.js";
 import { technologyRecord } from "./technologies.js";
-
-const stageQuestions = {
-  HR: [
-    "What kind of work gives you the most energy?",
-    "How do you prefer to receive feedback?",
-    "What would make your next role a strong long-term fit?",
-  ],
-  Technical: [
-    "How would you break this problem into smaller parts?",
-    "What trade-offs shaped your most recent system design?",
-    "How do you investigate a production issue you cannot reproduce locally?",
-    "Which engineering decision would you revisit with what you know now?",
-  ],
-  Cultural: [
-    "Tell me about a time you changed your mind after hearing another perspective.",
-    "How do you keep a distributed team aligned?",
-    "What does a healthy disagreement look like to you?",
-  ],
-  "Offer & Decision": [
-    "What would success look like in the first six months?",
-    "How does the team support growth into broader responsibilities?",
-    "What are the remaining steps and decision timeline?",
-  ],
-};
+import { textFor } from "./text.js";
 
 const roles = [
   { company: "Google", title: "Senior Frontend Engineer", status: "ongoing", currentStageIndex: 1, stages: ["HR", "Technical", "Cultural", "Offer & Decision"], keywords: "Accessible high-traffic search UI • React architecture • Measurable performance and Core Web Vitals", technologies: ["React", "TypeScript", "JavaScript", "Kubernetes", "Go"], domain: "google.com", salary: [120000, 155000], arrangement: "hybrid", statusChangedDaysAgo: 0 },
@@ -44,13 +21,12 @@ const roles = [
 const demoInterviewers = ["Avery Example", "Jordan Sample", "Casey Demo", "Riley Placeholder"];
 const demoRecruiters = ["Morgan Sample", "Quinn Example", "Taylor Demo", "Sam Placeholder"];
 const demoContacts = ["morgan.sample@example.test", "quinn.example@example.test", "taylor.demo@example.test", "sam.placeholder@example.test"];
-const demoAgencies = ["Northstar Talent (sample)", "Bridgeway Search (sample)", "Juniper People (sample)"];
 const meetingSlots = [
   ["09:00", "09:45"], ["10:30", "11:15"], ["13:00", "13:45"], ["14:30", "15:15"],
   ["11:00", "11:45"], ["15:30", "16:15"], ["09:30", "10:15"], ["13:30", "14:15"],
 ];
 
-function makeStage(role, jobId, stageType, index, now) {
+function makeStage(role, jobId, stageType, index, now, text) {
   const id = `${jobId}-stage-${index + 1}`;
   const current = role.status === "ongoing" && index === role.currentStageIndex;
   const completed = role.status !== "ongoing" || index < role.currentStageIndex;
@@ -67,52 +43,60 @@ function makeStage(role, jobId, stageType, index, now) {
   const recruiterName = demoRecruiters[(jobNumber + index) % demoRecruiters.length];
   const timeSlot = meetingSlots[(jobNumber * 2 + index) % meetingSlots.length];
   const isExternalRecruiter = role.company === "Stripe";
-  const stageNotes = {
-    HR: "The interviewer outlined the team's priorities and asked about the candidate's recent work.",
-    Technical: "Discussed design trade-offs, failure handling, and how the approach would scale.",
-    Cultural: "Compared collaboration styles and shared examples of giving and receiving feedback.",
-    "Offer & Decision": "Reviewed role expectations, success measures, and the sample decision timeline.",
-  }[stageType];
+  const stageNotes = text.stageNotes[stageType];
+  const round = role.stages.slice(0, index + 1).filter((name) => name === stageType).length;
   return {
     id, job_id: jobId, order_index: index, stage_type: stageType,
-    custom_title: stageType === "Technical" && role.stages.filter((name) => name === "Technical").length > 1 ? `${stageType} Round ${role.stages.slice(0, index + 1).filter((name) => name === stageType).length}` : stageType,
-    description: `${stageType} conversation for the ${role.title} role at ${role.company}.`,
+    custom_title: stageType === "Technical" && role.stages.filter((name) => name === "Technical").length > 1 ? text.roundTitle(stageType, round) : stageType,
+    description: text.stageDescription(stageType, role.title, role.company),
     status: current ? "current" : completed ? "completed" : "pending",
     scheduled_at: meetingScheduled ? new Date(`${formatLocalDate(meetingDate)}T${timeSlot[0]}:00`).getTime() : null,
     meeting_date: meetingScheduled ? formatLocalDate(meetingDate) : null,
     meeting_time: meetingScheduled ? `${timeSlot[0]}–${timeSlot[1]}` : null,
     meeting_url: meetingScheduled ? `https://meet.example.com/${jobId}-stage-${index + 1}` : null,
     meeting_type: "video",
-    notes: completed
-      ? `Demo conversation note: ${stageNotes}`
-      : `Demo prep note: Ask ${interviewerName} about the team's priorities, success measures, and next steps.`,
+    notes: completed ? text.completedNote(stageNotes) : text.prepNote(interviewerName),
     recruiter_name: recruiterName,
     recruiter_type: isExternalRecruiter ? "external" : "internal",
-    recruiter_agency: isExternalRecruiter ? demoAgencies[jobNumber % demoAgencies.length] : `${role.company} Talent Acquisition`,
+    recruiter_agency: isExternalRecruiter ? text.agencies[jobNumber % text.agencies.length] : text.talentTeam(role.company),
     recruiter_contact: demoContacts[(jobNumber + index) % demoContacts.length],
-    interviewers: [{ name: interviewerName, role: {
-      HR: "Talent Partner",
-      Technical: "Senior Engineer",
-      Cultural: "Engineering Manager",
-      "Offer & Decision": "Hiring Manager",
-    }[stageType], notes: `Fictional ${stageType.toLowerCase()} interviewer for this sample process.` }],
-    questions: (stageQuestions[stageType] || stageQuestions.Technical).slice(0, 3 + ((index + jobId.length) % 3)).map((question, qIndex) => ({
+    interviewers: [{ name: interviewerName, role: text.interviewerRoles[stageType], notes: text.interviewerNote(stageType) }],
+    questions: (text.questions[stageType] || text.questions.Technical).slice(0, 3 + ((index + jobId.length) % 3)).map((question, qIndex) => ({
       id: `${id}-question-${qIndex + 1}`, stage_id: id, order_index: qIndex, question,
-      answer_notes: completed
-        ? `Sample response: ${["Shared a concise example with measurable impact.", "Explained the trade-offs and how the team aligned.", "Connected the decision to reliability and customer needs."][qIndex % 3]}`
-        : `Prep: have a concise example ready about ${["measurable impact", "trade-offs and alignment", "reliability and customer needs"][qIndex % 3]}.`,
+      answer_notes: completed ? text.completedAnswer(text.answers[qIndex % 3]) : text.prepAnswer(text.prepTopics[qIndex % 3]),
       is_asked: completed, created_at: now,
     })),
   };
 }
 
+/** Returns a role with its title and highlights in the language of `text`. */
+function localizeRole(role, index, text) {
+  const local = text.roles?.[index];
+  if (!local) return { ...role, focus: role.keywords.split(" • ")[0].toLowerCase() };
+  return { ...role, title: local.title, keywords: local.keywords, focus: local.focus };
+}
+
+/** Whether a title marks a senior level; it reads the English title so every language agrees. */
+function isSeniorTitle(title) {
+  return title.startsWith("Senior") || title.startsWith("Principal") || title.startsWith("Staff") || title.includes("Manager");
+}
+
 const now = Date.now();
-const interviewPrep = [
-  "Prepare concise examples with context, decisions, and measurable outcomes.",
-  "Practice explaining technical trade-offs in plain language and connecting them to user or business impact.",
-  "Bring thoughtful questions about the team, role expectations, and how success is measured.",
-];
-export const initialJobs = roles.map((role, index) => {
+
+/**
+ * Builds the sample jobs with their wording in one language. Only text differs between languages.
+ *
+ * @param {string} [language] - Interface language code.
+ * @returns {Array<Record<string, any>>} The sample jobs.
+ */
+export function buildDemoJobs(language = "en") {
+  const text = textFor(language);
+  const jobs = roles.map((englishRole, index) => buildDemoJob(localizeRole(englishRole, index, text), englishRole, index, text));
+  assignMeetingTimes(jobs);
+  return jobs;
+}
+
+function buildDemoJob(role, englishRole, index, text) {
   const recruiterName = demoRecruiters[(index + 1) % demoRecruiters.length];
   const isExternalRecruiter = role.company === "Stripe";
   const salaryMin = Array.isArray(role.salary) ? role.salary[0] : role.salary.min ?? null;
@@ -122,19 +106,19 @@ export const initialJobs = roles.map((role, index) => {
     id: `demo-${index + 1}`, company_name: role.company, position_title: role.title, status: role.status,
     salary_type: role.salary.type || "limited", salary_min: salaryMin, salary_max: salaryMax, salary_currency: "EUR",
     recruiter_type: isExternalRecruiter ? "external" : "internal", recruiter_name: recruiterName,
-    recruiter_agency: isExternalRecruiter ? demoAgencies[index % demoAgencies.length] : `${role.company} Talent Acquisition`,
+    recruiter_agency: isExternalRecruiter ? text.agencies[index % text.agencies.length] : text.talentTeam(role.company),
     recruiter_contact: demoContacts[index % demoContacts.length],
     job_post_url: null, application_url: `https://careers.${role.domain}`, avatar_seed: role.company, keyword_note: role.keywords,
-    description: `${role.title} on ${role.company}'s ${role.arrangement.replace("_", " ")} team. The role focuses on ${role.keywords.toLowerCase()}. Technologies mentioned in this fictional sample posting: ${role.technologies.join(", ")}. Responsibilities include designing and shipping reliable software, reviewing technical proposals, partnering with product and design, and improving service quality. The team works across engineering, product, and design; success is measured through customer outcomes, delivery quality, and operational health.\n\nFictional sample opportunity for the War Room demo; this is not an active job listing.`,
-    company_overview: `${role.company} is shown as a sample employer in this fictional interview pipeline. Company identity and logo are real; the role details, recruiter, interviewers, and hiring activity are illustrative demo data.`,
-    company_domain: role.domain, interview_notes: `${interviewPrep[index % interviewPrep.length]} ${["Ask how the team plans work across a typical quarter.", "Clarify the balance between hands-on delivery and technical leadership.", "Ask what the first 90 days would look like for this role."][index % 3]}`,
-    reasons_to_change: `Looking for broader ownership of ${role.keywords.split(" • ")[0].toLowerCase()}, with a team that values thoughtful engineering and clear customer impact. The move would build on current experience while providing room to grow in scope.`,
-    experience_notes: `Relevant sample experience: delivered production features related to ${role.keywords.split(" • ")[0].toLowerCase()}, partnered with product and design to scope work, and used monitoring and user feedback to improve reliability. For the ${role.title} level, examples emphasize ${role.title.startsWith("Senior") || role.title.startsWith("Principal") || role.title.startsWith("Staff") || role.title.includes("Manager") ? "technical direction, mentoring, and cross-team outcomes" : "independent feature ownership, code quality, and effective collaboration"}.`,
+    description: text.description(role),
+    company_overview: text.companyOverview(role.company),
+    company_domain: role.domain, interview_notes: `${text.interviewPrep[index % text.interviewPrep.length]} ${text.interviewFollowUps[index % 3]}`,
+    reasons_to_change: text.reasonsToChange(role.focus),
+    experience_notes: text.experienceNotes(role.focus, role.title, isSeniorTitle(englishRole.title)),
     expected_salary: role.salary.type === "no_min"
-      ? `Up to €${role.salary.max.toLocaleString()}`
+      ? text.salaryUpTo(role.salary.max)
       : role.salary.type === "no_max"
-        ? `From €${role.salary.min.toLocaleString()}`
-        : `€${role.salary[0].toLocaleString()}–€${role.salary[1].toLocaleString()}`,
+        ? text.salaryFrom(role.salary.min)
+        : text.salaryRange(role.salary[0], role.salary[1]),
     work_arrangement: role.arrangement, employment_type: "permanent", is_referral: Boolean(role.referral),
     order_index: index,
     application_sent_date: role.status === "waiting" && !role.referral ? formatLocalDate(new Date(createdAt * 1000)) : undefined,
@@ -151,30 +135,97 @@ export const initialJobs = roles.map((role, index) => {
     automatic_rejection_reason: role.automaticRejectionReason || "",
     attachments: [], interviewers: [], stages: [], technologies: role.technologies.map(technologyRecord),
   };
-  job.stages = role.stages.map((stageType, stageIndex) => makeStage(role, job.id, stageType, stageIndex, now));
+  job.stages = role.stages.map((stageType, stageIndex) => makeStage(role, job.id, stageType, stageIndex, now, text));
   const currentIndex = job.stages.findIndex((stage) => stage.status === "current");
   const current = job.stages[currentIndex];
   job.current_stage_title = current ? current.custom_title || current.stage_type : undefined;
   job.current_stage_index = current ? currentIndex + 1 : undefined;
   job.total_stages_count = job.stages.length;
   return job;
-});
+}
 
 const meetingTimes = ["09:00–09:45", "10:00–10:45", "11:00–11:45", "13:00–13:45", "14:00–14:45", "15:00–15:45", "16:00–16:45"];
-const scheduledStagesByDate = new Map();
-for (const job of initialJobs) {
-  for (const stage of job.stages) {
-    if (!stage.meeting_date) continue;
-    const stagesOnDate = scheduledStagesByDate.get(stage.meeting_date) || [];
-    stagesOnDate.push(stage);
-    scheduledStagesByDate.set(stage.meeting_date, stagesOnDate);
+function assignMeetingTimes(jobs) {
+  const scheduledStagesByDate = new Map();
+  for (const job of jobs) {
+    for (const stage of job.stages) {
+      if (!stage.meeting_date) continue;
+      const stagesOnDate = scheduledStagesByDate.get(stage.meeting_date) || [];
+      stagesOnDate.push(stage);
+      scheduledStagesByDate.set(stage.meeting_date, stagesOnDate);
+    }
+  }
+  for (const stages of scheduledStagesByDate.values()) {
+    stages.sort((a, b) => a.job_id.localeCompare(b.job_id) || a.order_index - b.order_index);
+    stages.forEach((stage, index) => {
+      stage.meeting_time = meetingTimes[index % meetingTimes.length];
+      const startTime = stage.meeting_time.split("–")[0];
+      stage.scheduled_at = new Date(`${stage.meeting_date}T${startTime}:00`).getTime();
+    });
   }
 }
-for (const stages of scheduledStagesByDate.values()) {
-  stages.sort((a, b) => a.job_id.localeCompare(b.job_id) || a.order_index - b.order_index);
-  stages.forEach((stage, index) => {
-    stage.meeting_time = meetingTimes[index % meetingTimes.length];
-    const startTime = stage.meeting_time.split("–")[0];
-    stage.scheduled_at = new Date(`${stage.meeting_date}T${startTime}:00`).getTime();
+
+/** The sample jobs as first saved, in English. */
+export const initialJobs = buildDemoJobs("en");
+
+const historicalRecords = [
+  { company: "Morrow Design Co.", role: "UX Designer", status: "accepted", date: "2021-06-03", arrangement: "remote", salaryMin: 65000, salaryMax: 82000 },
+  { company: "Cinder Analytics", role: "Data Analyst", status: "rejected", date: "2021-06-07", arrangement: "hybrid", salaryMin: 58000, salaryMax: 74000 },
+  { company: "Saffron Labs", role: "Product Manager", status: "rejected", date: "2021-06-09", arrangement: "remote", salaryMin: 72000, salaryMax: 91000 },
+  { company: "Kestrel Mobility", role: "iOS Engineer", status: "rejected", date: "2021-06-11", arrangement: "hybrid", salaryMin: 78000, salaryMax: 98000 },
+  { company: "Lattice Grove", role: "Customer Success Engineer", status: "rejected", date: "2021-06-14", arrangement: "remote", salaryMin: 62000, salaryMax: 80000 },
+  { company: "Orbit Foundry", role: "QA Automation Engineer", status: "rejected", date: "2021-06-16", arrangement: "hybrid", salaryMin: 60000, salaryMax: 79000 },
+  { company: "Stonebridge Health", role: "Product Designer", status: "rejected", date: "2021-06-18", arrangement: "remote", salaryMin: 68000, salaryMax: 86000 },
+  { company: "Redfern Commerce", role: "Backend Engineer", status: "rejected", date: "2021-06-21", arrangement: "hybrid", salaryMin: 76000, salaryMax: 96000 },
+  { company: "Silverpath Energy", role: "Data Engineer", status: "rejected", date: "2021-06-24", arrangement: "remote", salaryMin: 74000, salaryMax: 94000 },
+  { company: "Atlas Harbor", role: "Technical Writer", status: "rejected", date: "2021-06-28", arrangement: "hybrid", salaryMin: 54000, salaryMax: 70000 },
+];
+
+/**
+ * Builds the closed sample jobs of the June 2021 search period. Each copies a current sample job's notes.
+ *
+ * @param {{ language?: string, periodId?: string, firstOrderIndex?: number }} [options] - Wording language, period, and first board position.
+ * @returns {Array<Record<string, any>>} The historical sample jobs.
+ */
+export function buildHistoricalDemoJobs({ language = "en", periodId = "demo-period-june-2021", firstOrderIndex = 0 } = {}) {
+  const text = textFor(language);
+  const baseJobs = buildDemoJobs(language);
+  return historicalRecords.map((record, index) => {
+    const job = JSON.parse(JSON.stringify(baseJobs[index % baseJobs.length]));
+    const role = text.historicalRoles?.[index] || record.role;
+    const timestamp = Math.floor(Date.parse(`${record.date}T12:00:00Z`) / 1000);
+    Object.assign(job, {
+      id: `demo-period-june-2021-${index + 1}`,
+      company_name: record.company,
+      position_title: role,
+      status: record.status,
+      status_changed_at: timestamp,
+      created_at: timestamp,
+      updated_at: timestamp,
+      last_activity_at: timestamp,
+      automatic_rejection_reason: "",
+      search_period_id: periodId,
+      order_index: firstOrderIndex + index,
+      avatar_seed: record.company,
+      job_post_url: `https://careers.${record.company.toLowerCase().replaceAll(" ", "-")}.example.test`,
+      company_domain: `${record.company.toLowerCase().replaceAll(" ", "-")}.example.test`,
+      description: text.historicalDescription(role, record.company),
+      company_overview: text.historicalOverview(record.company),
+      keyword_note: text.historicalKeywords(role),
+      expected_salary: text.salaryRange(record.salaryMin, record.salaryMax),
+      salary_min: record.salaryMin,
+      salary_max: record.salaryMax,
+      work_arrangement: record.arrangement,
+      is_referral: false,
+      application_sent_date: record.date,
+      stages: [],
+      interviewers: [],
+      technologies: [],
+      attachments: [],
+      total_stages_count: 0,
+    });
+    delete job.current_stage_title;
+    delete job.current_stage_index;
+    return job;
   });
 }

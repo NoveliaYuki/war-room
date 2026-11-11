@@ -6,8 +6,11 @@
  * Pressing Escape cancels without saving.
  */
 
+import { t } from "./i18n.js";
+
 /**
  * Attaches double-click inline editing to a target DOM element.
+ * An element whose title already explains editing carries data-edit-titled and keeps that title.
  *
  * @param {HTMLElement} element - The DOM element to make editable.
  * @param {Object} options
@@ -27,10 +30,11 @@ export function makeInlineEditable(element, options = {}) {
   element.classList.add("editable-text");
   const eventName = options.eventName || "dblclick";
   element.dataset.editEvent = eventName;
-  const editHint = eventName === "click" ? "Click to edit" : "Double-click to edit";
+  const editHint = t(eventName === "click" ? "inlineEdit.clickHint" : "inlineEdit.doubleClickHint");
   const existingTitle = element.getAttribute("title");
-  if (!existingTitle?.toLowerCase().includes("edit")) {
+  if (!element.hasAttribute("data-edit-titled")) {
     element.title = existingTitle ? `${existingTitle} · ${editHint}` : editHint;
+    element.setAttribute("data-edit-titled", "");
   }
   element.addEventListener(eventName, (event) => startInlineEditing(element, options, event));
 }
@@ -89,10 +93,10 @@ function createCommitHandler(element, input, rawValue, originalDisplay, options,
     updateInlineDisplay(element, options, newValue);
     try {
       await options.onSave?.(newValue);
-      showInlineToast("Saved!", "success", 1200);
+      showInlineToast(t("inlineEdit.saved"), "success", 1200);
     } catch (error) {
       console.error("Failed to save inline edit:", error);
-      showInlineToast("Failed to save", "error", 2000);
+      showInlineToast(t("inlineEdit.saveFailed"), "error", 2000);
     }
   };
 }

@@ -1,3 +1,5 @@
+import { t } from "../i18n.js";
+
 /**
  * Formats salary fields into the compact label shown on job cards and details.
  *
@@ -11,9 +13,9 @@ export function formatSalary(type, min, max, currency = "EUR") {
   const symbols = { EUR: "€", GBP: "£", USD: "$" };
   const symbol = symbols[currency] || "€";
   if (min != null && max != null) return formatSalaryRange(min, max, symbol);
-  if (min != null || type === "no_max") return formatSalaryBound(min, symbol, "From");
-  if (max != null || type === "no_min") return formatSalaryBound(max, symbol, "Up to");
-  return "Salary undisclosed";
+  if (min != null || type === "no_max") return formatSalaryBound(min, symbol, "salary.from");
+  if (max != null || type === "no_min") return formatSalaryBound(max, symbol, "salary.upTo");
+  return t("salary.undisclosed");
 }
 
 /** Formats equal or ranged salary bounds. */
@@ -23,10 +25,10 @@ function formatSalaryRange(min, max, symbol) {
   return `${symbol}${compactMin}-${compactSalary(max)}`;
 }
 
-/** Formats one salary bound with an optional prefix. */
-function formatSalaryBound(value, symbol, prefix) {
-  if (value == null) return "Salary undisclosed";
-  return `${prefix} ${symbol}${compactSalary(value)}`;
+/** Formats one salary bound with its translated "from" or "up to" wording. */
+function formatSalaryBound(value, symbol, key) {
+  if (value == null) return t("salary.undisclosed");
+  return t(key, { amount: `${symbol}${compactSalary(value)}` });
 }
 
 /** Converts a numeric salary to a compact display value. */

@@ -8,6 +8,17 @@
   padding: 0;
 }
 
+/* Hides a non-English page until boot.js translates it; the delayed reveal keeps
+   the page usable if scripts fail to load. */
+html[data-i18n-pending] body {
+  visibility: hidden;
+  animation: i18n-pending-reveal 0s linear 2s forwards;
+}
+
+@keyframes i18n-pending-reveal {
+  to { visibility: visible; }
+}
+
 html.theme-switching,
 html.theme-switching *,
 html.theme-switching *::before,

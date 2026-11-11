@@ -3,6 +3,8 @@ import { activateModal } from "../modalA11y.js";
 import { icon } from "../icons.js";
 import { escapeAttr, escapeHtml } from "../utils/sanitize.js";
 import { showToast } from "../utils/toast.js";
+import { t } from "../i18n.js";
+import { companyText } from "../utils/labels.js";
 
 /** Opens the shared technology catalog manager. */
 export async function openTechnologyLibrary(modalEl, onClose) {
@@ -10,18 +12,18 @@ export async function openTechnologyLibrary(modalEl, onClose) {
   let pendingRemovalID = "";
   let technologies = [];
   modalEl.innerHTML = `
-    <div class="modal-header data-transfer-header"><div><div class="modal-title">Technology catalog</div><div class="modal-company">Keep canonical names and aliases for every process stack</div></div><button class="btn-secondary" id="btn-close-technology-library" type="button" aria-label="Close">${icon("close", 18)}</button></div>
+    <div class="modal-header data-transfer-header"><div><div class="modal-title">${escapeHtml(t("technologies.title"))}</div><div class="modal-company">${escapeHtml(t("technologies.subtitle"))}</div></div><button class="btn-secondary" id="btn-close-technology-library" type="button" aria-label="${escapeAttr(t("common.close"))}">${icon("close", 18)}</button></div>
     <div class="data-transfer-content technology-library-content">
       <details id="technology-form-disclosure" class="technology-form-disclosure">
-        <summary class="technology-form-disclosure-summary"><span>Add technology</span>${icon("chevronDown", 16)}</summary>
+        <summary class="technology-form-disclosure-summary"><span>${escapeHtml(t("technologies.add"))}</span>${icon("chevronDown", 16)}</summary>
         <form id="technology-form" class="technology-form">
-          <label for="technology-name">Canonical technology</label><input id="technology-name" name="name" maxlength="80" required placeholder="e.g. Kubernetes" />
-          <label for="technology-aliases">Aliases <span>comma or line separated</span></label><textarea id="technology-aliases" name="aliases" maxlength="500" rows="2" placeholder="e.g. K8s"></textarea>
-          <div class="technology-form-actions"><button id="technology-save" class="btn-primary" type="submit">${icon("plus", 14)} Add technology</button><button id="technology-cancel-edit" class="btn-secondary" type="button" hidden>Cancel edit</button></div>
+          <label for="technology-name">${escapeHtml(t("technologies.canonicalName"))}</label><input id="technology-name" name="name" maxlength="80" required placeholder="${escapeAttr(t("technologies.namePlaceholder"))}" />
+          <label for="technology-aliases">${escapeHtml(t("technologies.aliases"))} <span>${escapeHtml(t("technologies.aliasesHint"))}</span></label><textarea id="technology-aliases" name="aliases" maxlength="500" rows="2" placeholder="${escapeAttr(t("technologies.aliasesPlaceholder"))}"></textarea>
+          <div class="technology-form-actions"><button id="technology-save" class="btn-primary" type="submit">${icon("plus", 14)} ${escapeHtml(t("technologies.add"))}</button><button id="technology-cancel-edit" class="btn-secondary" type="button" hidden>${escapeHtml(t("technologies.cancelEdit"))}</button></div>
         </form>
       </details>
-      <div class="technology-library-list-heading"><strong>Technologies</strong><span id="technology-library-count" aria-live="polite"></span></div>
-      <label class="technology-library-search"><input id="technology-library-search" type="search" aria-label="Search technologies by name or alias" placeholder="Search by name or alias" autocomplete="off" /></label>
+      <div class="technology-library-list-heading"><strong>${escapeHtml(t("technologies.heading"))}</strong><span id="technology-library-count" aria-live="polite"></span></div>
+      <label class="technology-library-search"><input id="technology-library-search" type="search" aria-label="${escapeAttr(t("technologies.searchLabel"))}" placeholder="${escapeAttr(t("technologies.searchPlaceholder"))}" autocomplete="off" /></label>
       <div id="technology-library-status" class="data-transfer-status" role="status" aria-live="polite"></div>
       <div id="technology-library-list" class="technology-library-list"></div>
     </div>`;
@@ -40,7 +42,7 @@ export async function openTechnologyLibrary(modalEl, onClose) {
     const restoreFocus = form.contains(document.activeElement);
     form.reset();
     disclosure.open = false;
-    modalEl.querySelector("#technology-save").innerHTML = `${icon("plus", 14)} Add technology`;
+    modalEl.querySelector("#technology-save").innerHTML = `${icon("plus", 14)} ${escapeHtml(t("technologies.add"))}`;
     modalEl.querySelector("#technology-cancel-edit").hidden = true;
     if (restoreFocus) disclosure.querySelector("summary")?.focus();
   }
@@ -58,24 +60,24 @@ export async function openTechnologyLibrary(modalEl, onClose) {
       else await api.createTechnology(payload);
       resetForm();
       modalEl.querySelector("#technology-library-search").value = "";
-      showToast(wasEditing ? "Technology updated" : "Technology added", "success");
+      showToast(t(wasEditing ? "technologies.updated" : "technologies.added"), "success");
       await refreshList();
     } catch (error) {
-      modalEl.querySelector("#technology-library-status").textContent = error.message || "Could not save technology";
+      modalEl.querySelector("#technology-library-status").textContent = error.message || t("technologies.saveFailed");
     } finally { button.disabled = false; }
   }
 
   async function refreshList() {
     const list = modalEl.querySelector("#technology-library-list");
     const status = modalEl.querySelector("#technology-library-status");
-    status.textContent = "Loading technologies…";
+    status.textContent = t("technologies.loading");
     try {
       technologies = await api.getTechnologies();
       status.textContent = "";
       renderList();
     } catch (error) {
-      status.textContent = error.message || "Could not load the catalog";
-      list.innerHTML = '<button class="btn-secondary" id="technology-retry" type="button">Try again</button>';
+      status.textContent = error.message || t("technologies.loadFailed");
+      list.innerHTML = `<button class="btn-secondary" id="technology-retry" type="button">${escapeHtml(t("common.tryAgain"))}</button>`;
     }
   }
 
@@ -84,24 +86,26 @@ export async function openTechnologyLibrary(modalEl, onClose) {
     const matches = technologies.filter((item) => [item.name, ...(item.aliases || [])]
       .some((value) => value.toLocaleLowerCase().includes(query)));
     const count = modalEl.querySelector("#technology-library-count");
-    count.textContent = query ? `${matches.length} of ${technologies.length}` : `${technologies.length} total`;
+    count.textContent = query
+      ? t("technologies.matchCount", { matches: matches.length, total: technologies.length })
+      : t("technologies.totalCount", { count: technologies.length });
     if (!technologies.length) {
-      modalEl.querySelector("#technology-library-list").innerHTML = '<p class="technology-library-empty">No technologies yet. Add the first canonical name above.</p>';
+      modalEl.querySelector("#technology-library-list").innerHTML = `<p class="technology-library-empty">${escapeHtml(t("technologies.empty"))}</p>`;
       return;
     }
     modalEl.querySelector("#technology-library-list").innerHTML = matches.length
       ? matches.map(renderTechnologyRow).join("")
-      : `<p class="technology-library-empty">No technologies match “${escapeHtml(query)}”.</p>`;
+      : `<p class="technology-library-empty">${escapeHtml(t("technologies.noMatch", { query }))}</p>`;
   }
 
   function renderTechnologyRow(item) {
     const aliases = item.aliases || [];
     const jobs = item.jobs || [];
-    const impact = pendingRemovalID === item.id ? `<div class="technology-removal-impact"><strong>Used by ${jobs.length} process${jobs.length === 1 ? "" : "es"}</strong>${jobs.length ? `<ul>${jobs.map((job) => `<li>${escapeHtml(job.company_name)} — ${escapeHtml(job.position_title)}</li>`).join("")}</ul><button class="btn-danger technology-remove-assignments" type="button" data-id="${escapeAttr(item.id)}">Remove from all listed processes and delete</button>` : `<button class="btn-danger technology-confirm-delete" type="button" data-id="${escapeAttr(item.id)}">Delete technology</button>`}</div>` : "";
+    const impact = pendingRemovalID === item.id ? `<div class="technology-removal-impact"><strong>${escapeHtml(t("technologies.usedBy", { count: jobs.length }))}</strong>${jobs.length ? `<ul>${jobs.map((job) => `<li>${escapeHtml(companyText(job.company_name))} — ${escapeHtml(job.position_title)}</li>`).join("")}</ul><button class="btn-danger technology-remove-assignments" type="button" data-id="${escapeAttr(item.id)}">${escapeHtml(t("technologies.removeEverywhere"))}</button>` : `<button class="btn-danger technology-confirm-delete" type="button" data-id="${escapeAttr(item.id)}">${escapeHtml(t("technologies.delete"))}</button>`}</div>` : "";
     const aliasMarkup = aliases.length
-      ? `<div class="technology-catalog-aliases" aria-label="Aliases"><span class="technology-catalog-alias-label">Aliases</span>${aliases.map((alias) => `<span class="technology-catalog-alias">${escapeHtml(alias)}</span>`).join("")}</div>`
+      ? `<div class="technology-catalog-aliases" aria-label="${escapeAttr(t("technologies.aliases"))}"><span class="technology-catalog-alias-label">${escapeHtml(t("technologies.aliases"))}</span>${aliases.map((alias) => `<span class="technology-catalog-alias">${escapeHtml(alias)}</span>`).join("")}</div>`
       : "";
-    return `<article class="technology-catalog-row"><div class="technology-catalog-info"><strong>${escapeHtml(item.name)}</strong>${aliasMarkup}<span>${jobs.length} process${jobs.length === 1 ? "" : "es"}</span></div><div class="technology-catalog-actions"><button class="btn-secondary technology-edit" type="button" data-id="${escapeAttr(item.id)}">Edit</button><button class="btn-secondary technology-remove" type="button" data-id="${escapeAttr(item.id)}">Remove</button></div>${impact}</article>`;
+    return `<article class="technology-catalog-row"><div class="technology-catalog-info"><strong>${escapeHtml(item.name)}</strong>${aliasMarkup}<span>${escapeHtml(t("technologies.processCount", { count: jobs.length }))}</span></div><div class="technology-catalog-actions"><button class="btn-secondary technology-edit" type="button" data-id="${escapeAttr(item.id)}">${escapeHtml(t("common.edit"))}</button><button class="btn-secondary technology-remove" type="button" data-id="${escapeAttr(item.id)}">${escapeHtml(t("common.remove"))}</button></div>${impact}</article>`;
   }
 
   function focusTechnologyRemove(id, fallbackIndex = 0) {
@@ -121,7 +125,7 @@ export async function openTechnologyLibrary(modalEl, onClose) {
       modalEl.querySelector("#technology-form-disclosure").open = true;
       modalEl.querySelector("#technology-name").value = item.name;
       modalEl.querySelector("#technology-aliases").value = (item.aliases || []).join(", ");
-      modalEl.querySelector("#technology-save").innerHTML = `${icon("check", 14)} Save changes`;
+      modalEl.querySelector("#technology-save").innerHTML = `${icon("check", 14)} ${escapeHtml(t("common.saveChanges"))}`;
       modalEl.querySelector("#technology-cancel-edit").hidden = false;
       modalEl.querySelector("#technology-name").focus();
       return;
@@ -146,11 +150,11 @@ export async function openTechnologyLibrary(modalEl, onClose) {
     try {
       await api.deleteTechnology(id);
       pendingRemovalID = "";
-      showToast("Technology deleted", "success");
+      showToast(t("technologies.deleted"), "success");
       await refreshList();
       focusTechnologyRemove(id, fallbackIndex);
     } catch (error) {
-      modalEl.querySelector("#technology-library-status").textContent = error.message || "Could not delete technology";
+      modalEl.querySelector("#technology-library-status").textContent = error.message || t("technologies.deleteFailed");
     }
   }
 
@@ -163,13 +167,13 @@ export async function openTechnologyLibrary(modalEl, onClose) {
       await api.removeTechnologyAssignments(id);
       await api.deleteTechnology(id);
       pendingRemovalID = "";
-      showToast("Technology removed from processes and deleted", "success");
+      showToast(t("technologies.removedEverywhere"), "success");
       await refreshList();
       focusTechnologyRemove(id, fallbackIndex);
     } catch (error) {
       if (button) button.disabled = false;
       await refreshList();
-      modalEl.querySelector("#technology-library-status").textContent = error.message || "Could not remove technology";
+      modalEl.querySelector("#technology-library-status").textContent = error.message || t("technologies.removeFailed");
       focusTechnologyRemove(id, fallbackIndex);
     }
   }

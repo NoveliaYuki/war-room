@@ -2,6 +2,9 @@ import { api } from "../api.js";
 import { icon } from "../icons.js";
 import { escapeAttr, escapeHtml } from "../utils/sanitize.js";
 import { htmlToMarkdown } from "../utils/clipboardMarkdown.js";
+import { t } from "../i18n.js";
+import { companyText } from "../utils/labels.js";
+import { serverMessage } from "../utils/serverMessages.js";
 
 const FILLED_FIELDS = ["position_title", "company_name", "company_overview", "job_post_url", "application_url", "company_domain", "keyword_note"];
 const PASTE_CODES = new Set(["paste_required", "blocked", "unsupported", "timeout"]);
@@ -11,20 +14,20 @@ export function renderProcessEntry() {
   return `
     <div id="process-entry" class="process-entry">
       <section class="process-entry-option" aria-labelledby="process-entry-link-title">
-        <h3 id="process-entry-link-title" class="process-entry-title inline-icon-text">${icon("download", 16)} Import from a job link</h3>
-        <p class="process-entry-copy">Paste a link to the posting. The form fills in for you to review and edit before anything is created.</p>
-        <label class="sr-only" for="job-import-url">Job posting link</label>
+        <h3 id="process-entry-link-title" class="process-entry-title inline-icon-text">${icon("download", 16)} ${escapeHtml(t("jobImport.linkTitle"))}</h3>
+        <p class="process-entry-copy">${escapeHtml(t("jobImport.linkCopy"))}</p>
+        <label class="sr-only" for="job-import-url">${escapeHtml(t("jobImport.linkLabel"))}</label>
         <div class="job-import-row">
-          <input id="job-import-url" type="url" inputmode="url" autocomplete="off" placeholder="https://company.com/careers/..." />
-          <button id="job-import-submit" type="button" class="btn-primary">Import</button>
+          <input id="job-import-url" type="url" inputmode="url" autocomplete="off" placeholder="${escapeAttr(t("jobImport.urlPlaceholder"))}" />
+          <button id="job-import-submit" type="button" class="btn-primary">${escapeHtml(t("jobImport.import"))}</button>
         </div>
         <div id="job-import-entry-status" class="job-import-status" role="status" aria-live="polite" hidden></div>
       </section>
-      <div class="process-entry-divider"><span>or</span></div>
+      <div class="process-entry-divider"><span>${escapeHtml(t("jobImport.or"))}</span></div>
       <section class="process-entry-option" aria-labelledby="process-entry-manual-title">
-        <h3 id="process-entry-manual-title" class="process-entry-title inline-icon-text">${icon("edit", 16)} Fill in by hand</h3>
-        <p class="process-entry-copy">Start with an empty form. Use this for LinkedIn: copy the posting and paste it into the overview.</p>
-        <button id="process-entry-manual" type="button" class="btn-secondary">Fill in by hand</button>
+        <h3 id="process-entry-manual-title" class="process-entry-title inline-icon-text">${icon("edit", 16)} ${escapeHtml(t("jobImport.manualTitle"))}</h3>
+        <p class="process-entry-copy">${escapeHtml(t("jobImport.manualCopy"))}</p>
+        <button id="process-entry-manual" type="button" class="btn-secondary">${escapeHtml(t("jobImport.manualTitle"))}</button>
       </section>
     </div>`;
 }
@@ -37,9 +40,9 @@ export function renderJobImportStatus() {
 /** Renders the Tech Stack suggestions, hidden until a posting provides some. */
 export function renderTechnologySuggestions() {
   return `<fieldset id="job-import-technologies" class="job-import-technologies" hidden>
-    <legend class="meta-label">Suggested Tech Stack</legend>
+    <legend class="meta-label">${escapeHtml(t("jobImport.suggestedStack"))}</legend>
     <div class="job-import-technology-list"></div>
-    <span class="process-form-helper">Requirements are selected. Keep only the core technologies of this role.</span>
+    <span class="process-form-helper">${escapeHtml(t("jobImport.suggestedStackHelp"))}</span>
   </fieldset>`;
 }
 
@@ -84,7 +87,7 @@ function showStatus(element, tone, lines) {
 }
 
 function duplicateLine(duplicate) {
-  return duplicate ? `You already track this posting: ${duplicate.position_title} at ${duplicate.company_name}.` : null;
+  return duplicate ? t("jobImport.duplicate", { position: duplicate.position_title, company: companyText(duplicate.company_name) }) : null;
 }
 
 /** Inserts text at the cursor, replacing the selection. */
@@ -162,13 +165,13 @@ function bindProcessEntry(form, renderSuggestions) {
     if (!url) return;
     const request = ++latest;
     button.disabled = true;
-    showStatus(entryStatus, "info", ["Reading the posting..."]);
+    showStatus(entryStatus, "info", [t("jobImport.reading")]);
     try {
       const preview = await api.previewJobImport({ url });
       if (request !== latest) return;
       applyDraft(form, preview.draft);
       renderSuggestions(preview.technologies);
-      const lines = ["Filled from the posting. Review it, then create the process.", ...preview.draft.warnings, duplicateLine(preview.duplicate)];
+      const lines = [t("jobImport.filled"), ...preview.draft.warnings.map((warning) => serverMessage(warning, t("server.importWarning"))), duplicateLine(preview.duplicate)];
       showStatus(formStatus, preview.duplicate ? "warning" : "success", lines.filter(Boolean));
       revealForm(form, entry, form.elements.position_title);
     } catch (error) {
@@ -198,7 +201,7 @@ function showImportFailure(form, entry, { entryStatus, formStatus }, url, error)
     return;
   }
   fillEmpty(form.elements.job_post_url, url);
-  showStatus(formStatus, "warning", [error.message, "Copy the posting from the page and paste it into the overview below.", lines[1]].filter(Boolean));
+  showStatus(formStatus, "warning", [error.message, t("jobImport.pasteInstead"), lines[1]].filter(Boolean));
   revealForm(form, entry, form.elements.company_overview);
 }
 

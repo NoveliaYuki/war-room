@@ -1,10 +1,16 @@
-import { initialJobs } from "./data/jobs.js";
+import { buildHistoricalDemoJobs, initialJobs } from "./data/jobs.js";
 import { cacheDemoLogos, DEMO_LOGOS_STORAGE_KEY, getDemoLogoUrl } from "./logoStore.js";
 import { saveFile, readFile, deleteFile, replaceFiles } from "./fileStore.js";
 import { formatLocalDate, getDemoMeetingDayOffset, setDemoMeetingDate } from "./data/meetingDates.js";
 import { migrateLegacyDemoJob } from "../public/js/utils/demoMigration.js";
 import { initialTechnologies } from "./data/technologies.js";
 import { applyInactiveWaitingPolicy, touchDemoJob } from "./inactiveWaiting.js";
+import { getLanguage, t } from "../public/js/i18n.js";
+import { textFor } from "./data/text.js";
+import {
+  canonicalDemoJobPayload, canonicalDemoPeriodName, canonicalDemoQuestionPayload, canonicalDemoStagePayload,
+  localizeDemoJob, localizeDemoPeriodName, localizeDemoQuestion, localizeDemoStage,
+} from "./data/localize.js";
 
 const STORAGE_KEY = "war-room-demo-data-v13";
 const TECHNOLOGY_STORAGE_KEY = "war-room-demo-technologies-v1";
@@ -278,11 +284,11 @@ function validateSearchPeriod(payload, excludeID = "") {
     && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
     && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
   if (!name || name.length > 100 || !isCalendarDate(startDate) || (endDate && !isCalendarDate(endDate))
-    || (endDate && startDate > endDate)) throw new Error("Enter a name, a valid start date, and an optional valid end date.");
+    || (endDate && startDate > endDate)) throw new Error(t("errors.searchPeriodInvalid"));
   if (searchPeriods.some((period) => period.id !== excludeID
     && period.start_date <= (endDate || "9999-12-31")
     && (period.end_date || "9999-12-31") >= startDate)) {
-    throw new Error("Search period dates overlap an existing period.");
+    throw new Error(t("errors.searchPeriodOverlap"));
   }
   return { name, start_date: startDate, end_date: endDate };
 }
@@ -315,62 +321,14 @@ function save() {
 }
 
 function createHistoricalDemoJobs(period) {
-  const historicalRecords = [
-    { company: "Morrow Design Co.", role: "UX Designer", status: "accepted", date: "2021-06-03", arrangement: "remote", salaryMin: 65000, salaryMax: 82000 },
-    { company: "Cinder Analytics", role: "Data Analyst", status: "rejected", date: "2021-06-07", arrangement: "hybrid", salaryMin: 58000, salaryMax: 74000 },
-    { company: "Saffron Labs", role: "Product Manager", status: "rejected", date: "2021-06-09", arrangement: "remote", salaryMin: 72000, salaryMax: 91000 },
-    { company: "Kestrel Mobility", role: "iOS Engineer", status: "rejected", date: "2021-06-11", arrangement: "hybrid", salaryMin: 78000, salaryMax: 98000 },
-    { company: "Lattice Grove", role: "Customer Success Engineer", status: "rejected", date: "2021-06-14", arrangement: "remote", salaryMin: 62000, salaryMax: 80000 },
-    { company: "Orbit Foundry", role: "QA Automation Engineer", status: "rejected", date: "2021-06-16", arrangement: "hybrid", salaryMin: 60000, salaryMax: 79000 },
-    { company: "Stonebridge Health", role: "Product Designer", status: "rejected", date: "2021-06-18", arrangement: "remote", salaryMin: 68000, salaryMax: 86000 },
-    { company: "Redfern Commerce", role: "Backend Engineer", status: "rejected", date: "2021-06-21", arrangement: "hybrid", salaryMin: 76000, salaryMax: 96000 },
-    { company: "Silverpath Energy", role: "Data Engineer", status: "rejected", date: "2021-06-24", arrangement: "remote", salaryMin: 74000, salaryMax: 94000 },
-    { company: "Atlas Harbor", role: "Technical Writer", status: "rejected", date: "2021-06-28", arrangement: "hybrid", salaryMin: 54000, salaryMax: 70000 },
-  ];
   const firstOrderIndex = Math.max(-1, ...jobs.filter((job) => !job.id.startsWith("demo-period-june-2021-"))
     .map((job) => Number(job.order_index) || 0)) + 1;
-  return historicalRecords.map((record, index) => {
-    const job = clone(initialJobs[index % initialJobs.length]);
-    const timestamp = Math.floor(Date.parse(`${record.date}T12:00:00Z`) / 1000);
-    Object.assign(job, {
-      id: `demo-period-june-2021-${index + 1}`,
-      company_name: record.company,
-      position_title: record.role,
-      status: record.status,
-      status_changed_at: timestamp,
-      created_at: timestamp,
-      updated_at: timestamp,
-      last_activity_at: timestamp,
-      automatic_rejection_reason: "",
-      search_period_id: period.id,
-      order_index: firstOrderIndex + index,
-      avatar_seed: record.company,
-      job_post_url: `https://careers.${record.company.toLowerCase().replaceAll(" ", "-")}.example.test`,
-      company_domain: `${record.company.toLowerCase().replaceAll(" ", "-")}.example.test`,
-      description: `${record.role} at ${record.company}. Fictional sample opportunity from June 2021 for the War Room demo.`,
-      company_overview: `${record.company} is a fictional sample employer in the June 2021 demo search period.`,
-      keyword_note: `${record.role} • June 2021 sample role`,
-      expected_salary: `€${record.salaryMin.toLocaleString()}–€${record.salaryMax.toLocaleString()}`,
-      salary_min: record.salaryMin,
-      salary_max: record.salaryMax,
-      work_arrangement: record.arrangement,
-      is_referral: false,
-      application_sent_date: record.date,
-      stages: [],
-      interviewers: [],
-      technologies: [],
-      attachments: [],
-      total_stages_count: 0,
-    });
-    delete job.current_stage_title;
-    delete job.current_stage_index;
-    return job;
-  });
+  return buildHistoricalDemoJobs({ periodId: period.id, firstOrderIndex });
 }
 
 function getJob(id) {
   const job = jobs.find((item) => item.id === String(id));
-  if (!job) throw new Error("Selection process not found");
+  if (!job) throw new Error(t("errors.processNotFound"));
   return job;
 }
 
@@ -379,7 +337,7 @@ function getStage(id) {
     const stage = job.stages.find((item) => item.id === String(id));
     if (stage) return { job, stage };
   }
-  throw new Error("Interview stage not found");
+  throw new Error(t("errors.stageNotFound"));
 }
 
 function refreshDerived(job) {
@@ -394,13 +352,13 @@ function technologyKey(value) { return String(value || "").trim().toLowerCase().
 function validateDemoTechnology(name, aliases, excludeID = "") {
   const cleanName = String(name || "").trim();
   const cleanAliases = [...new Set((aliases || []).map((alias) => String(alias || "").trim()).filter(Boolean))];
-  if (!cleanName || cleanName.length > 80 || cleanAliases.length > 20 || cleanAliases.some((alias) => alias.length > 80)) throw new Error("Enter a technology name up to 80 characters and no more than 20 aliases.");
+  if (!cleanName || cleanName.length > 80 || cleanAliases.length > 20 || cleanAliases.some((alias) => alias.length > 80)) throw new Error(t("errors.technologyInvalid"));
   const terms = [cleanName, ...cleanAliases].map(technologyKey);
-  if (new Set(terms).size !== terms.length) throw new Error("Technology names and aliases must be unique.");
+  if (new Set(terms).size !== terms.length) throw new Error(t("errors.technologyTermsDuplicate"));
   for (const item of technologies) {
     if (item.id === excludeID) continue;
     const existing = [item.name, ...(item.aliases || [])].map(technologyKey);
-    if (terms.some((term) => existing.includes(term))) throw new Error("That technology name or alias already exists in the catalog.");
+    if (terms.some((term) => existing.includes(term))) throw new Error(t("errors.technologyExists"));
   }
   return { name: cleanName, aliases: cleanAliases };
 }
@@ -426,12 +384,13 @@ function suggestDemoTechnologies(text) {
 /** Imitates link import without a backend, using a synthetic posting. */
 function previewDemoImport({ url, description }) {
   if (!url) return { technologies: suggestDemoTechnologies(description) };
-  if (/linkedin\.com/i.test(url)) throw Object.assign(new Error("This site does not allow automatic imports."), { code: "paste_required" });
-  const overview = "## About the role\n\nBuild the platform behind a fictional demo company.\n\n## Requirements\n\n- Python, AWS and Terraform experience";
+  if (/linkedin\.com/i.test(url)) throw Object.assign(new Error(t("errors.importNotAllowed")), { code: "paste_required" });
+  const sample = textFor(getLanguage()).importDraft;
+  const overview = sample.overview;
   return {
     draft: {
-      position_title: "Senior Platform Engineer", company_name: "Demo Company", company_overview: overview,
-      company_domain: "", job_post_url: url, application_url: "", keyword_note: "Remote, Europe",
+      position_title: sample.title, company_name: sample.company, company_overview: overview,
+      company_domain: "", job_post_url: url, application_url: "", keyword_note: sample.keywords,
       work_arrangement: "remote", employment_type: "permanent", salary_min: 70000, salary_max: 90000,
       salary_currency: "EUR", source: "demo", warnings: [],
     },
@@ -440,7 +399,21 @@ function previewDemoImport({ url, description }) {
 }
 
 function listDemoTechnologies() {
-  return clone(technologies.map((item) => ({ ...item, jobs: jobs.filter((job) => (job.technologies || []).some((entry) => entry.id === item.id)).map((job) => ({ id: job.id, company_name: job.company_name, position_title: job.position_title })) })));
+  const shown = jobs.map(presentJob);
+  return clone(technologies.map((item) => ({ ...item, jobs: shown.filter((job) => (job.technologies || []).some((entry) => entry.id === item.id)).map((job) => ({ id: job.id, company_name: job.company_name, position_title: job.position_title })) })));
+}
+
+/** Returns a copy of a saved job, with current catalog names and sample text in the interface language. */
+function presentJob(job) {
+  return localizeDemoJob(clone(jobWithCurrentTechnologies(job)), getLanguage());
+}
+
+function presentStage(stage) {
+  return localizeDemoStage(clone(stage), getLanguage());
+}
+
+function presentPeriod(period) {
+  return { ...clone(period), name: localizeDemoPeriodName(period, getLanguage()) };
 }
 
 function makeStage(jobId, payload, orderIndex) {
@@ -464,7 +437,7 @@ function makeJob(payload) {
   const currentPeriod = searchPeriods.find((period) => period.start_date <= today && (!period.end_date || period.end_date >= today));
   const suppliedPeriod = String(payload.search_period_id || "");
   const requestedPeriod = suppliedPeriod || currentPeriod?.id || "";
-  if (requestedPeriod && !searchPeriods.some((period) => period.id === requestedPeriod)) throw new Error("Search period not found");
+  if (requestedPeriod && !searchPeriods.some((period) => period.id === requestedPeriod)) throw new Error(t("errors.searchPeriodNotFound"));
   const job = {
     id, company_name: payload.company_name || "Unknown", position_title: payload.position_title,
     status: "waiting", salary_type: payload.salary_type || "unknown", salary_min: payload.salary_min ?? null,
@@ -511,14 +484,14 @@ function toMeeting(job, stage) {
 
 export const demoApi = {
   getCompanyLogoUrl(companyName, _companyDomain, jobId) { return getDemoLogoUrl(companyName, jobId); },
-  async exportBackup() { throw new Error("Encrypted backup transfer is unavailable in the browser demo."); },
-  async importBackup() { throw new Error("Encrypted backup transfer is unavailable in the browser demo."); },
+  async exportBackup() { throw new Error(t("errors.demoBackupUnavailable")); },
+  async importBackup() { throw new Error(t("errors.demoBackupUnavailable")); },
   async getJobs(status = "all", search = "") {
-    return clone(jobs.filter((job) => (status === "all" || job.status === status) && meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index).map(jobWithCurrentTechnologies));
+    return jobs.filter((job) => status === "all" || job.status === status).map(presentJob).filter((job) => meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index);
   },
   async getSearchPeriods() {
-    return clone(searchPeriods.map((period) => ({ ...period, job_count: jobs.filter((job) => job.search_period_id === period.id).length }))
-      .sort((left, right) => right.start_date.localeCompare(left.start_date)));
+    return searchPeriods.map((period) => ({ ...presentPeriod(period), job_count: jobs.filter((job) => job.search_period_id === period.id).length }))
+      .sort((left, right) => right.start_date.localeCompare(left.start_date));
   },
   async createSearchPeriod(payload) {
     const valid = validateSearchPeriod(payload);
@@ -531,14 +504,15 @@ export const demoApi = {
   },
   async updateSearchPeriod(id, payload) {
     const period = searchPeriods.find((item) => item.id === String(id));
-    if (!period) throw new Error("Search period not found");
-    Object.assign(period, validateSearchPeriod(payload, period.id), { updated_at: Math.floor(Date.now() / 1000) });
+    if (!period) throw new Error(t("errors.searchPeriodNotFound"));
+    const name = canonicalDemoPeriodName(period.id, String(payload.name || "").trim(), getLanguage());
+    Object.assign(period, validateSearchPeriod({ ...payload, name }, period.id), { updated_at: Math.floor(Date.now() / 1000) });
     assignUnassignedJobsToPeriod(period);
-    saveSearchPeriods(); return clone(period);
+    saveSearchPeriods(); return presentPeriod(period);
   },
   async deleteSearchPeriod(id) {
     const period = searchPeriods.find((item) => item.id === String(id));
-    if (!period) throw new Error("Search period not found");
+    if (!period) throw new Error(t("errors.searchPeriodNotFound"));
     jobs.forEach((job) => { if (job.search_period_id === period.id) job.search_period_id = null; });
     searchPeriods = searchPeriods.filter((item) => item.id !== period.id);
     saveSearchPeriods(); save(); return { success: true };
@@ -547,7 +521,7 @@ export const demoApi = {
     return { all: jobs.length, waiting: jobs.filter((job) => job.status === "waiting").length, ongoing: jobs.filter((job) => job.status === "ongoing").length, accepted: jobs.filter((job) => job.status === "accepted").length, rejected: jobs.filter((job) => job.status === "rejected").length };
   },
   async getJob(id) {
-    const job = clone(jobWithCurrentTechnologies(getJob(id)));
+    const job = presentJob(getJob(id));
     for (const attachment of job.attachments || []) {
       const blob = await readFile(attachment.id);
       if (blob) attachment.download_url = URL.createObjectURL(blob);
@@ -556,7 +530,7 @@ export const demoApi = {
   },
   async getCvVersions() { return clone(readDemoCvVersions()); },
   async uploadCvVersion(file) {
-    if (!(file instanceof Blob) || !file.size) throw new Error("Choose a non-empty CV file.");
+    if (!(file instanceof Blob) || !file.size) throw new Error(t("errors.cvFileEmpty"));
     const versions = readDemoCvVersions();
     const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
     const sha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -574,15 +548,15 @@ export const demoApi = {
   },
   async downloadCvVersion(id) {
     const version = readDemoCvVersions().find((item) => item.id === String(id));
-    if (!version) throw new Error("CV version not found");
+    if (!version) throw new Error(t("errors.cvNotFound"));
     const blob = await readFile(version.stored_file_id || version.id);
-    if (!blob) throw new Error("CV version not found");
+    if (!blob) throw new Error(t("errors.cvNotFound"));
     return blob;
   },
   async deleteCvVersion(id) {
-    if (jobs.some((job) => job.selected_cv_version?.id === String(id))) throw new Error("This CV version is assigned to a job and cannot be deleted.");
+    if (jobs.some((job) => job.selected_cv_version?.id === String(id))) throw new Error(t("errors.cvAssigned"));
     const versions = readDemoCvVersions();
-    if (!versions.some((version) => version.id === String(id))) throw new Error("CV version not found");
+    if (!versions.some((version) => version.id === String(id))) throw new Error(t("errors.cvNotFound"));
     const remaining = versions.filter((version) => version.id !== String(id));
     const storageId = versions.find((version) => version.id === String(id))?.stored_file_id || String(id);
     if (!remaining.some((version) => (version.stored_file_id || version.id) === storageId)) await deleteFile(storageId);
@@ -592,7 +566,7 @@ export const demoApi = {
   async setJobCvVersion(jobId, versionId) {
     const job = getJob(jobId);
     const version = versionId === null ? null : readDemoCvVersions().find((item) => item.id === String(versionId));
-    if (versionId !== null && !version) throw new Error("CV version not found");
+    if (versionId !== null && !version) throw new Error(t("errors.cvNotFound"));
     job.selected_cv_version = version ? clone(version) : null;
     save();
     return { success: true, selected_cv_version: clone(job.selected_cv_version) };
@@ -605,22 +579,22 @@ export const demoApi = {
   },
   async updateTechnology(id, payload) {
     const item = technologies.find((technology) => technology.id === String(id));
-    if (!item) throw new Error("Technology not found");
+    if (!item) throw new Error(t("errors.technologyNotFound"));
     Object.assign(item, validateDemoTechnology(payload.name, payload.aliases || [], item.id));
     jobs.forEach((job) => (job.technologies || []).forEach((entry) => { if (entry.id === item.id) entry.name = item.name; }));
     saveTechnologies(); save(); return clone(item);
   },
   async removeTechnologyAssignments(id) {
     const item = technologies.find((technology) => technology.id === String(id));
-    if (!item) throw new Error("Technology not found");
+    if (!item) throw new Error(t("errors.technologyNotFound"));
     let removed = 0;
     jobs.forEach((job) => { const before = (job.technologies || []).length; job.technologies = (job.technologies || []).filter((entry) => entry.id !== item.id); removed += before - job.technologies.length; });
     save(); return { removed };
   },
   async deleteTechnology(id) {
     const item = technologies.find((technology) => technology.id === String(id));
-    if (!item) throw new Error("Technology not found");
-    if (jobs.some((job) => (job.technologies || []).some((entry) => entry.id === item.id))) throw new Error("Technology is assigned to one or more processes; remove its assignments first.");
+    if (!item) throw new Error(t("errors.technologyNotFound"));
+    if (jobs.some((job) => (job.technologies || []).some((entry) => entry.id === item.id))) throw new Error(t("errors.technologyAssigned"));
     technologies = technologies.filter((technology) => technology.id !== item.id); saveTechnologies(); return { success: true };
   },
   async previewJobImport(payload) { return previewDemoImport(payload); },
@@ -629,16 +603,16 @@ export const demoApi = {
     const job = getJob(id);
     const statusChanged = Object.hasOwn(payload, "status") && payload.status !== job.status;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const fields = { ...payload };
+    const fields = canonicalDemoJobPayload(job.id, payload, getLanguage());
     if (Object.hasOwn(fields, "search_period_id")) {
       const periodID = String(fields.search_period_id || "");
-      if (periodID && !searchPeriods.some((period) => period.id === periodID)) throw new Error("Search period not found");
+      if (periodID && !searchPeriods.some((period) => period.id === periodID)) throw new Error(t("errors.searchPeriodNotFound"));
       job.search_period_id = periodID || null;
       delete fields.search_period_id;
     }
     if (Object.hasOwn(fields, "technology_ids")) {
       const ids = fields.technology_ids;
-      if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some((technologyID) => !technologies.some((item) => item.id === technologyID))) throw new Error("Choose technologies from the catalog.");
+      if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some((technologyID) => !technologies.some((item) => item.id === technologyID))) throw new Error(t("errors.technologyNotInCatalog"));
       job.technologies = ids.map((technologyID) => { const item = technologies.find((technology) => technology.id === technologyID); return { id: item.id, name: item.name }; });
       recordDemoHistory(job, "changed tech stack", nowSeconds);
       delete fields.technology_ids;
@@ -650,7 +624,7 @@ export const demoApi = {
     Object.assign(job, fields, { updated_at: nowSeconds });
     touchDemoJob(job, nowSeconds * 1000);
     if (statusChanged) job.status_changed_at = nowSeconds;
-    refreshDerived(job); save(); return clone(jobWithCurrentTechnologies(job));
+    refreshDerived(job); save(); return presentJob(job);
   },
   async deleteJob(id) {
     const job = getJob(id);
@@ -659,22 +633,22 @@ export const demoApi = {
   },
   async reorderJobs(ids) { const order = new Map(ids.map((id, index) => [String(id), index])); jobs.forEach((job) => { if (order.has(job.id) && job.order_index !== order.get(job.id)) { job.order_index = order.get(job.id); touchDemoJob(job); } }); jobs.sort((a, b) => a.order_index - b.order_index); save(); return { success: true }; },
   async createStage(payload) { const job = getJob(payload.job_id); const firstStage = job.stages.length === 0; const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); touchDemoJob(job); if (firstStage) { job.status = "ongoing"; job.status_changed_at = Math.floor(Date.now() / 1000); recordDemoHistory(job, "moved to ongoing", job.status_changed_at); } refreshDerived(job); save(); return clone(stage); },
-  async updateStage(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, payload); touchDemoJob(job); refreshDerived(job); save(); return clone(stage); },
-  async setCurrentStage(id) { const { job, stage } = getStage(id); job.stages.forEach((item) => { item.status = item.id === stage.id ? "current" : item.status === "current" ? "completed" : item.status; }); touchDemoJob(job); refreshDerived(job); save(); return clone(stage); },
-  async getMeetings(date = "") { return jobs.flatMap((job) => job.stages.filter((stage) => stage.meeting_date && (!date || stage.meeting_date === date)).map((stage) => toMeeting(job, stage))); },
-  async scheduleMeeting(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, payload); touchDemoJob(job); save(); return clone(stage); },
+  async updateStage(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, canonicalDemoStagePayload(stage.id, payload, getLanguage())); touchDemoJob(job); refreshDerived(job); save(); return presentStage(stage); },
+  async setCurrentStage(id) { const { job, stage } = getStage(id); job.stages.forEach((item) => { item.status = item.id === stage.id ? "current" : item.status === "current" ? "completed" : item.status; }); touchDemoJob(job); refreshDerived(job); save(); return presentStage(stage); },
+  async getMeetings(date = "") { return jobs.map(presentJob).flatMap((job) => job.stages.filter((stage) => stage.meeting_date && (!date || stage.meeting_date === date)).map((stage) => toMeeting(job, stage))); },
+  async scheduleMeeting(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, canonicalDemoStagePayload(stage.id, payload, getLanguage())); touchDemoJob(job); save(); return presentStage(stage); },
   async deleteStage(id) { const { job, stage } = getStage(id); job.stages = job.stages.filter((item) => item.id !== stage.id); job.attachments.forEach((item) => { if (item.stage_id === stage.id) item.stage_id = null; }); job.stages.forEach((item, index) => { item.order_index = index; }); touchDemoJob(job); refreshDerived(job); save(); return { success: true }; },
   async reorderStages(jobId, ids) { const job = getJob(jobId); const byId = new Map(job.stages.map((stage) => [stage.id, stage])); job.stages = ids.map((id) => byId.get(String(id))).filter(Boolean); job.stages.forEach((stage, index) => { stage.order_index = index; }); touchDemoJob(job); refreshDerived(job); save(); return { success: true }; },
   async createQuestion(payload) { const { job, stage } = getStage(payload.stage_id); const question = { id: `demo-question-${createDemoID()}`, stage_id: stage.id, order_index: stage.questions.length, question: payload.question, answer_notes: payload.answer_notes || "", is_asked: false, created_at: Date.now() }; stage.questions.push(question); touchDemoJob(job); save(); return clone(question); },
   async reorderQuestions(stageId, ids) { const { job, stage } = getStage(stageId); const byId = new Map(stage.questions.map((question) => [question.id, question])); stage.questions = ids.map((id) => byId.get(String(id))).filter(Boolean); stage.questions.forEach((question, index) => { question.order_index = index; }); touchDemoJob(job); save(); return { success: true }; },
-  async updateQuestion(id, payload) { for (const job of jobs) for (const stage of job.stages) { const question = stage.questions.find((item) => item.id === String(id)); if (question) { Object.assign(question, payload); touchDemoJob(job); save(); return clone(question); } } throw new Error("Interview question not found"); },
-  async deleteQuestion(id) { for (const job of jobs) for (const stage of job.stages) { const question = stage.questions.find((item) => item.id === String(id)); if (question) { stage.questions = stage.questions.filter((item) => item.id !== question.id); touchDemoJob(job); save(); return { success: true }; } } throw new Error("Interview question not found"); },
+  async updateQuestion(id, payload) { for (const job of jobs) for (const stage of job.stages) { const question = stage.questions.find((item) => item.id === String(id)); if (question) { Object.assign(question, canonicalDemoQuestionPayload(question.id, payload, getLanguage())); touchDemoJob(job); save(); return localizeDemoQuestion(clone(question), getLanguage()); } } throw new Error(t("errors.questionNotFound")); },
+  async deleteQuestion(id) { for (const job of jobs) for (const stage of job.stages) { const question = stage.questions.find((item) => item.id === String(id)); if (question) { stage.questions = stage.questions.filter((item) => item.id !== question.id); touchDemoJob(job); save(); return { success: true }; } } throw new Error(t("errors.questionNotFound")); },
   async uploadAttachment(formData) {
     const job = getJob(formData.get("job_id"));
     const file = formData.get("file");
     const stageId = formData.get("stage_id") || null;
-    if (!(file instanceof Blob) || file.size > 50 * 1024 * 1024 || !file.size) throw new Error("Choose a file smaller than 50 MiB.");
-    if (stageId && !job.stages.some((stage) => stage.id === stageId)) throw new Error("Interview stage not found");
+    if (!(file instanceof Blob) || file.size > 50 * 1024 * 1024 || !file.size) throw new Error(t("errors.fileTooLarge"));
+    if (stageId && !job.stages.some((stage) => stage.id === stageId)) throw new Error(t("errors.stageNotFound"));
     const attachment = { id: createDemoID(), job_id: job.id, stage_id: stageId, original_name: file.name || "file", stored_filename: "", file_size: file.size, mime_type: file.type || "application/octet-stream", created_at: Date.now() };
     await saveFile(attachment.id, file);
     job.attachments.push(attachment);
@@ -691,7 +665,7 @@ export const demoApi = {
       save();
       return { success: true };
     }
-    throw new Error("Attachment not found");
+    throw new Error(t("errors.attachmentNotFound"));
   },
 };
 

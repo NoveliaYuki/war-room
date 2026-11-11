@@ -199,7 +199,7 @@ describe('google account menu', () => {
     expect(mocks.api.backupNowGoogle).toHaveBeenCalled();
 
     document.querySelector('#btn-theme-toggle').click();
-    expect(document.querySelector('#theme-current-label').textContent).toBe('Light');
+    expect(document.querySelector('#theme-current-label').textContent).toBe('Theme: Light');
 
     document.querySelector('#btn-google-drive-revoke').click();
     await flush();

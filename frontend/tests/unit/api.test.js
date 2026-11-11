@@ -314,4 +314,17 @@ describe('api', () => {
     const job = await api.getJob('job');
     expect(job.attachments[0].download_url).toBe('/api/attachments/file%2F1/download');
   });
+
+  it('reports a failed connection in the interface language and passes cancellations through', async () => {
+    global.fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(api.getJobs()).rejects.toThrow('Could not reach War Room. Check your connection and try again.');
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    global.fetch.mockRejectedValueOnce(abort);
+    await expect(api.getJobs()).rejects.toBe(abort);
+  });
+
+  it('shows server messages through their translations', async () => {
+    mockResponse({ error: 'sign in required' }, 401, false);
+    await expect(api.createTechnology({})).rejects.toThrow('Sign in to continue.');
+  });
 });
