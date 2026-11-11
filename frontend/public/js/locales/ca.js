@@ -434,6 +434,7 @@ export default {
   "history.changedOverview": "resum de l'empresa i del lloc canviat",
   "history.changedRole": "lloc canviat",
   "history.changedRoleHighlights": "punts destacats del lloc canviats",
+  "history.changedTechStack": "stack tecnològic canviat",
   "history.created": "creat",
   "history.justNow": "ara mateix",
   "history.movedTo": "mogut a {status}",

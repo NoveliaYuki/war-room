@@ -47,7 +47,7 @@ function makeStage(role, jobId, stageType, index, now, text) {
   const round = role.stages.slice(0, index + 1).filter((name) => name === stageType).length;
   return {
     id, job_id: jobId, order_index: index, stage_type: stageType,
-    custom_title: stageType === "Technical" && role.stages.filter((name) => name === "Technical").length > 1 ? text.roundTitle(stageType, round) : stageType,
+    custom_title: stageType === "Technical" && role.stages.filter((name) => name === "Technical").length > 1 ? text.roundTitle(stageType, round) : text.stageTitles[stageType],
     description: text.stageDescription(stageType, role.title, role.company),
     status: current ? "current" : completed ? "completed" : "pending",
     scheduled_at: meetingScheduled ? new Date(`${formatLocalDate(meetingDate)}T${timeSlot[0]}:00`).getTime() : null,
@@ -139,6 +139,7 @@ function buildDemoJob(role, englishRole, index, text) {
   const currentIndex = job.stages.findIndex((stage) => stage.status === "current");
   const current = job.stages[currentIndex];
   job.current_stage_title = current ? current.custom_title || current.stage_type : undefined;
+  job.current_stage_title_is_type = Boolean(current && !current.custom_title);
   job.current_stage_index = current ? currentIndex + 1 : undefined;
   job.total_stages_count = job.stages.length;
   return job;
@@ -225,6 +226,7 @@ export function buildHistoricalDemoJobs({ language = "en", periodId = "demo-peri
       total_stages_count: 0,
     });
     delete job.current_stage_title;
+    delete job.current_stage_title_is_type;
     delete job.current_stage_index;
     return job;
   });

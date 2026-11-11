@@ -23,7 +23,7 @@ import { confirmAction } from "../utils/confirmDialog.js";
 import { formatCalendarDate } from "../utils/date.js";
 import { renderMeetingLinkContent } from "../utils/meetingLink.js";
 import { getLocale, t } from "../i18n.js";
-import { arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, isUndisclosedCompany, meetingFormatLabel, stageDescriptionText, stageName, stageTypeLabel, statusLabel } from "../utils/labels.js";
+import { arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, historyActionLabel, isUndisclosedCompany, meetingFormatLabel, stageDescriptionText, stageName, stageTypeLabel, statusLabel } from "../utils/labels.js";
 
 const MEETING_LINK_FIELDS = new Map([
   ["video", { labelKey: "schedule.form.videoUrl", hintKey: "schedule.form.videoUrlHint", placeholder: "https://meet.example.com/..." }],
@@ -252,26 +252,6 @@ function renderProcessTimeline(job) {
   </div>`;
 }
 
-const JOB_STATUS_HISTORY_KEYS = { waiting: "history.movedToWaiting", ongoing: "history.movedToOngoing", accepted: "history.movedToApproved", rejected: "history.movedToRejected" };
-const JOB_HISTORY_ACTION_KEYS = {
-  created: "history.created",
-  "changed company": "history.changedCompany",
-  "changed role": "history.changedRole",
-  "changed role highlights": "history.changedRoleHighlights",
-  "changed job description": "history.changedJobDescription",
-  "changed company and role overview": "history.changedOverview",
-};
-
-/** Translates a stored history action; unrecognized actions are shown as saved. */
-function describeJobHistoryAction(action) {
-  const text = String(action);
-  if (text.startsWith("moved to ")) {
-    const status = text.slice(9);
-    return JOB_STATUS_HISTORY_KEYS[status] ? t(JOB_STATUS_HISTORY_KEYS[status]) : t("history.movedTo", { status });
-  }
-  return JOB_HISTORY_ACTION_KEYS[text] ? t(JOB_HISTORY_ACTION_KEYS[text]) : text;
-}
-
 /** Formats recent activity relatively and older activity as a dated timestamp. */
 function formatJobHistoryDate(timestamp) {
   const date = new Date(Number(timestamp) * 1000);
@@ -287,6 +267,8 @@ function formatJobHistoryDate(timestamp) {
 }
 
 /** Renders dated changes and only the saved legacy dates available for a job. */
+const STATUSES_WITH_HISTORY = new Set(["waiting", "ongoing", "accepted", "rejected"]);
+
 function renderJobHistory(job) {
   const history = Array.isArray(job.history) ? [...job.history] : [];
   const hasCreatedEvent = history.some((event) => event.action === "created");
@@ -294,7 +276,7 @@ function renderJobHistory(job) {
   if (!hasCreatedEvent && createdAt > 0) history.push({ occurred_at: createdAt, action: "created" });
   const hasStatusEvent = history.some((event) => String(event.action || "").startsWith("moved to "));
   const statusChangedAt = Number(job.status_changed_at);
-  if (!hasStatusEvent && statusChangedAt > createdAt && JOB_STATUS_HISTORY_KEYS[job.status]) {
+  if (!hasStatusEvent && statusChangedAt > createdAt && STATUSES_WITH_HISTORY.has(job.status)) {
     history.push({ occurred_at: statusChangedAt, action: `moved to ${job.status}` });
   }
   const entries = history
@@ -305,7 +287,7 @@ function renderJobHistory(job) {
     <summary class="card-history-toggle"><span>${escapeHtml(t("history.title"))}</span><span class="card-history-toggle-meta"><span>${entries.length}</span><span class="card-history-chevron">${icon("chevronDown", 12)}</span></span></summary>
     <ol class="card-history-list">${entries.map((event) => {
       const timestamp = Number(event.occurred_at);
-      const label = describeJobHistoryAction(event.action);
+      const label = historyActionLabel(event.action);
       return `<li class="card-history-item"><span>${escapeHtml(label)}</span><time datetime="${escapeAttr(new Date(timestamp * 1000).toISOString())}">${escapeHtml(formatJobHistoryDate(timestamp))}</time></li>`;
     }).join("")}</ol>
   </details>`;
@@ -2138,7 +2120,7 @@ async function openEditDetailsForm(modalEl, backdropEl, job, onSaved) {
       const salary = getSalaryUpdateValues(data);
 
       const payload = {
-        company_name: data.get("company_name"),
+        company_name: String(data.get("company_name") || "").trim() || "Unknown",
         position_title: data.get("position_title"),
         ...salary,
         recruiter_type: data.get("recruiter_type"),

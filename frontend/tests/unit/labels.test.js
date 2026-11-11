@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { setLanguage } from '../../public/js/i18n.js';
+import { setLanguage, t } from '../../public/js/i18n.js';
 import {
-  arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, isUndisclosedCompany, meetingFormatLabel, stageDescriptionText, stageName, stageTitleLabel, stageTypeLabel, statusLabel,
+  arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, historyActionLabel, isUndisclosedCompany, meetingFormatLabel, stageDescriptionText, stageName, stageTitleLabel, stageTypeLabel, statusLabel,
 } from '../../public/js/utils/labels.js';
 
 afterEach(() => setLanguage('en', { persist: false }));
@@ -30,7 +30,9 @@ describe('stored value labels', () => {
     setLanguage('ca', { persist: false });
     expect(stageName({ custom_title: 'System design', stage_type: 'Technical' })).toBe('System design');
     expect(stageName({ custom_title: '', stage_type: 'HR' })).toBe('RH');
-    expect(stageName({ custom_title: 'Technical', stage_type: 'Technical' })).toBe('Tècnica');
+    expect(stageName({ custom_title: null, stage_type: 'Technical' })).toBe('Tècnica');
+    expect(stageName({ custom_title: 'Technical', stage_type: 'Technical' })).toBe('Technical');
+    expect(stageName({ custom_title: 'HR', stage_type: 'Technical' })).toBe('HR');
   });
 
   it('shows the undisclosed company placeholder in the selected language', () => {
@@ -49,7 +51,18 @@ describe('stored value labels', () => {
     expect(stageTitleLabel('Technical Evaluation')).toBe('Avaluació tècnica');
     expect(stageTitleLabel('Offer & Decision')).toBe('Oferta i decisió');
     expect(stageTitleLabel('Panel final')).toBe('Panel final');
+    expect(stageTitleLabel('Cultural')).toBe('Cultural');
     expect(stageDescriptionText('Compensation proposal, equity review, and final agreement.')).toBe("Proposta de compensació, revisió de la participació accionarial i acord final.");
     expect(stageDescriptionText('Entrevista con Noa.')).toBe('Entrevista con Noa.');
+  });
+
+  it('translates card history entries and keeps unknown ones as saved', () => {
+    setLanguage('es', { persist: false });
+    expect(historyActionLabel('changed tech stack')).toBe('stack tecnológico cambiado');
+    expect(historyActionLabel('changed company')).toBe('empresa cambiada');
+    expect(historyActionLabel('created')).toBe(t('history.created'));
+    expect(historyActionLabel('moved to accepted')).toBe(t('history.movedToApproved'));
+    expect(historyActionLabel('moved to archived')).toBe(t('history.movedTo', { status: 'archived' }));
+    expect(historyActionLabel('imported')).toBe('imported');
   });
 });

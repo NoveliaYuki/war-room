@@ -17,13 +17,24 @@ var serverTextPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`Message:\s*"((?:[^"\\]|\\.)+)"`),
 	regexp.MustCompile(`Warnings = append\([^,]+,\s*"((?:[^"\\]|\\.)+)"\)`),
 	regexp.MustCompile(`"error":\s*"((?:[^"\\]|\\.)+)"`),
-	regexp.MustCompile(`fmt\.Errorf\("%w: ([^"%]+)", ErrInvalidField`),
 }
+
+// invalidFieldPattern finds the details sent after "request contains an invalid field value: ".
+var invalidFieldPattern = regexp.MustCompile(`fmt\.Errorf\("%w: ([^"%]+)", ErrInvalidField`)
+
+// translationKeyPattern finds the quoted message keys of a translation map in serverMessages.js.
+var translationKeyPattern = regexp.MustCompile(`(?m)^\s*"((?:[^"\\]|\\.)+)":`)
 
 // echoedErrorPattern finds service errors whose own message a handler sends.
 var echoedErrorPattern = regexp.MustCompile(`var (Err\w+) = errors\.New\("((?:[^"\\]|\\.)+)"\)`)
 
 var defaultStagePattern = regexp.MustCompile(`\{models\.Stage\w+, "([^"]+)", "([^"]+)"\}`)
+
+// historyActionPatterns find the English card history entries the database and the demo store record.
+var historyActionPatterns = map[string]*regexp.Regexp{
+	"backend/pkg/database/db.go": regexp.MustCompile(`VALUES \(NEW\.id, [^,]+, '((?:changed|created)[^']*)'\)`),
+	"frontend/demo/demoStore.js": regexp.MustCompile(`(?:recordDemoHistory\(job, |\["\w+", )"((?:changed|created)[^"]*)"`),
+}
 
 // untranslatedServerText is sent only to requests the interface never shows as text.
 var untranslatedServerText = map[string]string{
@@ -33,53 +44,102 @@ var untranslatedServerText = map[string]string{
 }
 
 // TestEveryServerMessageHasATranslation fails when the backend gains a message,
-// job import warning, or default stage text that the interface cannot translate.
+// job import warning, card history entry, or default stage text that the interface cannot translate.
 func TestEveryServerMessageHasATranslation(t *testing.T) {
 	translations := readRepositoryFile(t, "frontend/public/js/utils/serverMessages.js")
-	for _, message := range serverMessages(t) {
-		if _, exempt := untranslatedServerText[message]; exempt {
-			continue
-		}
-		if !strings.Contains(translations, `"`+message+`"`) {
-			t.Errorf("server message %q has no entry in frontend/public/js/utils/serverMessages.js", message)
+	messageKeys := translationKeys(t, translations, "MESSAGE_KEYS")
+	invalidFieldKeys := translationKeys(t, translations, "INVALID_FIELD_KEYS")
+	messages, details := serverMessages(t)
+	for _, message := range messages {
+		if _, exempt := untranslatedServerText[message]; !exempt && !messageKeys[message] {
+			t.Errorf("server message %q has no entry in MESSAGE_KEYS in frontend/public/js/utils/serverMessages.js", message)
 		}
 	}
+	for _, detail := range details {
+		if !invalidFieldKeys[detail] && !strings.HasSuffix(detail, " must use YYYY-MM-DD") {
+			t.Errorf("invalid field detail %q has no entry in INVALID_FIELD_KEYS in frontend/public/js/utils/serverMessages.js", detail)
+		}
+	}
+	assertGeneratedTextTranslated(t)
+}
+
+// assertGeneratedTextTranslated checks the default stage text and card history entries the app generates.
+func assertGeneratedTextTranslated(t *testing.T) {
+	t.Helper()
 	labels := readRepositoryFile(t, "frontend/public/js/utils/labels.js")
 	for _, text := range defaultStageTexts(t) {
 		if !strings.Contains(labels, `"`+text+`"`) {
 			t.Errorf("default stage text %q has no translation key in frontend/public/js/utils/labels.js", text)
 		}
 	}
+	for _, action := range historyActions(t) {
+		if !strings.Contains(labels, `"`+action+`": "history.`) && !strings.Contains(labels, action+`: "history.`) {
+			t.Errorf("card history entry %q has no translation key in frontend/public/js/utils/labels.js", action)
+		}
+	}
 }
 
-// serverMessages lists every literal message the backend can send to the interface.
-func serverMessages(t *testing.T) []string {
+// historyActions lists the card history entries the database and the demo store record.
+func historyActions(t *testing.T) []string {
 	t.Helper()
-	seen := map[string]bool{}
-	var messages []string
-	add := func(message string) {
-		if !seen[message] {
-			seen[message] = true
-			messages = append(messages, message)
+	var actions []string
+	for path, pattern := range historyActionPatterns {
+		matches := pattern.FindAllStringSubmatch(readRepositoryFile(t, path), -1)
+		if len(matches) == 0 {
+			t.Fatalf("found no history entries in %s; the pattern no longer matches it", path)
+		}
+		for _, match := range matches {
+			actions = append(actions, match[1])
+		}
+	}
+	return actions
+}
+
+// translationKeys returns the messages a named translation map in serverMessages.js lists.
+func translationKeys(t *testing.T, source, name string) map[string]bool {
+	t.Helper()
+	block := regexp.MustCompile(`const ` + name + ` = new Map\(Object\.entries\(\{([^}]*)\}\)\);`).FindStringSubmatch(source)
+	if block == nil {
+		t.Fatalf("found no %s map in frontend/public/js/utils/serverMessages.js", name)
+	}
+	keys := map[string]bool{}
+	for _, match := range translationKeyPattern.FindAllStringSubmatch(block[1], -1) {
+		keys[match[1]] = true
+	}
+	return keys
+}
+
+// serverMessages lists every literal message the backend can send to the interface,
+// and separately the details it sends after "request contains an invalid field value: ".
+func serverMessages(t *testing.T) (messages, details []string) {
+	t.Helper()
+	seen := map[*[]string]map[string]bool{&messages: {}, &details: {}}
+	add := func(list *[]string, text string) {
+		if !seen[list][text] {
+			seen[list][text] = true
+			*list = append(*list, text)
 		}
 	}
 	echoed := echoedServiceErrors(t)
 	for _, source := range backendSources(t) {
 		for _, pattern := range serverTextPatterns {
 			for _, match := range pattern.FindAllStringSubmatch(source, -1) {
-				add(match[1])
+				add(&messages, match[1])
 			}
+		}
+		for _, match := range invalidFieldPattern.FindAllStringSubmatch(source, -1) {
+			add(&details, match[1])
 		}
 		for _, match := range echoedErrorPattern.FindAllStringSubmatch(source, -1) {
 			if echoed[match[1]] {
-				add(match[2])
+				add(&messages, match[2])
 			}
 		}
 	}
-	if len(messages) < 50 {
-		t.Fatalf("found only %d server messages; the source patterns no longer match the backend", len(messages))
+	if len(messages) < 50 || len(details) == 0 {
+		t.Fatalf("found only %d server messages and %d invalid field details; the source patterns no longer match the backend", len(messages), len(details))
 	}
-	return messages
+	return messages, details
 }
 
 // echoedServiceErrors names the service errors whose message handlers send as-is.

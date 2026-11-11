@@ -175,6 +175,14 @@ describe('demo store language', () => {
     expect((await demoApi.getSearchPeriods()).find((period) => period.id === 'demo-period-current').name).toBe('Current');
   });
 
+  it('saves an empty company as Unknown without a company history entry', async () => {
+    const { demoApi } = await loadStore('es');
+    const created = await demoApi.createJob({ company_name: '', position_title: 'Ingeniera', status: 'waiting' });
+    const updated = await demoApi.updateJob(created.id, { company_name: '', position_title: 'Ingeniera' });
+    expect(updated.company_name).toBe('Unknown');
+    expect((updated.history || []).map((entry) => entry.action)).not.toContain('changed company');
+  });
+
   it('fills the sample import draft in the selected language', async () => {
     const { demoApi } = await loadStore('ca');
     const preview = await demoApi.previewJobImport({ url: 'https://jobs.example.com/1' });

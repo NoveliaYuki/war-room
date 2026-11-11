@@ -1,17 +1,23 @@
 // Runs inside the page for TestEveryLanguageRendersOnlyItsOwnText.
 // "text" lists every visible string; "layout" lists text that overflows, is clipped, or overlaps another control.
 (task) => {
-  const visible = (el) => {
+  // `exposed` is shown on screen or read by a screen reader; `visible` is also painted at a usable size.
+  const exposed = (el, { painted = false } = {}) => {
     for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
       const style = getComputedStyle(node);
-      if (node.hidden || style.display === "none" || style.visibility === "hidden" || Number(style.opacity) < 0.01) return false;
-      if (style.clipPath !== "none" || (style.clip && style.clip !== "auto")) return false;
+      if (node.hidden || style.display === "none" || style.visibility === "hidden") return false;
+      if (!painted && node.getAttribute("aria-hidden") === "true") return false;
+      if (painted && (Number(style.opacity) < 0.01 || style.clipPath !== "none" || (style.clip && style.clip !== "auto"))) return false;
       // Content of a closed <details> keeps a layout box in some engines but is not shown.
       if (node.parentElement?.matches("details:not([open])") && node.tagName !== "SUMMARY") return false;
     }
+    if (!painted) return true;
     const rect = el.getBoundingClientRect();
     return rect.width > 1 && rect.height > 1;
   };
+  const visible = (el) => exposed(el, { painted: true });
+  // Visually hidden labels (such as .sr-only) are still read aloud, so their text is checked too.
+  const readable = (el) => visible(el) || (exposed(el) && Number(getComputedStyle(el).opacity) >= 0.01);
 
   const pathOf = (el) => {
     const parts = [];
@@ -31,7 +37,7 @@
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const value = node.nodeValue.replace(/\s+/g, " ").trim();
       const parent = node.parentElement;
-      if (value && parent && !parent.closest("script, style, template, noscript") && visible(parent)) out.add(`text\t${value}`);
+      if (value && parent && !parent.closest("script, style, template, noscript, select") && readable(parent)) out.add(`text\t${value}`);
     }
     const attributes = ["placeholder", "aria-label", "title", "alt"];
     for (const el of document.querySelectorAll(attributes.map((name) => `[${name}]`).join(","))) {
@@ -45,7 +51,11 @@
       if (visible(el) && el.value.trim()) out.add(`value\t${el.value.trim().replace(/\s+/g, " ")}`);
     }
     for (const el of document.querySelectorAll("select")) {
-      if (visible(el) && el.selectedOptions[0]) out.add(`selected\t${el.selectedOptions[0].textContent.trim()}`);
+      if (!visible(el)) continue;
+      for (const option of el.options) {
+        const value = option.textContent.replace(/\s+/g, " ").trim();
+        if (value && !option.hidden) out.add(`option\t${value}`);
+      }
     }
     out.add(`title\t${document.title}`);
     return [...out];

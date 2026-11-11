@@ -279,11 +279,36 @@ func languageScreens() []languageScreen {
 			waitForLocator(t, run.page.Locator("#cv-library-upload-file"), "CV library")
 			capture("")
 		}},
+		{"switched while open", func(t *testing.T, run *languageRun, capture func(string)) {
+			switchLanguageAway(t, run)
+			capture("board")
+			requireClick(t, run, "#tab-schedule")
+			switchLanguageAway(t, run)
+			capture("schedule")
+		}},
 		{"delete confirmation", func(t *testing.T, run *languageRun, capture func(string)) {
 			requireClick(t, run, fmt.Sprintf(`.process-card[data-id=%q] .btn-card-delete`, run.jobID))
 			capture("")
 		}},
 	}
+}
+
+// switchLanguageAway switches to another language and back from the account menu, so stale
+// text that a switch fails to re-render shows in the wrong language, then closes the menu.
+func switchLanguageAway(t *testing.T, run *languageRun) {
+	t.Helper()
+	away := run.data.Languages[0]
+	if away == run.language {
+		away = run.data.Languages[1]
+	}
+	openAccountMenu(t, run)
+	for _, language := range []string{away, run.language} {
+		requireClick(t, run, fmt.Sprintf(`#account-menu-panel [data-language-option=%q]`, language))
+	}
+	if err := run.page.Keyboard().Press("Escape"); err != nil {
+		t.Fatalf("close account menu: %v", err)
+	}
+	settleLanguagePage(t, run.page)
 }
 
 func requireClick(t *testing.T, run *languageRun, selector string) {
@@ -426,7 +451,13 @@ var webAddress = regexp.MustCompile(`[\w.+-]+@[\w-]+(?:\.[\w-]+)+|https?://\S*|[
 // sharedText reports whether text may legitimately read the same in both languages:
 // it is only names, links, or user input, or its message is identical in both dictionaries.
 func sharedText(data *languageData, text, language, other string) bool {
-	value := text[strings.Index(text, "\t")+1:]
+	return sharedValue(data, text[strings.Index(text, "\t")+1:], language, other)
+}
+
+// sharedValue reports whether value is only names, links, or user input, or fills a message that is
+// identical in both dictionaries with values that are themselves shared. Checking the filled values
+// keeps a template such as "{label}. {action}." from accepting any two English sentences.
+func sharedValue(data *languageData, value, language, other string) bool {
 	stripped := webAddress.ReplaceAllString(value, " ")
 	for _, term := range data.Terms {
 		stripped = strings.ReplaceAll(stripped, term, " ")
@@ -435,16 +466,29 @@ func sharedText(data *languageData, text, language, other string) bool {
 		return true
 	}
 	for key, message := range data.Dictionaries[language] {
-		if data.Dictionaries[other][key] == message && messagePattern(message).MatchString(value) {
+		if data.Dictionaries[other][key] == message && filledShared(data, messagePattern(message).FindStringSubmatch(value), language, other) {
 			return true
 		}
 	}
 	return false
 }
 
+// filledShared reports whether a message matched and every value filling its placeholders is shared.
+func filledShared(data *languageData, match []string, language, other string) bool {
+	if match == nil {
+		return false
+	}
+	for _, filled := range match[1:] {
+		if filled == match[0] || !sharedValue(data, filled, language, other) {
+			return false
+		}
+	}
+	return true
+}
+
 var messagePatterns = map[string]*regexp.Regexp{}
 
-// messagePattern matches a dictionary message with any values in its {placeholders}.
+// messagePattern matches a dictionary message and captures the values in its {placeholders}.
 func messagePattern(message string) *regexp.Regexp {
 	if pattern, ok := messagePatterns[message]; ok {
 		return pattern
@@ -453,7 +497,7 @@ func messagePattern(message string) *regexp.Regexp {
 	for index, part := range parts {
 		parts[index] = regexp.QuoteMeta(part)
 	}
-	pattern := regexp.MustCompile("^" + strings.Join(parts, ".+?") + "$")
+	pattern := regexp.MustCompile("^" + strings.Join(parts, "(.+?)") + "$")
 	messagePatterns[message] = pattern
 	return pattern
 }

@@ -1,7 +1,7 @@
 Version 0.4.0 — 2026-11-09 · Release: [v0.4.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.4.0)
 
 # Highlights
-- War Room now speaks English, Spanish, and Catalan. Pick a language in the account menu or on the sign-in screen and the whole interface switches instantly, without reloading or refetching data.
+- War Room now speaks English, Spanish, and Catalan. Pick a language in the account menu or on the sign-in screen and the whole interface switches without reloading the page; stored data never changes.
 - With no language chosen, War Room follows your browser's preferred languages and falls back to English when none is supported.
 - The MCP server now lives in its own Go package with full unit and integration tests (from 0.3.1).
 
@@ -18,7 +18,11 @@ Version 0.4.0 — 2026-11-09 · Release: [v0.4.0](https://github.com/NoveliaYuki
 - Translate the titles and descriptions of the default interview stages a new process starts with, including on existing processes, until the user edits them.
 - Show the browser demo's sample processes, stages, interview questions, notes, and search periods in the selected language, while anything a visitor edits stays exactly as typed.
 - End a long stage name on a card with an ellipsis inside the card instead of letting it spill past the edge; the tooltip keeps the full name.
-- Check every supported language in the pre-commit suite: a Playwright test opens every main screen in each language, signed in and in the demo, at phone and desktop widths, and fails on text in another language or text that overflows; another fails when a backend message has no translation, and a unit test fails when a translation is copied from English.
+- Show a stage title exactly as typed, even when it matches a stage type such as "Technical"; only untitled stages and the default stage titles are translated. Job lists now include `current_stage_title_is_type`, which is true when `current_stage_title` is the stage type of an untitled stage.
+- Read salaries typed the way the Spanish and Catalan screens show them: "desde", "des de", and "a partir de" mark a lower bound, and "70.000" or "72,5k" use a dot for thousands and a comma for decimals.
+- Translate the demo's "changed tech stack" card history entry, and keep the backup panel's Dismiss label in the selected language after a switch.
+- Save an empty company as "Unknown" from Edit details in the demo too, instead of a blank name and a false "changed company" history entry.
+- Check every supported language in the pre-commit suite: a Playwright test opens every main screen in each language, signed in and in the demo, at phone and desktop widths, including after switching language with the screen open, and fails on text in another language (screen-reader labels and every dropdown option included) or text that overflows; another fails when a backend message, card history entry, or default stage text has no translation, and a unit test fails when a translation is copied from English.
 - Fail the backend tests when an API route has neither an MCP tool nor a recorded reason, so the MCP server keeps up with the API.
 - Show an undisclosed company as "Unknown Company" in every language, and start its edit fields empty instead of with the stored English placeholder.
 - Move the MCP tools into `pkg/mcp`, share `service.IsValidationError`, and cover token authentication through the production middleware chain (from 0.3.1).

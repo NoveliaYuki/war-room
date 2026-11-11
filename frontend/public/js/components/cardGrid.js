@@ -14,7 +14,7 @@ import { escapeHtml, escapeAttr } from "../utils/sanitize.js";
 import { formatSalary } from "../utils/salary.js";
 import { confirmAction } from "../utils/confirmDialog.js";
 import { getLocale, t } from "../i18n.js";
-import { arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, isUndisclosedCompany, stageTitleLabel, statusLabel } from "../utils/labels.js";
+import { arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, isUndisclosedCompany, stageTitleLabel, stageTypeLabel, statusLabel } from "../utils/labels.js";
 
 const CARD_TECHNOLOGY_PREVIEW_LIMIT = 4;
 const EMPTY_STATUSES = new Set(["waiting", "ongoing", "accepted", "rejected"]);
@@ -33,8 +33,8 @@ export const formatSalaryShort = formatSalary;
 /** Renders the stage summary displayed in a card footer. */
 function getStageIndicator(job) {
   if (job.current_stage_title) {
-    // The title falls back to the stored stage type when a stage has no custom title.
-    const title = stageTitleLabel(job.current_stage_title);
+    // The title is the stored stage type when the stage has no custom title.
+    const title = job.current_stage_title_is_type ? stageTypeLabel(job.current_stage_title) : stageTitleLabel(job.current_stage_title);
     const text = t("card.currentStep", { index: job.current_stage_index, total: job.total_stages_count, title });
     return { text, markup: `<span class="inline-icon-text">${icon("pin", 12)} <span class="card-stage-text">${escapeHtml(text)}</span></span>` };
   }

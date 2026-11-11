@@ -333,6 +333,34 @@ func TestWaitingStatusFilteringAndCounts(t *testing.T) {
 	}
 }
 
+func TestJobListMarksUntitledCurrentStages(t *testing.T) {
+	_, _, repo, _, db := newCoverageDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	typed := "Technical"
+	for _, job := range []struct {
+		id    string
+		title *string
+	}{{"untitled-job", nil}, {"typed-job", &typed}} {
+		if err := repo.InsertJob(testUserID, &models.Job{ID: job.id, CompanyName: "Acme", PositionTitle: "Engineer", Status: models.StatusOngoing, SalaryType: models.SalaryUnknown, SalaryCurrency: "EUR", RecruiterType: models.RecruiterNone}); err != nil {
+			t.Fatal(err)
+		}
+		stage := &models.Stage{ID: job.id + "-stage", JobID: job.id, StageType: models.StageTechnical, CustomTitle: job.title, Status: models.StageStatusCurrent, MeetingType: "video", RecruiterType: "none"}
+		if err := repo.InsertStage(stage); err != nil {
+			t.Fatal(err)
+		}
+	}
+	jobs, err := repo.GetAllJobs(testUserID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"untitled-job": true, "typed-job": false}
+	for _, job := range jobs {
+		if job.CurrentStageTitle == nil || *job.CurrentStageTitle != "Technical" || job.CurrentStageTitleIsType != want[job.ID] {
+			t.Errorf("%s: current stage title=%v is type=%v, want Technical and %v", job.ID, job.CurrentStageTitle, job.CurrentStageTitleIsType, want[job.ID])
+		}
+	}
+}
+
 func TestSearchTreatsWildcardsAsLiterals(t *testing.T) {
 	_, _, repo, _, db := newCoverageDB(t)
 	t.Cleanup(func() { _ = db.Close() })

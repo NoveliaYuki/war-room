@@ -25,6 +25,7 @@ vi.mock('../../public/js/inlineEdit.js', () => ({
 }));
 
 import { formatSalaryShort, renderCardGrid } from '../../public/js/components/cardGrid.js';
+import { setLanguage } from '../../public/js/i18n.js';
 
 const makeJob = (overrides = {}) => ({
   id: 'job-1',
@@ -291,6 +292,22 @@ describe('cardGrid', () => {
     expect(card.querySelector('.card-stage-indicator').textContent).toContain('Step 2/4: Technical interview');
     expect(card.querySelector('.card-stage-summary').getAttribute('style')).toBeNull();
     expect(card.querySelector('.keyword-note').textContent).toBe('Platform');
+  });
+
+  it('translates an untitled current stage by its type and keeps a typed title as written', () => {
+    setLanguage('es', { persist: false });
+    try {
+      const { container } = setup([
+        makeJob({ id: 'untitled', current_stage_title: 'Technical', current_stage_title_is_type: true, current_stage_index: 1, total_stages_count: 2 }),
+        makeJob({ id: 'typed', current_stage_title: 'Technical', current_stage_index: 1, total_stages_count: 2 }),
+        makeJob({ id: 'default', current_stage_title: 'Offer & Decision', current_stage_index: 4, total_stages_count: 4 }),
+      ]);
+      expect(container.querySelector('[data-id="untitled"] .card-stage-text').textContent).toContain('Técnica');
+      expect(container.querySelector('[data-id="typed"] .card-stage-text').textContent).toContain('Technical');
+      expect(container.querySelector('[data-id="default"] .card-stage-text').textContent).toContain('Oferta y decisión');
+    } finally {
+      setLanguage('en', { persist: false });
+    }
   });
 
   describe("salary labels", () => {

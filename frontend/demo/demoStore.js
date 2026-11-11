@@ -30,6 +30,12 @@ const DEMO_HISTORY_ACTIONS = new Map([
   ["description", "changed job description"], ["company_overview", "changed company and role overview"],
 ]);
 
+/** Saves an empty company name as the "Unknown" placeholder, as the API does. */
+function withDemoCompanyName(fields) {
+  if (Object.hasOwn(fields, "company_name")) fields.company_name = String(fields.company_name ?? "").trim() || "Unknown";
+  return fields;
+}
+
 function recordDemoHistory(job, action, timestamp = Math.floor(Date.now() / 1000)) {
   job.history ||= [];
   job.history.push({ occurred_at: timestamp, action });
@@ -345,6 +351,7 @@ function refreshDerived(job) {
   const index = job.stages.findIndex((stage) => stage.status === "current");
   job.current_stage_index = index >= 0 ? index + 1 : undefined;
   job.current_stage_title = index >= 0 ? job.stages[index].custom_title || job.stages[index].stage_type : undefined;
+  job.current_stage_title_is_type = index >= 0 && !job.stages[index].custom_title;
 }
 
 function technologyKey(value) { return String(value || "").trim().toLowerCase().replace(/\s+/g, " "); }
@@ -603,7 +610,7 @@ export const demoApi = {
     const job = getJob(id);
     const statusChanged = Object.hasOwn(payload, "status") && payload.status !== job.status;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const fields = canonicalDemoJobPayload(job.id, payload, getLanguage());
+    const fields = withDemoCompanyName(canonicalDemoJobPayload(job.id, payload, getLanguage()));
     if (Object.hasOwn(fields, "search_period_id")) {
       const periodID = String(fields.search_period_id || "");
       if (periodID && !searchPeriods.some((period) => period.id === periodID)) throw new Error(t("errors.searchPeriodNotFound"));

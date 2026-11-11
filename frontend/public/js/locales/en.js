@@ -435,6 +435,7 @@ export default {
   "history.changedOverview": "changed company and role overview",
   "history.changedRole": "changed role",
   "history.changedRoleHighlights": "changed role highlights",
+  "history.changedTechStack": "changed tech stack",
   "history.created": "created",
   "history.justNow": "just now",
   "history.movedTo": "moved to {status}",

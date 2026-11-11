@@ -22,7 +22,7 @@ function ensurePanel() {
       <div class="backup-progress-row">
         <span class="backup-progress-icon" aria-hidden="true"></span>
         <span class="backup-progress-message"></span>
-        <button type="button" class="backup-progress-close" aria-label="${escapeAttr(t("common.dismiss"))}">
+        <button type="button" class="backup-progress-close" data-i18n-aria-label="common.dismiss" aria-label="${escapeAttr(t("common.dismiss"))}">
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m18 6-12 12M6 6l12 12"/></svg>
         </button>
       </div>
