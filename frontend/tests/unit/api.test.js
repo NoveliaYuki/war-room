@@ -265,7 +265,7 @@ describe('api', () => {
     global.fetch.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: 'no google account connected' }) });
     await expect(api.getGoogleFolders()).rejects.toThrow('no google account connected');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
-    await expect(api.setGoogleFolder('', '')).rejects.toThrow('Failed to save Drive folder');
+    await expect(api.setGoogleFolder('', '')).rejects.toThrow('Failed to save the Drive folder selection');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) });
     await expect(api.backupNowGoogle()).rejects.toThrow('Drive backup failed');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
