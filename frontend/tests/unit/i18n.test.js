@@ -230,8 +230,8 @@ describe('dictionaries', () => {
   // Reviewed entries that read the same as English: shared words, brand names, and format-only strings.
   // An entry copied from English without translating fails here; add one only after checking it in that language.
   const SAME_AS_ENGLISH = {
-    es: ['cv.version', 'detail.fileSizeKb', 'employment.b2b', 'jobImport.urlPlaceholder', 'markdown.source', 'referral.toggleLabel', 'sort.short.manual', 'stageType.cultural'],
-    ca: ['cv.version', 'detail.fileSizeKb', 'employment.b2b', 'interviewer.notes', 'jobImport.urlPlaceholder', 'markdown.source', 'referral.toggleLabel', 'sort.short.manual', 'stageType.cultural'],
+    es: ['csv.no', 'cv.version', 'detail.fileSizeKb', 'employment.b2b', 'jobImport.urlPlaceholder', 'markdown.source', 'referral.toggleLabel', 'sort.short.manual', 'stageType.cultural'],
+    ca: ['csv.no', 'cv.version', 'detail.fileSizeKb', 'employment.b2b', 'interviewer.notes', 'jobImport.urlPlaceholder', 'markdown.source', 'referral.toggleLabel', 'sort.short.manual', 'stageType.cultural'],
   };
 
   it.each([['es', es], ['ca', ca]])('%s translates every message it does not share with English', (language, dictionary) => {

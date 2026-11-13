@@ -19,6 +19,8 @@ import { activateModal, restoreModalFocus, setModalBackgroundScrollPosition, tra
 import { applyLogoFit } from "./utils/logoFit.js";
 import { showToast } from "./utils/toast.js";
 import { showBackupProgress } from "./utils/backupProgress.js";
+import { boardCsvFilename, buildBoardCsv } from "./utils/boardCsv.js";
+import { saveBlob } from "./utils/download.js";
 import { confirmAction } from "./utils/confirmDialog.js";
 import { escapeAttr, escapeHtml } from "./utils/sanitize.js";
 import { renderMarkdown } from "./utils/markdown.js";
@@ -1499,6 +1501,11 @@ function openDataModal() {
     </div>
     <div class="data-transfer-content">
       <section class="data-transfer-section">
+        <h3>${escapeHtml(t("data.csvTitle"))}</h3>
+        <p>${escapeHtml(t("data.csvBody"))}</p>
+        <button class="btn-primary" id="btn-export-csv" type="button">${icon("download", 15)} ${escapeHtml(t("data.csvButton"))}</button>
+      </section>
+      <section class="data-transfer-section">
         <h3>${escapeHtml(t("data.exportTitle"))}</h3>
         <p>${escapeHtml(t(isDemoMode ? "data.exportDemo" : "data.exportBody"))}</p>
         <button class="btn-primary" id="btn-export-backup" type="button" ${isDemoMode ? "disabled" : ""}>${icon("download", 15)} ${escapeHtml(t("data.exportButton"))}</button>
@@ -1526,6 +1533,7 @@ function openDataModal() {
   activateModal(modalEl, "#btn-close-data-modal");
   void refreshDataGoogleStatus();
   modalEl.querySelector("#btn-close-data-modal").addEventListener("click", closeDataModal);
+  modalEl.querySelector("#btn-export-csv").addEventListener("click", downloadBoardCsv);
   modalEl.querySelector("#btn-export-backup").addEventListener("click", downloadBackup);
   const fileInput = modalEl.querySelector("#backup-import-file");
   const confirmation = modalEl.querySelector("#backup-import-confirm");
@@ -1563,20 +1571,28 @@ function openTechnologyLibraryModal(event) {
   openTechnologyLibrary(modalEl, closeTechnologyLibraryModal);
 }
 
+/** Downloads every process on the board as a CSV file built in the browser. */
+async function downloadBoardCsv(event) {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const [jobs, periods] = await Promise.all([api.getJobs("all"), api.getSearchPeriods()]);
+    saveBlob(new Blob([buildBoardCsv(jobs, periods)], { type: "text/csv;charset=utf-8" }), boardCsvFilename());
+    showToast(t("data.csvDownloaded"), "success");
+  } catch (err) {
+    showToast(err.message || t("data.csvFailed"), "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 /** Downloads the encrypted portable backup. */
 async function downloadBackup(event) {
   const button = event.currentTarget;
   button.disabled = true;
   try {
     const blob = await api.exportBackup();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `war-room-backup-${new Date().toISOString().slice(0, 10)}.wrbackup`;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    saveBlob(blob, `war-room-backup-${new Date().toISOString().slice(0, 10)}.wrbackup`);
     showToast(t("data.downloaded"), "success");
   } catch (err) {
     showToast(err.message || t("data.exportFailed"), "error");
