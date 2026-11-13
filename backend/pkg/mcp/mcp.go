@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -14,6 +15,7 @@ import (
 	"war-room/backend/pkg/logging"
 	"war-room/backend/pkg/middleware"
 	"war-room/backend/pkg/models"
+	"war-room/backend/pkg/repository"
 	"war-room/backend/pkg/service"
 )
 
@@ -23,7 +25,8 @@ const maxRequestBytes = 1 << 20
 const instructions = `War Room tracks the signed-in user's job selection processes.
 Read AGENTS.md in the war-room repository for the rules on creating and reviewing job cards.
 Look up existing processes with list_jobs before creating one. Technologies are a per-user
-catalog: reuse an existing entry or alias before creating a new technology.`
+catalog: reuse an existing entry or alias before creating a new technology. Deleting
+records, uploading files, and arranging the board stay user actions in the app.`
 
 // JobService is the subset of service.JobService the tools call.
 type JobService interface {
@@ -37,6 +40,16 @@ type JobService interface {
 	ListCVVersions(userID string) ([]models.CVVersion, error)
 	CreateStage(userID string, input models.CreateStageInput) (*models.Stage, error)
 	UpdateStage(userID, id string, input models.UpdateStageInput) (*models.Stage, error)
+	ReorderStages(userID, jobID string, stageIDs []string) error
+	GetJobCounts(userID string) (*models.JobCounts, error)
+	AssignCVVersion(userID, jobID string, versionID *string) error
+	GetScheduledMeetings(userID string) ([]models.ScheduledMeeting, error)
+	CreateQuestion(userID string, input models.CreateQuestionInput) (*models.Question, error)
+	UpdateQuestion(userID, id string, input models.UpdateQuestionInput) (*models.Question, error)
+	ReorderQuestions(userID, stageID string, questionIDs []string) error
+	ListSearchPeriods(userID string) ([]models.SearchPeriod, error)
+	CreateSearchPeriod(userID string, input models.SearchPeriodInput) (*models.SearchPeriod, error)
+	UpdateSearchPeriod(userID, id string, input models.SearchPeriodInput) error
 }
 
 type idInput struct {
@@ -56,6 +69,33 @@ type updateJobInput struct {
 type updateStageInput struct {
 	ID      string                  `json:"id"`
 	Changes models.UpdateStageInput `json:"changes"`
+}
+
+type setJobCVVersionInput struct {
+	ID        string  `json:"id"`
+	VersionID *string `json:"version_id" jsonschema:"a CV version ID from list_cv_versions, or null to clear the job's CV"`
+}
+
+type reorderStagesInput struct {
+	JobID    string   `json:"job_id"`
+	StageIDs []string `json:"stage_ids" jsonschema:"every stage ID of the job, in the new order"`
+}
+
+type updateQuestionInput struct {
+	ID      string                     `json:"id"`
+	Changes models.UpdateQuestionInput `json:"changes"`
+}
+
+type reorderQuestionsInput struct {
+	StageID     string   `json:"stage_id"`
+	QuestionIDs []string `json:"question_ids" jsonschema:"every question ID of the stage, in the new order"`
+}
+
+type updateSearchPeriodInput struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	StartDate string `json:"start_date" jsonschema:"YYYY-MM-DD"`
+	EndDate   string `json:"end_date,omitempty" jsonschema:"YYYY-MM-DD; omit for a period that is still open"`
 }
 
 type createTechnologyInput struct {
@@ -79,7 +119,14 @@ var (
 	updateJobSchema   = optionalFieldsSchema[updateJobInput]("id", "changes")
 	createStageSchema = optionalFieldsSchema[models.CreateStageInput]("job_id", "stage_type")
 	updateStageSchema = optionalFieldsSchema[updateStageInput]("id", "changes")
+	// The question and search period inputs reuse API types the same way.
+	updateQuestionSchema     = optionalFieldsSchema[updateQuestionInput]("id", "changes")
+	createSearchPeriodSchema = optionalFieldsSchema[models.SearchPeriodInput]("name", "start_date")
 )
+
+// errInvalidOrdering is the public message for a reorder that names an
+// unknown, foreign, or duplicate ID, matching the JSON API.
+var errInvalidOrdering = errors.New("invalid ordering: every ID must exist once in this list")
 
 func optionalFieldsSchema[T any](required ...string) *jsonschema.Schema {
 	schema, err := jsonschema.For[T](nil)
@@ -125,6 +172,8 @@ func newServer(requestContext context.Context, jobs JobService) *sdk.Server {
 	t.registerJobTools(server)
 	t.registerCatalogTools(server)
 	t.registerStageTools(server)
+	t.registerQuestionTools(server)
+	t.registerSearchPeriodTools(server)
 	return server
 }
 
@@ -154,6 +203,17 @@ func (t tools) registerJobTools(server *sdk.Server) {
 	addTool(server, t, &sdk.Tool{Name: "update_job", InputSchema: updateJobSchema,
 		Description: "Update a job process. Only fields present in changes are modified; technology_ids, when present, replaces the whole Tech Stack."},
 		func(input updateJobInput) (any, error) { return t.jobs.UpdateJob(t.userID, input.ID, input.Changes) })
+	addTool(server, t, &sdk.Tool{Name: "count_jobs",
+		Description: "Count job processes in total and by status (waiting, ongoing, accepted, rejected)."},
+		func(struct{}) (any, error) { return t.jobs.GetJobCounts(t.userID) })
+	addTool(server, t, &sdk.Tool{Name: "set_job_cv_version",
+		Description: "Link a job process to the CV version that was sent, or pass version_id null to unlink it. Returns the updated job."},
+		func(input setJobCVVersionInput) (any, error) {
+			if err := t.jobs.AssignCVVersion(t.userID, input.ID, input.VersionID); err != nil {
+				return nil, err
+			}
+			return t.jobs.GetFullJobDetails(t.userID, input.ID)
+		})
 }
 
 func (t tools) registerCatalogTools(server *sdk.Server) {
@@ -196,6 +256,78 @@ func (t tools) registerStageTools(server *sdk.Server) {
 		func(input updateStageInput) (any, error) {
 			return t.jobs.UpdateStage(t.userID, input.ID, input.Changes)
 		})
+	addTool(server, t, &sdk.Tool{Name: "reorder_stages",
+		Description: "Set the order of a job process's interview stages. List every stage ID of the job, first stage first."},
+		func(input reorderStagesInput) (any, error) {
+			if len(input.StageIDs) == 0 {
+				return nil, fmt.Errorf("%w: stage_ids must list the job's stages", service.ErrInvalidField)
+			}
+			if err := t.jobs.ReorderStages(t.userID, input.JobID, input.StageIDs); err != nil {
+				return nil, err
+			}
+			return map[string]any{"job_id": input.JobID, "stage_ids": input.StageIDs}, nil
+		})
+	addTool(server, t, &sdk.Tool{Name: "list_meetings",
+		Description: "List scheduled interview meetings across all job processes, with each meeting's stage, date, time, link, and company."},
+		func(struct{}) (any, error) {
+			meetings, err := t.jobs.GetScheduledMeetings(t.userID)
+			if meetings == nil {
+				meetings = []models.ScheduledMeeting{}
+			}
+			return map[string]any{"meetings": meetings}, err
+		})
+}
+
+func (t tools) registerQuestionTools(server *sdk.Server) {
+	addTool(server, t, &sdk.Tool{Name: "create_question",
+		Description: "Add a question to prepare for an interview stage, with optional answer notes. New questions go last."},
+		func(input models.CreateQuestionInput) (any, error) { return t.jobs.CreateQuestion(t.userID, input) })
+	addTool(server, t, &sdk.Tool{Name: "update_question", InputSchema: updateQuestionSchema,
+		Description: "Update an interview question. Only fields present in changes are modified; set is_asked once it came up in the interview."},
+		func(input updateQuestionInput) (any, error) {
+			question, err := t.jobs.UpdateQuestion(t.userID, input.ID, input.Changes)
+			if err == nil && question == nil {
+				// An empty change set skips the scoped UPDATE, so a missing
+				// or foreign question surfaces only as a nil reload.
+				err = sql.ErrNoRows
+			}
+			return question, err
+		})
+	addTool(server, t, &sdk.Tool{Name: "reorder_questions",
+		Description: "Set the order of an interview stage's questions. List every question ID of the stage, first question first."},
+		func(input reorderQuestionsInput) (any, error) {
+			if len(input.QuestionIDs) == 0 {
+				return nil, fmt.Errorf("%w: question_ids must list the stage's questions", service.ErrInvalidField)
+			}
+			if err := t.jobs.ReorderQuestions(t.userID, input.StageID, input.QuestionIDs); err != nil {
+				return nil, err
+			}
+			return map[string]any{"stage_id": input.StageID, "question_ids": input.QuestionIDs}, nil
+		})
+}
+
+func (t tools) registerSearchPeriodTools(server *sdk.Server) {
+	addTool(server, t, &sdk.Tool{Name: "list_search_periods",
+		Description: "List job search periods, newest first, with how many processes each one holds."},
+		func(struct{}) (any, error) {
+			periods, err := t.jobs.ListSearchPeriods(t.userID)
+			if periods == nil {
+				periods = []models.SearchPeriod{}
+			}
+			return map[string]any{"search_periods": periods}, err
+		})
+	addTool(server, t, &sdk.Tool{Name: "create_search_period", InputSchema: createSearchPeriodSchema,
+		Description: "Start a job search period. Dates are YYYY-MM-DD; omit end_date while the search is still open. Periods may not overlap, and unassigned processes created within its dates join it."},
+		func(input models.SearchPeriodInput) (any, error) { return t.jobs.CreateSearchPeriod(t.userID, input) })
+	addTool(server, t, &sdk.Tool{Name: "update_search_period",
+		Description: "Replace a search period's name and dates; an omitted end_date reopens it. Periods may not overlap; processes already in it stay, and unassigned ones created within the new dates join it."},
+		func(input updateSearchPeriodInput) (any, error) {
+			period := models.SearchPeriodInput{Name: input.Name, StartDate: input.StartDate, EndDate: input.EndDate}
+			if err := t.jobs.UpdateSearchPeriod(t.userID, input.ID, period); err != nil {
+				return nil, err
+			}
+			return map[string]any{"id": input.ID, "success": true}, nil
+		})
 }
 
 func addTool[In any](server *sdk.Server, t tools, tool *sdk.Tool, call func(In) (any, error)) {
@@ -219,6 +351,8 @@ func (t tools) publicError(err error) error {
 	switch {
 	case service.IsValidationError(err):
 		return err
+	case errors.Is(err, repository.ErrInvalidReorder):
+		return errInvalidOrdering
 	case errors.Is(err, sql.ErrNoRows):
 		return errors.New("not found")
 	case request != nil:

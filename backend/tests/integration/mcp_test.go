@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -253,17 +254,175 @@ func TestMCP_BrowserSessionAndRESTRoutesShareTheSameAuth(t *testing.T) {
 	requireStatus(t, response, http.StatusOK)
 }
 
+// mcpTools is every tool the server must offer agents, sorted.
+var mcpTools = []string{"count_jobs", "create_job", "create_question", "create_search_period", "create_stage",
+	"create_technology", "get_job", "list_cv_versions", "list_jobs", "list_meetings", "list_search_periods",
+	"list_technologies", "reorder_questions", "reorder_stages", "set_job_cv_version", "update_job",
+	"update_question", "update_search_period", "update_stage", "update_technology"}
+
 func TestMCP_ToolCatalogIsComplete(t *testing.T) {
 	stack, token, _ := newMCPStack(t)
 	result, err := connectIntegrationMCP(t, stack, token).ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Tools) != 10 {
-		names := make([]string, 0, len(result.Tools))
-		for _, tool := range result.Tools {
-			names = append(names, tool.Name)
+	names := make([]string, 0, len(result.Tools))
+	for _, tool := range result.Tools {
+		names = append(names, tool.Name)
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, mcpTools) {
+		t.Fatalf("tools = %v, want %v", names, mcpTools)
+	}
+}
+
+func mustIntegrationTool(t *testing.T, session *sdk.ClientSession, name string, arguments any) map[string]any {
+	t.Helper()
+	output, message := callIntegrationTool(t, session, name, arguments)
+	if message != "" {
+		t.Fatalf("%s: %s", name, message)
+	}
+	return output
+}
+
+// getIntegrationJob reads a job through the owner's browser session.
+func getIntegrationJob(t *testing.T, stack integrationStack, id string) models.Job {
+	t.Helper()
+	response := mustRequest(t, stack.server.Client(), http.MethodGet, stack.server.URL+"/api/jobs/"+id, "")
+	t.Cleanup(func() { closeIntegrationResource(t, response.Body) })
+	requireStatus(t, response, http.StatusOK)
+	var job models.Job
+	if err := json.NewDecoder(response.Body).Decode(&job); err != nil {
+		t.Fatal(err)
+	}
+	return job
+}
+
+// ownerProcess is the owner's job with two stages, two questions on the
+// first stage, a CV version, and a search period, created through the
+// owner's token (the CV through the owner's browser session).
+type ownerProcess struct {
+	jobID, versionID, periodID string
+	stageIDs, questionIDs      []string
+}
+
+func newOwnerProcess(t *testing.T, stack integrationStack, owner *sdk.ClientSession) ownerProcess {
+	t.Helper()
+	version := uploadTestCV(t, stack.server.Client(), stack.server.URL, "resume.pdf", "owner CV bytes")
+	job := mustIntegrationTool(t, owner, "create_job", map[string]any{"company_name": "Acme", "position_title": "AI Ops", "is_referral": true})
+	process := ownerProcess{jobID: job["id"].(string), versionID: version.ID}
+	for _, stageType := range []string{"HR", "Technical"} {
+		stage := mustIntegrationTool(t, owner, "create_stage", map[string]any{"job_id": process.jobID, "stage_type": stageType})
+		process.stageIDs = append(process.stageIDs, stage["id"].(string))
+	}
+	for _, text := range []string{"Why this team?", "What is on call like?"} {
+		question := mustIntegrationTool(t, owner, "create_question", map[string]any{"stage_id": process.stageIDs[0], "question": text})
+		process.questionIDs = append(process.questionIDs, question["id"].(string))
+	}
+	period := mustIntegrationTool(t, owner, "create_search_period", map[string]any{"name": "Spring", "start_date": "2020-03-01", "end_date": "2020-05-31"})
+	process.periodID = period["id"].(string)
+	return process
+}
+
+func TestMCP_ProcessToolsEditTheOwnersDataSeenByTheAPI(t *testing.T) {
+	stack, token, _ := newMCPStack(t)
+	owner := connectIntegrationMCP(t, stack, token)
+	process := newOwnerProcess(t, stack, owner)
+	mustIntegrationTool(t, owner, "set_job_cv_version", map[string]any{"id": process.jobID, "version_id": process.versionID})
+	mustIntegrationTool(t, owner, "reorder_stages", map[string]any{"job_id": process.jobID, "stage_ids": []string{process.stageIDs[1], process.stageIDs[0]}})
+	mustIntegrationTool(t, owner, "reorder_questions", map[string]any{"stage_id": process.stageIDs[0], "question_ids": []string{process.questionIDs[1], process.questionIDs[0]}})
+	mustIntegrationTool(t, owner, "update_question", map[string]any{"id": process.questionIDs[0], "changes": map[string]any{"is_asked": true}})
+	mustIntegrationTool(t, owner, "update_stage", map[string]any{"id": process.stageIDs[1], "changes": map[string]any{"meeting_date": "2026-12-01", "meeting_time": "09:00"}})
+	mustIntegrationTool(t, owner, "update_search_period", map[string]any{"id": process.periodID, "name": "Early spring", "start_date": "2020-02-01", "end_date": "2020-05-31"})
+	assertOwnerEditsSeenByTheAPI(t, stack, process)
+	assertOwnerEditsSeenByTheTools(t, owner)
+}
+
+// assertOwnerEditsSeenByTheAPI checks the owner's browser session sees the
+// CV, stage order, and question edits made through MCP.
+func assertOwnerEditsSeenByTheAPI(t *testing.T, stack integrationStack, process ownerProcess) {
+	t.Helper()
+	job := getIntegrationJob(t, stack, process.jobID)
+	if job.SelectedCVVersion == nil || job.SelectedCVVersion.ID != process.versionID {
+		t.Fatalf("selected CV = %+v, want %s", job.SelectedCVVersion, process.versionID)
+	}
+	if job.Stages[0].ID != process.stageIDs[1] || job.Stages[1].ID != process.stageIDs[0] {
+		t.Fatalf("stage order = %s, %s", job.Stages[0].ID, job.Stages[1].ID)
+	}
+	questions := job.Stages[1].Questions
+	if len(questions) != 2 || questions[0].ID != process.questionIDs[1] || !questions[1].IsAsked {
+		t.Fatalf("questions = %+v", questions)
+	}
+}
+
+func assertOwnerEditsSeenByTheTools(t *testing.T, owner *sdk.ClientSession) {
+	t.Helper()
+	if meetings := mustIntegrationTool(t, owner, "list_meetings", map[string]any{}); len(meetings["meetings"].([]any)) != 1 {
+		t.Fatalf("list_meetings = %v", meetings)
+	}
+	// Scheduling a meeting moves a waiting process to ongoing.
+	if counts := mustIntegrationTool(t, owner, "count_jobs", map[string]any{}); counts["all"] != 1.0 || counts["ongoing"] != 1.0 || counts["waiting"] != 0.0 {
+		t.Fatalf("count_jobs = %v", counts)
+	}
+	periods := mustIntegrationTool(t, owner, "list_search_periods", map[string]any{})["search_periods"].([]any)
+	if len(periods) != 1 || periods[0].(map[string]any)["name"] != "Early spring" {
+		t.Fatalf("list_search_periods = %v", periods)
+	}
+}
+
+func TestMCP_ProcessToolsCannotReachAnotherUsersRecords(t *testing.T) {
+	stack, ownerToken, strangerToken := newMCPStack(t)
+	owner := connectIntegrationMCP(t, stack, ownerToken)
+	process := newOwnerProcess(t, stack, owner)
+	mustIntegrationTool(t, owner, "set_job_cv_version", map[string]any{"id": process.jobID, "version_id": process.versionID})
+	stranger := connectIntegrationMCP(t, stack, strangerToken)
+	strangerJob := mustIntegrationTool(t, stranger, "create_job", map[string]any{"company_name": "Other", "position_title": "Analyst", "is_referral": true})
+	for _, call := range []struct {
+		name      string
+		arguments map[string]any
+		want      string
+	}{
+		{"set_job_cv_version", map[string]any{"id": process.jobID, "version_id": nil}, "not found"},
+		{"set_job_cv_version", map[string]any{"id": strangerJob["id"], "version_id": process.versionID}, "not found"},
+		{"reorder_stages", map[string]any{"job_id": process.jobID, "stage_ids": []string{process.stageIDs[1], process.stageIDs[0]}}, "not found"},
+		{"reorder_stages", map[string]any{"job_id": strangerJob["id"], "stage_ids": process.stageIDs}, "invalid ordering: every ID must exist once in this list"},
+		{"create_question", map[string]any{"stage_id": process.stageIDs[0], "question": "Hijacked"}, "not found"},
+		{"update_question", map[string]any{"id": process.questionIDs[0], "changes": map[string]any{"question": "Hijacked"}}, "not found"},
+		{"update_question", map[string]any{"id": process.questionIDs[0], "changes": map[string]any{}}, "not found"},
+		{"reorder_questions", map[string]any{"stage_id": process.stageIDs[0], "question_ids": []string{process.questionIDs[1], process.questionIDs[0]}}, "not found"},
+		{"update_search_period", map[string]any{"id": process.periodID, "name": "Hijacked", "start_date": "2020-03-01"}, "not found"},
+	} {
+		if _, message := callIntegrationTool(t, stranger, call.name, call.arguments); message != call.want {
+			t.Errorf("stranger %s(%v) = %q, want %q", call.name, call.arguments, message, call.want)
 		}
-		t.Fatalf("tools = %v, want 10", names)
+	}
+	assertStrangerListsOnlyTheirOwn(t, stranger)
+	assertOwnerProcessUnchanged(t, stack, owner, process)
+}
+
+func assertStrangerListsOnlyTheirOwn(t *testing.T, stranger *sdk.ClientSession) {
+	t.Helper()
+	for name, key := range map[string]string{"list_meetings": "meetings", "list_search_periods": "search_periods"} {
+		if listed := mustIntegrationTool(t, stranger, name, map[string]any{}); len(listed[key].([]any)) != 0 {
+			t.Errorf("stranger %s = %v", name, listed)
+		}
+	}
+	if counts := mustIntegrationTool(t, stranger, "count_jobs", map[string]any{}); counts["all"] != 1.0 {
+		t.Errorf("stranger count_jobs = %v, want only their own job", counts)
+	}
+}
+
+func assertOwnerProcessUnchanged(t *testing.T, stack integrationStack, owner *sdk.ClientSession, process ownerProcess) {
+	t.Helper()
+	job := getIntegrationJob(t, stack, process.jobID)
+	if job.SelectedCVVersion == nil || job.Stages[0].ID != process.stageIDs[0] {
+		t.Fatalf("stranger changed the owner's job: CV %+v, first stage %s", job.SelectedCVVersion, job.Stages[0].ID)
+	}
+	if questions := job.Stages[0].Questions; len(questions) != 2 || questions[0].Question != "Why this team?" {
+		t.Fatalf("stranger changed the owner's questions: %+v", questions)
+	}
+	periods := mustIntegrationTool(t, owner, "list_search_periods", map[string]any{})["search_periods"].([]any)
+	if len(periods) != 1 || periods[0].(map[string]any)["name"] != "Spring" {
+		t.Fatalf("stranger changed the owner's periods: %v", periods)
 	}
 }

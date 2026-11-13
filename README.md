@@ -38,7 +38,7 @@ docker compose down
 
 ## Agent access (API tokens and MCP)
 
-The backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) server at `/api/mcp` so an agent can read and edit your jobs, stages, technologies, and CV versions without a browser. It authenticates with a personal API token tied to your account. The account must be on the allowlist and must have signed in with Google at least once.
+The backend exposes a [Model Context Protocol](https://modelcontextprotocol.io) server at `/api/mcp` so an agent can read and edit your jobs, stages, interview questions, search periods, technologies, and CV versions without a browser. It authenticates with a personal API token tied to your account. The account must be on the allowlist and must have signed in with Google at least once.
 
 Create a token from the running backend. Only the token goes to stdout, so redirect it to a private file:
 
@@ -56,6 +56,16 @@ claude mcp add --transport http --scope local war-room http://localhost:3000/api
 ```
 
 Never put a token in a checked-in `.mcp.json`. Any request carrying an `Authorization` header is authenticated by that token alone; the session cookie is not used as a fallback.
+
+The server offers these tools, each acting only on the token owner's records:
+
+- Jobs: `list_jobs`, `count_jobs`, `get_job`, `create_job`, `update_job`, and `set_job_cv_version`.
+- Stages and meetings: `create_stage`, `update_stage` (also schedules a meeting or marks the current stage), `reorder_stages`, and `list_meetings`.
+- Interview questions: `create_question`, `update_question`, and `reorder_questions`.
+- Search periods: `list_search_periods`, `create_search_period`, and `update_search_period`.
+- Technologies and CVs: `list_technologies`, `create_technology`, `update_technology`, and `list_cv_versions`.
+
+Deleting records, uploading files, Google Drive setup, backups, and arranging the board stay in the browser. `TestEveryAPIRouteIsCoveredOrExplained` fails when an API route has neither a tool nor a recorded reason, and a deferral such as "not available to agents yet" does not count as a reason.
 
 ## Static browser demo
 
