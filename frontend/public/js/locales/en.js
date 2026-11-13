@@ -522,6 +522,7 @@ export default {
   "newProcess.submit": "Create Selection Process",
   "newProcess.title": "New Selection Process",
 
+  "privacy.link": "Privacy policy",
   "process.deleteConfirm": "Delete process",
   "process.deleteMessage": "{company} — {position} will be permanently removed.",
   "process.deleteTitle": "Delete selection process?",

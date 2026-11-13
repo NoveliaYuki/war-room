@@ -75,6 +75,45 @@ func TestSignInScreenLanguageSelector(t *testing.T) {
 	}
 }
 
+// TestPrivacyPolicyFollowsLanguage checks that the sign-in screen links to the
+// privacy policy and that the policy opens in the interface language.
+func TestPrivacyPolicyFollowsLanguage(t *testing.T) {
+	page, err := newBrowserContext(t, "ca-ES").NewPage()
+	if err != nil {
+		t.Fatalf("create browser page: %v", err)
+	}
+	if _, err := page.Goto(baseURL); err != nil {
+		t.Fatalf("open sign-in screen: %v", err)
+	}
+	link := page.Locator("#sign-in-screen .sign-in-privacy")
+	waitForLocator(t, link, "privacy policy link")
+	expectLocatorText(t, link, "Política de privadesa")
+	if href, err := link.GetAttribute("href"); err != nil || href != "/privacy.html" {
+		t.Fatalf("privacy policy link href=%q, want /privacy.html (err=%v)", href, err)
+	}
+
+	if _, err := page.Goto(baseURL + "/privacy.html"); err != nil {
+		t.Fatalf("open privacy policy: %v", err)
+	}
+	expectOnlyPolicy(t, page, "ca", "Política de privadesa de War Room")
+	clickLocator(t, page.Locator(`nav a[href="#en"]`), "show the English policy")
+	expectOnlyPolicy(t, page, "en", "War Room privacy policy")
+}
+
+// expectOnlyPolicy checks that the privacy policy shows only the given language.
+func expectOnlyPolicy(t *testing.T, page playwright.Page, language, title string) {
+	t.Helper()
+	expectLocatorText(t, page.Locator("#"+language+" h1"), title)
+	for _, other := range []string{"en", "es", "ca"} {
+		if other == language {
+			continue
+		}
+		if visible, err := page.Locator("#" + other).IsVisible(); err != nil || visible {
+			t.Fatalf("the %s policy should be hidden while showing %s (visible=%t, err=%v)", other, language, visible, err)
+		}
+	}
+}
+
 func expectLocatorText(t *testing.T, locator playwright.Locator, want string) {
 	t.Helper()
 	if err := playwright.NewPlaywrightAssertions().Locator(locator).ToHaveText(want); err != nil {

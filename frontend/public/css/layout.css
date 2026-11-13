@@ -602,6 +602,7 @@
   border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary);
   font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
 }
+a.account-menu-item { text-decoration: none; }
 .account-menu-item:hover { background: var(--bg-surface-elevated); }
 .account-menu-item:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
 .account-menu-item[hidden] { display: none; }
@@ -627,6 +628,7 @@
 .language-option[aria-checked="true"],
 .language-option[aria-pressed="true"] { background: var(--accent-blue-subtle); color: var(--accent-blue); font-weight: 600; }
 .sign-in-language { margin-top: 16px; }
+.sign-in-privacy { display: inline-block; margin-top: 16px; color: var(--text-secondary); font-size: 13px; }
 
 /* Account identity block (full name, email, custom-avatar upload): shown at
    the top of the opened panel on desktop, and always-visible on mobile where

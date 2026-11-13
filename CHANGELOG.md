@@ -1,3 +1,15 @@
+Version 0.4.1 — 2026-11-13
+
+# Highlights
+- War Room has a privacy policy in English, Spanish, and Catalan at `/privacy.html`, linked from the sign-in screen and the account menu. Google requires one before an OAuth app can be published.
+
+# What changed
+- Add `privacy.html` to the app image and the static demo build. It opens in the interface language, with links to the other languages.
+- Describe what War Room collects from Google Sign-In and Drive (`drive.file`), what it stores and where, cookies and browser storage, server logs, sharing, the Google API Services User Data Policy, deletion, and how the demo keeps data in the browser.
+
+# References
+- [#8](https://github.com/NoveliaYuki/war-room/pull/8) / noissue
+
 Version 0.4.0 — 2026-11-09 · Release: [v0.4.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.4.0)
 
 # Highlights

@@ -63,6 +63,8 @@ The repository also includes a frontend-only demo with fictional sample processe
 
 Build the static demo from `frontend/` with `npm run build:demo`. The generated site is written to `frontend/dist-demo` and can be hosted by any static-site host; it does not deploy the backend.
 
+The privacy policy is `frontend/privacy.html`. Both the app and the demo serve it at `/privacy.html`, and it is the page to enter as the privacy policy link in Google Auth Platform → Branding. Update it whenever War Room starts collecting, storing, or sending data differently.
+
 ## Architecture
 
 - `frontend/` — static HTML, CSS, and JavaScript served by Nginx.
