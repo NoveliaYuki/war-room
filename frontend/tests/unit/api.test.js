@@ -274,6 +274,23 @@ describe('api', () => {
     await expect(api.revokeGoogleDrive()).rejects.toThrow('HTTP error: 503');
   });
 
+  it('reads and saves the automatic backup schedule', async () => {
+    mockResponse({ frequency: 'off' });
+    await expect(api.getBackupSchedule()).resolves.toEqual({ frequency: 'off' });
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/google/backup-schedule', { cache: 'no-store' });
+    const schedule = { frequency: 'weekly', weekday: 1, time: '09:00', time_zone: 'Europe/Madrid' };
+    mockResponse(schedule);
+    await expect(api.saveBackupSchedule(schedule)).resolves.toEqual(schedule);
+    expect(global.fetch.mock.lastCall[1]).toMatchObject({ method: 'PUT', body: JSON.stringify(schedule) });
+
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+    await expect(api.getBackupSchedule()).rejects.toThrow('HTTP error: 503');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'Choose a day of the week' }) });
+    await expect(api.saveBackupSchedule(schedule)).rejects.toThrow('Choose a day of the week.');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => { throw new Error('not json'); } });
+    await expect(api.saveBackupSchedule(schedule)).rejects.toThrow('Could not save the backup schedule');
+  });
+
   it('covers the auth session API', async () => {
     mockResponse({ id: 'u1', email: 'a@example.com', name: 'A', picture_url: 'https://example.com/a.png' });
     await expect(api.getAuthMe()).resolves.toEqual({ id: 'u1', email: 'a@example.com', name: 'A', picture_url: 'https://example.com/a.png' });

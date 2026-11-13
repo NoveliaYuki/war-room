@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -122,10 +123,22 @@ func (h *Handler) signInFromGoogleCallback(w http.ResponseWriter, r *http.Reques
 	if err := h.drive.SaveAccount(user.ID, token); err != nil {
 		return "", fmt.Errorf("google callback: save drive credentials for user %s: %w", user.ID, err)
 	}
+	h.clearExpiredAccessFailure(user.ID)
 	if err := h.auth.IssueSession(w, user.ID); err != nil {
 		return "", fmt.Errorf("google callback: issue session for user %s: %w", user.ID, err)
 	}
 	return user.ID, nil
+}
+
+// clearExpiredAccessFailure drops a scheduled backup's "Google access expired"
+// result once the user has granted fresh access by signing in again.
+func (h *Handler) clearExpiredAccessFailure(userID string) {
+	if h.schedules == nil {
+		return
+	}
+	if err := h.schedules.ClearGoogleAccessFailure(userID); err != nil {
+		slog.Warn("could not clear the scheduled backup's expired-access result", "user_id", userID, "error", err.Error())
+	}
 }
 
 func (h *Handler) checkGoogleCallbackState(cookie *http.Cookie, cookieErr error, state string) error {
@@ -348,6 +361,8 @@ func googleError(w http.ResponseWriter, err error) {
 		publicError(w, http.StatusConflict, service.ErrGoogleNotConnected.Error(), err)
 	case errors.Is(err, service.ErrGoogleRevocationFailed):
 		publicError(w, http.StatusBadGateway, service.ErrGoogleRevocationFailed.Error(), err)
+	case service.IsGoogleAccessExpired(err):
+		publicError(w, http.StatusBadGateway, "Google access expired or was revoked. Sign out and sign in again to reconnect Google Drive.", err)
 	default:
 		publicError(w, http.StatusBadGateway, "Google Drive request failed. Try again later.", err)
 	}

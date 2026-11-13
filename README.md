@@ -33,7 +33,7 @@ docker compose down
 - English, Spanish, and Catalan interface. War Room follows the browser's language until you pick one in the account menu or on the sign-in screen; switching is instant and never changes stored data. Messages live in `frontend/public/js/locales/`, and every locale must define the same keys.
 - Portable encrypted `.wrbackup` export and restore, including uploaded files.
 - Mandatory Google Sign-In limited to an allowlist of accounts, with per-account data and an optional custom profile photo (PNG or JPEG up to 5 MiB) shown in the account menu.
-- Google Drive backup: signing in grants Drive access. Choose a Drive folder with Google Picker in **Data & Backups**, and War Room uploads a uniquely named encrypted backup when a job card is created or its status changes. Data & Backups also shows the selected destination and lets you change it before starting an upload. Drive requires Google OAuth credentials and `GOOGLE_BACKUP_ENCRYPTION_KEY`, plus optional Picker settings in `.env` (see `.env.example`). Portable encrypted export and import require only `GOOGLE_BACKUP_ENCRYPTION_KEY`. Keep the encryption key in a password manager or another safe place; without the same key, backups cannot be restored. War Room decrypts encrypted backups during import. Plain ZIP imports are rejected.
+- Google Drive backup: signing in grants Drive access. Choose a Drive folder with Google Picker in **Data & Backups**, and War Room uploads a uniquely named encrypted backup when a job card is created or its status changes. Under **Automatic backups** you can also choose Off, Every day, or Every week on a chosen day, at a time of day in your browser's time zone; the panel describes the schedule in a sentence, shows the next backup, and reports the last automatic backup's result, including when Google access has expired and you need to sign in again. Data & Backups also shows the selected destination and lets you change it before starting an upload. Drive requires Google OAuth credentials and `GOOGLE_BACKUP_ENCRYPTION_KEY`, plus optional Picker settings in `.env` (see `.env.example`). Portable encrypted export and import require only `GOOGLE_BACKUP_ENCRYPTION_KEY`. Keep the encryption key in a password manager or another safe place; without the same key, backups cannot be restored. War Room decrypts encrypted backups during import. Plain ZIP imports are rejected.
 - SQLite storage, schema migrations, and a recovery snapshot in a Docker volume.
 
 ## Agent access (API tokens and MCP)
@@ -88,6 +88,7 @@ Copy `.env.example` to `.env`. Compose uses these local settings:
 | `CORS_ALLOWED_ORIGINS` | localhost origins | Browser origins allowed by the API |
 | `LOGO_LOOKUP_ENABLED` | `false` | Allow remote company-favicon lookups |
 | `JOB_IMPORT_ENABLED` | `true` | Allow importing job postings from a link |
+| `BACKUP_SCHEDULER_ENABLED` | `true` | Run each account's automatic Drive backups on the schedule it chose; the isolated test backend sets `false` |
 | `LOG_LEVEL` | `info` | Backend log verbosity: `debug`, `info`, `warn`, or `error` |
 | `LOG_FORMAT` | `json` | Backend log format: `json` or `text` |
 | `LOG_MAX_SIZE`, `LOG_MAX_FILES` | `10m`, `5` | Docker log rotation for the app containers |

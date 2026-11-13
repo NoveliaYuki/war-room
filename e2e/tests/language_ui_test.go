@@ -219,7 +219,12 @@ func languageScreens() []languageScreen {
 		{"data and backups", func(t *testing.T, run *languageRun, capture func(string)) {
 			openAccountMenu(t, run)
 			requireClick(t, run, "#btn-data-management-menu")
+			waitForLocator(t, run.page.Locator(".backup-schedule[data-ready=true]"), "backup schedule")
 			capture("")
+			if run.mode.signedIn {
+				requireClick(t, run, "#backup-schedule-form label:has(input[value=weekly])")
+				capture("weekly backup schedule")
+			}
 		}},
 		{"schedule", func(t *testing.T, run *languageRun, capture func(string)) {
 			requireClick(t, run, "#tab-schedule")
