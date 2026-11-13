@@ -185,12 +185,18 @@ func seedTestSession(t *testing.T) *http.Cookie {
 	return nil
 }
 
-// newPage creates an isolated, already-signed-in browser page and closes it
-// at test completion.
+// newPage creates an isolated, already-signed-in English browser page and
+// closes it at test completion.
 func newPage(t *testing.T) playwright.Page {
 	t.Helper()
-	sessionCookie := seedTestSession(t)
-	context, err := browser.NewContext()
+	return newLocalizedPage(t, "en-US")
+}
+
+// newBrowserContext creates an isolated browser context whose navigator
+// languages and Accept-Language header follow locale.
+func newBrowserContext(t *testing.T, locale string) playwright.BrowserContext {
+	t.Helper()
+	context, err := browser.NewContext(playwright.BrowserNewContextOptions{Locale: playwright.String(locale)})
 	if err != nil {
 		t.Fatalf("create browser context: %v", err)
 	}
@@ -199,6 +205,14 @@ func newPage(t *testing.T) playwright.Page {
 			t.Errorf("close browser context: %v", err)
 		}
 	})
+	return context
+}
+
+// newLocalizedPage creates an already-signed-in browser page for locale.
+func newLocalizedPage(t *testing.T, locale string) playwright.Page {
+	t.Helper()
+	sessionCookie := seedTestSession(t)
+	context := newBrowserContext(t, locale)
 	cookieURL := baseURL
 	if err := context.AddCookies([]playwright.OptionalCookie{
 		{Name: sessionCookie.Name, Value: sessionCookie.Value, URL: &cookieURL},
@@ -1266,10 +1280,8 @@ func assertToolbarAtViewport(t *testing.T, width int, layout toolbarLayout) {
 	if width > 640 {
 		assertToolbarRow(t, width, layout.Search, layout.Filter, layout.Sort)
 		assertWideToolbar(t, width, layout)
-	} else if width > 420 {
-		assertCompactToolbar(t, width, layout)
 	} else {
-		assertNarrowToolbar(t, width, layout)
+		assertPhoneToolbar(t, width, layout)
 	}
 	assertHeaderActionAlignment(t, width, layout)
 }
@@ -1290,9 +1302,22 @@ func assertWideToolbar(t *testing.T, width int, layout toolbarLayout) {
 	}
 }
 
-func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
+// assertPhoneToolbar checks that phones keep Filters, Sort, and Add on one row with search on its own full-width row,
+// so longer translated labels never squeeze the search field.
+func assertPhoneToolbar(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	assertToolbarRow(t, width, layout.Filter, layout.Sort)
+	filterCenter := layout.Filter.Y + layout.Filter.Height/2
+	for name, box := range map[string]layoutBox{"sort": layout.Sort, "add": layout.Add} {
+		if abs(box.Y+box.Height/2-filterCenter) > 1 {
+			t.Errorf("%dpx toolbar should keep %s aligned with Filters", width, name)
+		}
+	}
+	if layout.Filter.Right > layout.Sort.X || layout.Sort.Right > layout.Add.X {
+		t.Errorf("%dpx toolbar controls should not overlap (filter ends %.1fpx, sort %.1f–%.1fpx, add starts %.1fpx)", width, layout.Filter.Right, layout.Sort.X, layout.Sort.Right, layout.Add.X)
+	}
+	if abs(layout.Add.Right-layout.Toolbar.Right) > 2 {
+		t.Errorf("%dpx Add action should align to the toolbar's right edge (add %.1fpx, toolbar %.1fpx)", width, layout.Add.Right, layout.Toolbar.Right)
+	}
 	assertSearchWidthUsesAvailableSpace(t, width, layout)
 	if layout.FilterHeight < 40 || layout.SortHeight < 40 {
 		t.Errorf("%dpx viewport has undersized touch controls (filter %.0fpx, sort %.0fpx)", width, layout.FilterHeight, layout.SortHeight)
@@ -1301,27 +1326,22 @@ func assertCompactToolbar(t *testing.T, width int, layout toolbarLayout) {
 
 func assertSearchWidthUsesAvailableSpace(t *testing.T, width int, layout toolbarLayout) {
 	t.Helper()
-	available := layout.SearchFilterWidth.Width - layout.Filter.Width - layout.Add.Width - 16
-	expected := min(342.0, max(0, available))
-	if abs(layout.Search.Width-expected) > 2 {
-		t.Errorf("%dpx viewport should keep search at its preferred 342px width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
+	if width <= 640 {
+		if layout.Search.Y < layout.Filter.Y+layout.Filter.Height-1 {
+			t.Errorf("%dpx search should sit on its own row below Filters (search y %.1fpx, filters end %.1fpx)", width, layout.Search.Y, layout.Filter.Y+layout.Filter.Height)
+		}
+		if abs(layout.Search.X-layout.Toolbar.X) > 1 || abs(layout.Search.Width-layout.Toolbar.Width) > 2 {
+			t.Errorf("%dpx search should span the toolbar (search %.1fpx at %.1fpx, toolbar %.1fpx at %.1fpx)", width, layout.Search.Width, layout.Search.X, layout.Toolbar.Width, layout.Toolbar.X)
+		}
+	} else {
+		available := layout.SearchFilterWidth.Width - layout.Filter.Width - layout.Add.Width - 16
+		expected := min(342.0, max(0, available))
+		if abs(layout.Search.Width-expected) > 2 {
+			t.Errorf("%dpx viewport should keep search at its preferred 342px width until space is constrained (search %.1fpx, expected %.1fpx)", width, layout.Search.Width, expected)
+		}
 	}
 	if abs(layout.SearchField.Width-layout.Search.Width) > 1 {
 		t.Errorf("%dpx viewport search field should fit its fixed-width wrapper (field %.1fpx, wrapper %.1fpx)", width, layout.SearchField.Width, layout.Search.Width)
-	}
-}
-
-func assertNarrowToolbar(t *testing.T, width int, layout toolbarLayout) {
-	t.Helper()
-	if abs((layout.Sort.Y+layout.Sort.Height/2)-(layout.Filter.Y+layout.Filter.Height/2)) > 1 {
-		t.Errorf("%dpx toolbar should keep sort aligned with Filters", width)
-	}
-	assertSearchWidthUsesAvailableSpace(t, width, layout)
-	if abs(layout.Sort.Right-layout.Toolbar.Right) > 2 {
-		t.Errorf("%dpx sort control should remain aligned to the toolbar's right edge (sort %.1fpx, toolbar %.1fpx)", width, layout.Sort.Right, layout.Toolbar.Right)
-	}
-	if layout.SortTrigger.X < layout.Toolbar.X-1 || layout.SortTrigger.Right > layout.Toolbar.Right+1 {
-		t.Errorf("%dpx sort button should stay fully inside the toolbar (button %.1f–%.1fpx, toolbar %.1f–%.1fpx)", width, layout.SortTrigger.X, layout.SortTrigger.Right, layout.Toolbar.X, layout.Toolbar.Right)
 	}
 }
 

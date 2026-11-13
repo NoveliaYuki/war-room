@@ -6,8 +6,11 @@
  * Pressing Escape cancels without saving.
  */
 
+import { t } from "./i18n.js";
+
 /**
  * Attaches double-click inline editing to a target DOM element.
+ * An element whose title already explains editing carries data-edit-titled and keeps that title.
  *
  * @param {HTMLElement} element - The DOM element to make editable.
  * @param {Object} options
@@ -27,10 +30,11 @@ export function makeInlineEditable(element, options = {}) {
   element.classList.add("editable-text");
   const eventName = options.eventName || "dblclick";
   element.dataset.editEvent = eventName;
-  const editHint = eventName === "click" ? "Click to edit" : "Double-click to edit";
+  const editHint = t(eventName === "click" ? "inlineEdit.clickHint" : "inlineEdit.doubleClickHint");
   const existingTitle = element.getAttribute("title");
-  if (!existingTitle?.toLowerCase().includes("edit")) {
+  if (!element.hasAttribute("data-edit-titled")) {
     element.title = existingTitle ? `${existingTitle} · ${editHint}` : editHint;
+    element.setAttribute("data-edit-titled", "");
   }
   element.addEventListener(eventName, (event) => startInlineEditing(element, options, event));
 }
@@ -89,10 +93,10 @@ function createCommitHandler(element, input, rawValue, originalDisplay, options,
     updateInlineDisplay(element, options, newValue);
     try {
       await options.onSave?.(newValue);
-      showInlineToast("Saved!", "success", 1200);
+      showInlineToast(t("inlineEdit.saved"), "success", 1200);
     } catch (error) {
       console.error("Failed to save inline edit:", error);
-      showInlineToast("Failed to save", "error", 2000);
+      showInlineToast(t("inlineEdit.saveFailed"), "error", 2000);
     }
   };
 }
@@ -142,8 +146,22 @@ function bindInlineInputEvents(input, multiline, commit, cancel) {
   input.addEventListener("blur", commit);
 }
 
+// Words that mark a single amount as the lower bound, in every supported language ("desde", "des de", "a partir de").
+const LOWER_BOUND_WORDS = /(?:from|desde|des de|a partir|>|min|mín)/i;
+
 /**
- * Parses user-typed salary input (e.g. "80k - 95k", "up to 90000", "€70,000–€85,000")
+ * Turns "70.000", "70,000", "72,5", or "85,000.40" into a number string parseFloat reads correctly.
+ * Groups of three digits after a dot or comma are thousands; any other last dot or comma is the decimal point.
+ */
+function normalizeSalaryNumber(digits) {
+  if (/^\d{1,3}([.,])\d{3}(?:\1\d{3})*$/.test(digits)) return digits.replace(/[.,]/g, "");
+  const decimal = Math.max(digits.lastIndexOf("."), digits.lastIndexOf(","));
+  if (decimal < 0) return digits;
+  return `${digits.slice(0, decimal).replace(/[.,]/g, "")}.${digits.slice(decimal + 1)}`;
+}
+
+/**
+ * Parses user-typed salary input (e.g. "80k - 95k", "up to 90000", "€70,000–€85,000", "desde 70.000")
  * into schema-compatible fields: { salary_type, salary_min, salary_max }.
  *
  * @param {string} str
@@ -166,13 +184,11 @@ export function parseSalaryInput(str) {
   cleaned = cleaned.replace(/[$€£]/g, "").trim();
 
   const parseNum = (val) => {
-    if (!val) return null;
-    val = val.replace(/[^0-9.k]/gi, "").trim();
-    if (val.toLowerCase().endsWith("k")) {
-      return Math.round(parseFloat(val.slice(0, -1)) * 1000);
-    }
-    const n = parseFloat(val);
-    return isNaN(n) ? null : Math.round(n);
+    let digits = val.toLowerCase().replace(/[^0-9.,k]/g, "");
+    const multiplier = digits.endsWith("k") ? 1000 : 1;
+    digits = normalizeSalaryNumber(digits.replace(/k$/, ""));
+    const n = parseFloat(digits) * multiplier;
+    return Number.isFinite(n) ? Math.round(n) : null;
   };
 
   // Find all numbers with optional 'k'
@@ -194,7 +210,7 @@ export function parseSalaryInput(str) {
   // If exactly one number is present
   if (matches.length === 1) {
     const val = matches[0];
-    const isMin = /(?:from|>|min)/i.test(cleaned);
+    const isMin = LOWER_BOUND_WORDS.test(cleaned);
     if (isMin) {
       return { salary_type: "no_max", salary_min: val, salary_max: null };
     }

@@ -12,6 +12,18 @@ describe("parseSalaryInput", () => {
     expect(parseSalaryInput("up to $83k")).toEqual({ salary_type: "no_min", salary_min: null, salary_max: 83000 });
     expect(parseSalaryInput("from £37k")).toEqual({ salary_type: "no_max", salary_min: 37000, salary_max: null });
   });
+  it("reads the bound words and number formats of every supported language", () => {
+    const from = { salary_type: "no_max", salary_min: 70000, salary_max: null };
+    expect(parseSalaryInput("Desde €70k")).toEqual(from);
+    expect(parseSalaryInput("Des de 70.000 €")).toEqual(from);
+    expect(parseSalaryInput("a partir de 70k")).toEqual(from);
+    expect(parseSalaryInput("hasta 85.000")).toEqual({ salary_type: "no_min", salary_min: null, salary_max: 85000 });
+    expect(parseSalaryInput("fins a 85k")).toEqual({ salary_type: "no_min", salary_min: null, salary_max: 85000 });
+    expect(parseSalaryInput("70.000 - 90.000")).toEqual({ salary_type: "limited", salary_min: 70000, salary_max: 90000 });
+    expect(parseSalaryInput("72,5k - 80k")).toEqual({ salary_type: "limited", salary_min: 72500, salary_max: 80000 });
+    expect(parseSalaryInput("85,000.40")).toEqual({ salary_type: "no_min", salary_min: null, salary_max: 85000 });
+    expect(parseSalaryInput("no revelado")).toEqual({ salary_type: "unknown", salary_min: null, salary_max: null });
+  });
   it("handles unknown salary values", () => {
     const unknown = { salary_type: "unknown", salary_min: null, salary_max: null };
     expect(parseSalaryInput("unknown")).toEqual(unknown);

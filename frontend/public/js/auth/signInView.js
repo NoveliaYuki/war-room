@@ -3,6 +3,8 @@
  * Checked by boot.js before app.js is ever imported.
  */
 
+import { setTranslatedText } from "../i18n.js";
+
 /** Returns the signed-in user, or null when there is no active session. */
 export async function checkSession() {
   const response = await fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" });
@@ -25,6 +27,6 @@ export function renderSignInView() {
   const params = new URLSearchParams(window.location.search);
   if (params.get("google") === "error") {
     const message = document.querySelector("#sign-in-message");
-    if (message) message.textContent = "Sign-in failed, or this Google account isn't authorized for War Room.";
+    if (message) setTranslatedText(message, "signIn.failed");
   }
 }

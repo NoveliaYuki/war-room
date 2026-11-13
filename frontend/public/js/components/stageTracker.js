@@ -9,6 +9,8 @@ import { api } from "../api.js";
 import { renderQuestionList } from "./questionList.js";
 import { icon } from "../icons.js";
 import { confirmAction } from "../utils/confirmDialog.js";
+import { t } from "../i18n.js";
+import { stageName as describeStage, stageDescriptionText, stageTypeLabel } from "../utils/labels.js";
 
 /**
  * Maps stage types to clean CSS class identifiers.
@@ -41,7 +43,7 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
     emptyBox.className = "empty-state";
     emptyBox.style.padding = "30px 20px";
     emptyBox.innerHTML = `
-      <p style="color: var(--text-secondary); margin-bottom: 12px;">No interview stages configured yet.</p>
+      <p style="color: var(--text-secondary); margin-bottom: 12px;">${escapeHtml(t("stage.noneConfigured"))}</p>
     `;
     container.appendChild(emptyBox);
   }
@@ -59,22 +61,22 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
     headerLeft.className = "stage-header-left";
     headerLeft.innerHTML = `
       <div class="stage-index-badge">${idx + 1}</div>
-      <span class="stage-type-badge ${escapeAttr(getStageTypeClass(stage.stage_type))}">${escapeHtml(stage.stage_type)}</span>
-      <div class="stage-title">${escapeHtml(stage.custom_title || stage.stage_type)}</div>
+      <span class="stage-type-badge ${escapeAttr(getStageTypeClass(stage.stage_type))}">${escapeHtml(stageTypeLabel(stage.stage_type))}</span>
+      <div class="stage-title">${escapeHtml(describeStage(stage))}</div>
     `;
 
     const headerRight = document.createElement("div");
     headerRight.className = "stage-header-right";
-    const stageName = stage.custom_title || stage.stage_type;
+    const stageName = describeStage(stage);
 
     // Status Selector
     const statusSelect = document.createElement("select");
     statusSelect.className = "stage-status-select";
-    statusSelect.setAttribute("aria-label", `Status for ${stageName} stage`);
+    statusSelect.setAttribute("aria-label", t("stage.statusLabel", { stage: stageName }));
     ["pending", "current", "completed", "skipped"].forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s;
-      opt.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+      opt.textContent = t(`stageStatus.${s}`);
       opt.selected = stage.status === s;
       statusSelect.appendChild(opt);
     });
@@ -92,8 +94,8 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
       const upBtn = document.createElement("button");
       upBtn.className = "stage-action-btn";
       upBtn.innerHTML = icon("chevronUp", 12);
-      upBtn.title = "Move Stage Up";
-      upBtn.setAttribute("aria-label", `Move ${stageName} stage up`);
+      upBtn.title = t("stage.moveUpTitle");
+      upBtn.setAttribute("aria-label", t("stage.moveUpLabel", { stage: stageName }));
       upBtn.addEventListener("click", async () => {
         try {
           const ids = stages.map((s) => s.id);
@@ -113,8 +115,8 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
       const downBtn = document.createElement("button");
       downBtn.className = "stage-action-btn";
       downBtn.innerHTML = icon("chevronDown", 12);
-      downBtn.title = "Move Stage Down";
-      downBtn.setAttribute("aria-label", `Move ${stageName} stage down`);
+      downBtn.title = t("stage.moveDownTitle");
+      downBtn.setAttribute("aria-label", t("stage.moveDownLabel", { stage: stageName }));
       downBtn.addEventListener("click", async () => {
         try {
           const ids = stages.map((s) => s.id);
@@ -134,14 +136,14 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
     const delBtn = document.createElement("button");
     delBtn.className = "stage-action-btn";
     delBtn.innerHTML = icon("close", 12);
-    delBtn.title = "Remove Stage";
-    delBtn.setAttribute("aria-label", `Remove ${stageName} stage`);
+    delBtn.title = t("stage.removeTitle");
+    delBtn.setAttribute("aria-label", t("stage.removeLabel", { stage: stageName }));
     delBtn.addEventListener("click", async () => {
       try {
         const confirmed = await confirmAction({
-          title: "Remove interview stage?",
-          message: `${stageName} and its interview details will be permanently removed.`,
-          confirmLabel: "Remove stage",
+          title: t("stage.removeConfirmTitle"),
+          message: t("stage.deleteMessage", { stage: stageName }),
+          confirmLabel: t("stage.removeConfirm"),
           danger: true,
         });
         if (!confirmed) return;
@@ -166,7 +168,7 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
     if (stage.description) {
       const descEl = document.createElement("div");
       descEl.className = "stage-description";
-      descEl.textContent = stage.description;
+      descEl.textContent = stageDescriptionText(stage.description);
       body.appendChild(descEl);
     }
 
@@ -182,7 +184,7 @@ export function renderStageTracker(jobId, stages = [], onRefresh) {
   const addStageBox = document.createElement("div");
   addStageBox.className = "add-stage-box";
   addStageBox.innerHTML = `
-    <button type="button" class="btn-new-stage inline-icon-text">${icon("plus", 12)} Add Interview Stage</button>
+    <button type="button" class="btn-new-stage inline-icon-text">${icon("plus", 12)} ${escapeHtml(t("stage.addInterviewStage"))}</button>
   `;
 
   addStageBox.querySelector(".btn-new-stage").addEventListener("click", () => {
@@ -201,17 +203,17 @@ function renderInlineStageForm(containerEl, jobId, onRefresh) {
     <form class="inline-stage-form" style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
       <div style="display: flex; gap: 10px; flex-wrap: wrap;">
         <select class="stage-type-input" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 6px 10px; color: var(--text-primary);">
-          <option value="HR">HR / Screening</option>
-          <option value="Technical" selected>Technical</option>
-          <option value="Cultural">Cultural / Leadership</option>
-          <option value="Offer & Decision">Offer & Decision</option>
+          <option value="HR">${escapeHtml(t("stageType.option.hr"))}</option>
+          <option value="Technical" selected>${escapeHtml(t("stageType.option.technical"))}</option>
+          <option value="Cultural">${escapeHtml(t("stageType.option.cultural"))}</option>
+          <option value="Offer &amp; Decision">${escapeHtml(t("stageType.option.offerDecision"))}</option>
         </select>
-        <input type="text" class="stage-title-input" placeholder="Title (e.g. System Design, Take-home defense)" style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 6px 12px; color: var(--text-primary);" required />
+        <input type="text" class="stage-title-input" placeholder="${escapeAttr(t("stage.titlePlaceholder"))}" style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 6px 12px; color: var(--text-primary);" required />
       </div>
-      <input type="text" class="stage-desc-input" placeholder="Short description of this stage's focus..." style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 6px 12px; color: var(--text-primary);" />
+      <input type="text" class="stage-desc-input" placeholder="${escapeAttr(t("stage.focusPlaceholder"))}" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 6px 12px; color: var(--text-primary);" />
       <div style="display: flex; gap: 8px; justify-content: flex-end;">
-        <button type="button" class="btn-cancel-stage btn-secondary" style="padding: 4px 12px; font-size: 12px;">Cancel</button>
-        <button type="submit" class="btn-primary" style="padding: 4px 14px; font-size: 12px;">Save Stage</button>
+        <button type="button" class="btn-cancel-stage btn-secondary" style="padding: 4px 12px; font-size: 12px;">${escapeHtml(t("common.cancel"))}</button>
+        <button type="submit" class="btn-primary" style="padding: 4px 14px; font-size: 12px;">${escapeHtml(t("stage.save"))}</button>
       </div>
     </form>
   `;

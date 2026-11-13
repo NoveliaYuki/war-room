@@ -7,6 +7,7 @@ import { escapeHtml, escapeAttr } from "../utils/sanitize.js";
 
 import { api } from "../api.js";
 import { icon } from "../icons.js";
+import { t } from "../i18n.js";
 
 /** Moves a placeholder before a target only when its position would change. */
 function movePlaceholderBefore(listEl, placeholder, target) {
@@ -70,7 +71,7 @@ export function renderQuestionList(stageId, questions = [], onUpdated) {
   const header = document.createElement("div");
   header.className = "questions-header";
   header.innerHTML = `
-    <span>Questions to Ask (${questions.length})</span>
+    <span>${escapeHtml(t("questions.headerCount", { count: questions.length }))}</span>
   `;
   container.appendChild(header);
 
@@ -96,7 +97,7 @@ export function renderQuestionList(stageId, questions = [], onUpdated) {
     const delBtn = document.createElement("button");
     delBtn.className = "question-delete-btn";
     delBtn.innerHTML = icon("close", 11);
-    delBtn.title = "Delete question";
+    delBtn.title = t("questions.delete");
     delBtn.addEventListener("click", async () => {
       try {
         await api.deleteQuestion(q.id);
@@ -110,8 +111,8 @@ export function renderQuestionList(stageId, questions = [], onUpdated) {
     dragHandle.type = "button";
     dragHandle.className = "question-drag-handle q-grip";
     dragHandle.innerHTML = icon("gripLines", 14);
-    dragHandle.title = "Drag to reorder questions";
-    dragHandle.setAttribute("aria-label", "Reorder interview question");
+    dragHandle.title = t("questions.dragHint");
+    dragHandle.setAttribute("aria-label", t("questions.reorder"));
 
     actionsGroup.appendChild(delBtn);
     actionsGroup.appendChild(dragHandle);
@@ -124,7 +125,7 @@ export function renderQuestionList(stageId, questions = [], onUpdated) {
     // Answer notes box
     const answerBox = document.createElement("textarea");
     answerBox.className = "question-answer-box";
-    answerBox.placeholder = "Log interviewer's response or your notes...";
+    answerBox.placeholder = t("questions.answerPlaceholder");
     answerBox.value = q.answer_notes || "";
 
     // Debounced blur save
@@ -148,8 +149,8 @@ export function renderQuestionList(stageId, questions = [], onUpdated) {
   const form = document.createElement("form");
   form.className = "add-question-form";
   form.innerHTML = `
-    <input type="text" class="add-question-input" placeholder="Add a question to ask in this interview..." required />
-    <button type="submit" class="btn-add-question inline-icon-text">${icon("plus", 11)} Add</button>
+    <input type="text" class="add-question-input" placeholder="${escapeAttr(t("questions.addPlaceholder"))}" required />
+    <button type="submit" class="btn-add-question inline-icon-text">${icon("plus", 11)} ${escapeHtml(t("common.add"))}</button>
   `;
 
   form.addEventListener("submit", async (e) => {

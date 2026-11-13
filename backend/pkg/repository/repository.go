@@ -184,6 +184,7 @@ func buildJobsQuery(userID *string, status, search string) (string, []interface{
 			jobs.employment_type, jobs.is_referral, jobs.order_index, jobs.status_changed_at,
 			jobs.application_sent_date, jobs.recruiter_first_contact_date, jobs.created_at, jobs.updated_at, jobs.last_activity_at, jobs.cv_version_id, jobs.search_period_id, jobs.user_id,
 			(SELECT COALESCE(custom_title, stage_type) FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_title,
+			(SELECT custom_title IS NULL FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_title_is_type,
 			(SELECT order_index + 1 FROM stages WHERE job_id = jobs.id AND status = 'current' ORDER BY order_index, id LIMIT 1) as current_stage_index,
 			(SELECT COUNT(*) FROM stages WHERE job_id = jobs.id) as total_stages_count
 		FROM jobs
@@ -228,6 +229,7 @@ func scanJobs(rows *sql.Rows, repo *Repository, scopeUserID *string) ([]models.J
 		var ijJSON sql.NullString
 		var cvVersionID, searchPeriodID, rowUserID sql.NullString
 		var applicationSentDate, recruiterFirstContactDate sql.NullString
+		var titleIsType sql.NullBool
 		err := rows.Scan(
 			&j.ID, &j.CompanyName, &j.PositionTitle, &j.Status, &j.SalaryType,
 			&j.SalaryMin, &j.SalaryMax, &j.SalaryCurrency, &j.RecruiterType,
@@ -236,7 +238,7 @@ func scanJobs(rows *sql.Rows, repo *Repository, scopeUserID *string) ([]models.J
 			&j.Description, &j.CompanyOverview, &j.CompanyDomain, &j.InterviewNotes,
 			&j.ReasonsToChange, &j.ExperienceNotes, &j.ExpectedSalary, &j.WorkArrangement,
 			&j.EmploymentType, &j.IsReferral, &j.OrderIndex, &j.StatusChangedAt, &applicationSentDate, &recruiterFirstContactDate, &j.CreatedAt, &j.UpdatedAt, &j.LastActivityAt, &cvVersionID, &searchPeriodID, &rowUserID,
-			&j.CurrentStageTitle, &j.CurrentStageIndex, &j.TotalStagesCount,
+			&j.CurrentStageTitle, &titleIsType, &j.CurrentStageIndex, &j.TotalStagesCount,
 		)
 		if err != nil {
 			return nil, err
@@ -253,6 +255,7 @@ func scanJobs(rows *sql.Rows, repo *Repository, scopeUserID *string) ([]models.J
 				return nil, fmt.Errorf("load selected CV version: %w", err)
 			}
 		}
+		j.CurrentStageTitleIsType = titleIsType.Valid && titleIsType.Bool
 		j.ApplicationSentDate = nullableStringPointer(applicationSentDate)
 		j.RecruiterFirstContactDate = nullableStringPointer(recruiterFirstContactDate)
 		j.SearchPeriodID = nullableStringPointer(searchPeriodID)

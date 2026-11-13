@@ -30,6 +30,7 @@ docker compose down
 - Searchable selection-process board with status filters.
 - Interview stages, questions, interviewers, meetings, and schedule view.
 - Notes, salary details, company information, and attachments.
+- English, Spanish, and Catalan interface. War Room follows the browser's language until you pick one in the account menu or on the sign-in screen; switching is instant and never changes stored data. Messages live in `frontend/public/js/locales/`, and every locale must define the same keys.
 - Portable encrypted `.wrbackup` export and restore, including uploaded files.
 - Mandatory Google Sign-In limited to an allowlist of accounts, with per-account data and an optional custom profile photo (PNG or JPEG up to 5 MiB) shown in the account menu.
 - Google Drive backup: signing in grants Drive access. Choose a Drive folder with Google Picker in **Data & Backups**, and War Room uploads a uniquely named encrypted backup when a job card is created or its status changes. Data & Backups also shows the selected destination and lets you change it before starting an upload. Drive requires Google OAuth credentials and `GOOGLE_BACKUP_ENCRYPTION_KEY`, plus optional Picker settings in `.env` (see `.env.example`). Portable encrypted export and import require only `GOOGLE_BACKUP_ENCRYPTION_KEY`. Keep the encryption key in a password manager or another safe place; without the same key, backups cannot be restored. War Room decrypts encrypted backups during import. Plain ZIP imports are rejected.

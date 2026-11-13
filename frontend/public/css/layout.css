@@ -610,6 +610,24 @@
 .account-menu-item-danger:hover { background: color-mix(in srgb, var(--danger, #d9534f) 10%, var(--bg-surface-elevated)); }
 .account-divider { height: 1px; background: var(--border-subtle); margin: 10px 0; }
 
+/* Language selector: a segmented control in the account menu and on the sign-in screen. */
+.account-language { display: grid; gap: 6px; padding: 6px 10px 8px; }
+.account-language-label { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 13.5px; }
+.language-switch {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface-elevated);
+}
+.language-option {
+  min-width: 0; min-height: 34px; padding: 4px 6px; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text-secondary); font: 500 12.5px var(--font-sans);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+}
+.language-option:hover { background: var(--bg-surface); color: var(--text-primary); }
+.language-option:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+.language-option[aria-checked="true"],
+.language-option[aria-pressed="true"] { background: var(--accent-blue-subtle); color: var(--accent-blue); font-weight: 600; }
+.sign-in-language { margin-top: 16px; }
+
 /* Account identity block (full name, email, custom-avatar upload): shown at
    the top of the opened panel on desktop, and always-visible on mobile where
    it is the only place identity shows (the pill trigger is display:none there). */
@@ -694,6 +712,8 @@
   }
   .account-actions .account-menu-item svg,
   .account-prefs-row .account-menu-item svg { width: 18px; height: 18px; }
+  .account-prefs-row .account-language { grid-column: 1 / -1; order: 1; padding: 4px 0 0; }
+  .language-option { min-height: 40px; font-size: 13px; }
   #btn-sign-out.account-menu-item-danger {
     display: flex;
     flex-direction: row;
@@ -859,7 +879,11 @@
 }
 .sign-in-title { margin: 0 0 8px; font-size: 20px; font-weight: 700; color: var(--text-primary); }
 .sign-in-message { margin: 0 0 22px; font-size: 13.5px; line-height: 1.5; color: var(--text-secondary); }
-.sign-in-button { justify-content: center; width: 100%; padding: 10px 16px; font-size: 14px; }
+.sign-in-button { justify-content: center; width: 100%; padding: 10px 16px; font-size: 14px; white-space: nowrap; }
+@media (max-width: 360px) {
+  .sign-in-card { padding-inline: 18px; }
+  .sign-in-button { padding-inline: 12px; }
+}
 .sign-in-button svg { flex: 0 0 auto; }
 
 /* Google-branded button: follows Google's "Sign in with Google" neutral button

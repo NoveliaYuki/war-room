@@ -13,20 +13,11 @@ import { makeInlineEditable, parseSalaryInput } from "../inlineEdit.js";
 import { escapeHtml, escapeAttr } from "../utils/sanitize.js";
 import { formatSalary } from "../utils/salary.js";
 import { confirmAction } from "../utils/confirmDialog.js";
+import { getLocale, t } from "../i18n.js";
+import { arrangementLabel, companyText, editableCompanyName, employmentTypeLabel, isUndisclosedCompany, stageTitleLabel, stageTypeLabel, statusLabel } from "../utils/labels.js";
 
-const EMPLOYMENT_TYPE_LABELS = new Map([
-	["permanent", "Permanent"],
-	["b2b", "B2B"],
-	["permanent_b2b", "Permanent / B2B"],
-]);
 const CARD_TECHNOLOGY_PREVIEW_LIMIT = 4;
-
-const EMPTY_STATUS_COPY = {
-	waiting: { title: "No waiting processes yet", description: "Processes you mark as waiting will appear here." },
-	ongoing: { title: "No ongoing processes yet", description: "Processes you mark as ongoing will appear here." },
-	accepted: { title: "No accepted processes yet", description: "Processes you mark as accepted will appear here." },
-	rejected: { title: "No rejected processes yet", description: "Processes you mark as rejected will appear here." },
-};
+const EMPTY_STATUSES = new Set(["waiting", "ongoing", "accepted", "rejected"]);
 
 /**
  * Formats the salary label used on preview cards.
@@ -39,60 +30,53 @@ const EMPTY_STATUS_COPY = {
  */
 export const formatSalaryShort = formatSalary;
 
-/** Returns whether a company is represented as undisclosed. */
-function isUnknownCompany(companyName) {
-  return companyName.toLowerCase() === "unknown";
-}
-
 /** Renders the stage summary displayed in a card footer. */
 function getStageIndicator(job) {
   if (job.current_stage_title) {
-    const text = `Step ${job.current_stage_index}/${job.total_stages_count}: ${job.current_stage_title}`;
-    return { text, markup: `<span class="inline-icon-text">${icon("pin", 12)} Step ${job.current_stage_index}/${job.total_stages_count}: ${escapeHtml(job.current_stage_title)}</span>` };
+    // The title is the stored stage type when the stage has no custom title.
+    const title = job.current_stage_title_is_type ? stageTypeLabel(job.current_stage_title) : stageTitleLabel(job.current_stage_title);
+    const text = t("card.currentStep", { index: job.current_stage_index, total: job.total_stages_count, title });
+    return { text, markup: `<span class="inline-icon-text">${icon("pin", 12)} <span class="card-stage-text">${escapeHtml(text)}</span></span>` };
   }
   if (job.total_stages_count > 0) {
-    const text = `${job.total_stages_count} interview stages`;
-    return { text, markup: `<span class="inline-icon-text">${icon("target", 12)} ${job.total_stages_count} interview stages</span>` };
+    const text = t("card.stageCount", { count: job.total_stages_count });
+    return { text, markup: `<span class="inline-icon-text">${icon("target", 12)} ${escapeHtml(text)}</span>` };
   }
-  return { text: "No stages yet", markup: "<span>No stages yet</span>" };
+  const text = t("card.noStages");
+  return { text, markup: `<span>${escapeHtml(text)}</span>` };
 }
 
 /** Renders the company label displayed in a job card. */
 function renderCardCompany(companyName) {
-  return isUnknownCompany(companyName)
-    ? `<span class="inline-icon-text">${icon("building", 13)} Unknown Company</span>`
+  return isUndisclosedCompany(companyName)
+    ? `<span class="inline-icon-text">${icon("building", 13)} ${escapeHtml(t("company.unknown"))}</span>`
     : escapeHtml(companyName);
 }
 
 /** Returns the unformatted salary value retained for inline editing. */
 function getCardSalaryRawValue(job) {
   if (job.salary_min && job.salary_max) return `${job.salary_min} - ${job.salary_max}`;
-  return job.salary_max || job.salary_min || "Salary undisclosed";
+  return job.salary_max || job.salary_min || t("salary.undisclosed");
 }
 
 /** Renders the referral status tag for a job card. */
 function renderReferralTag(job) {
   const stateClass = job.is_referral ? "is-referral" : "not-referral";
-  const label = job.is_referral ? "Referral" : "No referral";
-  const action = job.is_referral ? "Remove referral" : "Mark as referral";
-  return `<button type="button" class="referral-tag ${stateClass} editable-card-referral inline-icon-text" data-id="${escapeAttr(job.id)}" aria-pressed="${Boolean(job.is_referral)}" aria-label="${label}. ${action}." title="${action}">${icon("userCheck", 11)} ${label}</button>`;
+  const label = t(job.is_referral ? "referral.yes" : "referral.none");
+  const action = t(job.is_referral ? "referral.remove" : "referral.mark");
+  return `<button type="button" class="referral-tag ${stateClass} editable-card-referral inline-icon-text" data-id="${escapeAttr(job.id)}" aria-pressed="${Boolean(job.is_referral)}" aria-label="${escapeAttr(t("referral.toggleLabel", { label, action }))}" title="${escapeAttr(action)}">${icon("userCheck", 11)} ${escapeHtml(label)}</button>`;
 }
 
 /** Renders a job's employment type on its card. */
 function renderEmploymentTypeTag(employmentType) {
-	const label = EMPLOYMENT_TYPE_LABELS.get(employmentType);
+  const label = employmentTypeLabel(employmentType);
   return label ? `<span class="employment-type-tag">${escapeHtml(label)}</span>` : "";
 }
 
 /** Renders a concise known work arrangement on a job card. */
 function renderWorkArrangementTag(arrangement) {
-  const labels = new Map([
-    ["remote", "Remote"],
-    ["hybrid", "Hybrid"],
-    ["on_site", "On-site"],
-  ]);
-  const label = labels.get(arrangement);
-  return label ? `<span class="work-arrangement-tag">${label}</span>` : "";
+  const label = arrangementLabel(arrangement);
+  return label ? `<span class="work-arrangement-tag">${escapeHtml(label)}</span>` : "";
 }
 
 /** Returns role highlights without details already shown elsewhere on the card. */
@@ -117,7 +101,7 @@ function getCardRoleHighlights(job) {
 function renderCardRoleHighlights(job) {
   const highlights = getCardRoleHighlights(job);
   if (!highlights.length) return "";
-  return `<div class="card-summary"><div class="card-summary-label">Role highlights</div><div class="keyword-note editable-card-keyword" data-raw-value="${escapeAttr(job.keyword_note || "")}" title="Role highlights">${escapeHtml(highlights.join(" • "))}</div></div>`;
+  return `<div class="card-summary"><div class="card-summary-label">${escapeHtml(t("card.roleHighlights"))}</div><div class="keyword-note editable-card-keyword" data-raw-value="${escapeAttr(job.keyword_note || "")}" title="${escapeAttr(t("card.roleHighlights"))}">${escapeHtml(highlights.join(" • "))}</div></div>`;
 }
 
 function renderCardTechnologyStack(job) {
@@ -130,11 +114,11 @@ function renderCardTechnologyStack(job) {
     const label = alias || technology.name;
     const title = alias ? ` title="${escapeAttr(technology.name)}"` : "";
     return `<span class="card-technology-chip"${title}>${escapeHtml(label)}</span>`;
-  }).join("")}${remainingCount ? `<span class="card-technology-more" title="Open details to view the full stack">+${remainingCount} more</span>` : ""}`;
+  }).join("")}${remainingCount ? `<span class="card-technology-more" title="${escapeAttr(t("card.techMoreTitle"))}">${escapeHtml(t("card.techMore", { count: remainingCount }))}</span>` : ""}`;
   const previewLabel = remainingCount
-    ? `Technology stack preview: ${visibleTechnologies.length} shown, ${remainingCount} more in process details.`
-    : `Technology stack: ${technologies.length} items.`;
-  return `<div class="card-tech-stack" role="group" aria-label="${escapeAttr(previewLabel)}"><div class="card-summary-label">Tech stack <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
+    ? t("card.techPreviewLabel", { shown: visibleTechnologies.length, count: remainingCount })
+    : t("card.techStackLabel", { count: technologies.length });
+  return `<div class="card-tech-stack" role="group" aria-label="${escapeAttr(previewLabel)}"><div class="card-summary-label">${escapeHtml(t("card.techStack"))} <span class="card-tech-count">${technologies.length}</span></div><div class="card-technology-list">${contents}</div></div>`;
 }
 
 /** Formats date-only fields without shifting them across time zones. */
@@ -142,7 +126,7 @@ function formatCardDate(value) {
   if (!value) return "";
   const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(Number(value) * 1000);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(date);
+  return new Intl.DateTimeFormat(getLocale(), { day: "numeric", month: "short" }).format(date);
 }
 
 /** Renders the creation and optional application/contact dates on a job card. */
@@ -150,10 +134,10 @@ function renderCardProcessDates(job) {
   const addedDate = formatCardDate(job.created_at);
   const cvSentDate = formatCardDate(job.application_sent_date);
   const dates = addedDate && cvSentDate && addedDate === cvSentDate
-    ? [["Added & CV sent", addedDate], ["Recruiter", formatCardDate(job.recruiter_first_contact_date)]]
-    : [["Added", addedDate], ["CV sent", cvSentDate], ["Recruiter", formatCardDate(job.recruiter_first_contact_date)]];
+    ? [[t("card.dateAddedAndCvSent"), addedDate], [t("card.dateRecruiter"), formatCardDate(job.recruiter_first_contact_date)]]
+    : [[t("card.dateAdded"), addedDate], [t("card.dateCvSent"), cvSentDate], [t("card.dateRecruiter"), formatCardDate(job.recruiter_first_contact_date)]];
   const availableDates = dates.filter(([, date]) => date);
-  return `<div class="card-process-dates" aria-label="Process dates">${availableDates.map(([label, date]) => `<span><strong>${label}</strong> ${escapeHtml(date)}</span>`).join("")}</div>`;
+  return `<div class="card-process-dates" aria-label="${escapeAttr(t("card.processDates"))}">${availableDates.map(([label, date]) => `<span><strong>${escapeHtml(label)}</strong> ${escapeHtml(date)}</span>`).join("")}</div>`;
 }
 
 /** Creates and fills the static markup for one job card. */
@@ -166,21 +150,20 @@ function createCardElement(job, sortMode) {
   const avatarHtml = renderCompanyAvatar(job.company_name, job.avatar_seed, 64, job.company_domain, job.id);
   const stageIndicator = getStageIndicator(job);
   const inactivityNote = job.automatic_rejection_reason
-    ? `<div class="card-automatic-rejection" role="note">Demo: ${escapeHtml(job.automatic_rejection_reason)}</div>`
+    ? `<div class="card-automatic-rejection" role="note">${escapeHtml(t("demo.automaticRejection"))}</div>`
     : "";
   const salaryText = formatSalaryShort(job.salary_type, job.salary_min, job.salary_max, job.salary_currency);
-  const companyClass = isUnknownCompany(job.company_name) ? "is-unknown" : "";
-  const accessibleCompanyName = isUnknownCompany(job.company_name) ? "undisclosed company" : job.company_name;
-  const processLabel = `${job.position_title} at ${accessibleCompanyName}`;
+  const companyClass = isUndisclosedCompany(job.company_name) ? "is-unknown" : "";
+  const processLabel = describeProcess(job);
   const salaryClass = job.salary_type === "unknown" ? "undisclosed" : "";
   const dragHandle = sortMode === "manual"
-    ? `<button class="btn-card-drag" type="button" aria-label="Reorder ${escapeAttr(processLabel)}" aria-keyshortcuts="ArrowUp ArrowDown" title="Hold and drag to reorder · use ↑ or ↓ to move">${icon("gripLines", 15)}</button>`
+    ? `<button class="btn-card-drag" type="button" aria-label="${escapeAttr(t("card.reorder", { process: processLabel }))}" aria-keyshortcuts="ArrowUp ArrowDown" title="${escapeAttr(t("card.reorderHint"))}">${icon("gripLines", 15)}</button>`
     : "";
   card.innerHTML = `<div class="card-content"><div class="card-header"><div class="card-avatar">${avatarHtml}</div><div class="card-title-group">
-    <div class="card-company editable-card-company ${companyClass}" data-raw-value="${escapeAttr(job.company_name)}">${renderCardCompany(job.company_name)}</div>
+    <div class="card-company editable-card-company ${companyClass}" data-raw-value="${escapeAttr(editableCompanyName(job.company_name))}">${renderCardCompany(job.company_name)}</div>
     <h3 class="card-position editable-card-position" data-raw-value="${escapeAttr(job.position_title)}">${escapeHtml(job.position_title)}</h3>
-  </div><div class="card-header-actions"><span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(job.status)}</span>
-    <button class="btn-card-delete" type="button" aria-label="Delete selection process for ${escapeAttr(processLabel)}" title="Delete this selection process" data-id="${escapeAttr(job.id)}">${icon("trash", 15)}</button></div></div>
+  </div><div class="card-header-actions"><span class="status-pill ${escapeAttr(job.status)}">${escapeHtml(statusLabel(job.status))}</span>
+    <button class="btn-card-delete" type="button" aria-label="${escapeAttr(t("card.deleteLabel", { process: processLabel }))}" title="${escapeAttr(t("card.deleteTitle"))}" data-id="${escapeAttr(job.id)}">${icon("trash", 15)}</button></div></div>
   <div class="card-body"><span class="salary-tag editable-card-salary ${salaryClass}" data-raw-value="${escapeAttr(getCardSalaryRawValue(job))}">${escapeHtml(salaryText)}</span>
     ${renderReferralTag(job)}${renderEmploymentTypeTag(job.employment_type)}${renderWorkArrangementTag(job.work_arrangement)}</div>
   ${renderCardRoleHighlights(job)}
@@ -189,7 +172,7 @@ function createCardElement(job, sortMode) {
   ${renderCardTechnologyStack(job)}</div>
   <div class="card-footer">
     <div class="card-stage-indicator"><span class="card-stage-summary" title="${escapeAttr(stageIndicator.text)}">${stageIndicator.markup}</span>
-      <div class="card-footer-actions">${dragHandle}<button class="btn-card-open-details" type="button" aria-label="Open details for ${escapeAttr(processLabel)}" title="Open details">${icon("arrowUpRight", 14)}</button></div></div></div>`;
+      <div class="card-footer-actions">${dragHandle}<button class="btn-card-open-details" type="button" aria-label="${escapeAttr(t("card.openDetailsLabel", { process: processLabel }))}" title="${escapeAttr(t("card.openDetails"))}">${icon("arrowUpRight", 14)}</button></div></div></div>`;
   setWideLogoFrame(card);
   return card;
 }
@@ -215,11 +198,11 @@ function createQuickAddCard() {
   const addCard = document.createElement("button");
   addCard.className = "quick-add-card";
   addCard.type = "button";
-  addCard.setAttribute("aria-label", "Add selection process");
+  addCard.setAttribute("aria-label", t("card.quickAddLabel"));
   addCard.innerHTML = `
     <div class="quick-add-icon">${icon("plus", 22)}</div>
-    <div class="quick-add-title">Add Selection Process</div>
-    <div class="quick-add-subtitle">Track a new job opportunity or recruiter reachout</div>
+    <div class="quick-add-title">${escapeHtml(t("card.quickAddTitle"))}</div>
+    <div class="quick-add-subtitle">${escapeHtml(t("card.quickAddSubtitle"))}</div>
   `;
   addCard.addEventListener("click", () => {
     document.querySelector("#btn-new-process")?.click();
@@ -237,8 +220,8 @@ function updateCardGlow(card, event) {
 /** Registers inline editors for a card's editable job fields. */
 function bindCardInlineEditors(card, job, onGlobalRefresh) {
   const editors = [
-    [".editable-card-company", { placeholder: "Company Name", field: "company_name", fallback: "Unknown" }],
-    [".editable-card-position", { placeholder: "Position Title", field: "position_title", required: true }],
+    [".editable-card-company", { placeholder: t("form.companyName"), field: "company_name", fallback: "Unknown" }],
+    [".editable-card-position", { placeholder: t("form.positionTitle"), field: "position_title", required: true }],
   ];
   editors.forEach(([selector, options]) => {
     const element = card.querySelector(selector);
@@ -246,14 +229,14 @@ function bindCardInlineEditors(card, job, onGlobalRefresh) {
   });
   const salary = card.querySelector(".editable-card-salary");
   if (salary) makeInlineEditable(salary, {
-    placeholder: "Salary range",
+    placeholder: t("card.salaryRange"),
     onSave: async (value) => {
       await api.updateJob(job.id, parseSalaryInput(value));
       onGlobalRefresh?.();
     },
   });
   const keyword = card.querySelector(".editable-card-keyword");
-  if (keyword) bindTextEditor(keyword, job, { placeholder: "Role highlights...", field: "keyword_note", maxLength: 100 }, onGlobalRefresh);
+  if (keyword) bindTextEditor(keyword, job, { placeholder: t("card.roleHighlightsPlaceholder"), field: "keyword_note", maxLength: 100 }, onGlobalRefresh);
   bindCardReferralToggle(card.querySelector(".editable-card-referral"), job, onGlobalRefresh);
 }
 
@@ -283,7 +266,7 @@ function bindCardReferralToggle(element, job, onGlobalRefresh) {
       const nextValue = !job.is_referral;
       await api.updateJob(job.id, { is_referral: nextValue });
       if (typeof window !== "undefined" && typeof window.showToast === "function") {
-        window.showToast(nextValue ? "Marked as Referral" : "Marked as Non-referral", "success", 1200);
+        window.showToast(t(nextValue ? "referral.marked" : "referral.unmarked"), "success", 1200);
       }
       await onGlobalRefresh?.();
       const updatedButton = [...document.querySelectorAll(".editable-card-referral")]
@@ -303,9 +286,9 @@ function bindCardDeletion(card, job, onGlobalRefresh) {
     try {
       event.stopPropagation();
       const confirmed = await confirmAction({
-        title: "Delete selection process?",
-        message: `${job.company_name} — ${job.position_title} will be permanently removed.`,
-        confirmLabel: "Delete process",
+        title: t("process.deleteTitle"),
+        message: t("process.deleteMessage", { company: companyText(job.company_name), position: job.position_title }),
+        confirmLabel: t("process.deleteConfirm"),
         danger: true,
       });
       if (!confirmed) return;
@@ -367,8 +350,8 @@ function bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isD
 function renderEmptyState(containerEl, context) {
   const hasProcesses = (context.totalCount ?? 0) > 0;
   const hasCustomView = Boolean(context.hasCustomView) && hasProcesses;
-  const statusCopy = Object.hasOwn(EMPTY_STATUS_COPY, context.filter)
-    ? EMPTY_STATUS_COPY[context.filter]
+  const statusCopy = EMPTY_STATUSES.has(context.filter)
+    ? { title: t(`empty.${context.filter}.title`), description: t(`empty.${context.filter}.description`) }
     : null;
   const statusTabIsEmpty = Boolean(statusCopy && context.statusCount === 0 && hasProcesses);
   const copy = resolveEmptyStateCopy(hasProcesses, hasCustomView, statusTabIsEmpty, statusCopy);
@@ -376,12 +359,12 @@ function renderEmptyState(containerEl, context) {
   empty.className = "empty-state";
   empty.innerHTML = `
     <div class="empty-icon">${icon("briefcase", 36)}</div>
-    <h3 style="margin-bottom: 8px;">${copy.title}</h3>
-    <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 16px;">${copy.description}</p>
+    <h3 style="margin-bottom: 8px;">${escapeHtml(copy.title)}</h3>
+    <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto 16px;">${escapeHtml(copy.description)}</p>
     ${hasCustomView
-      ? '<button class="btn-secondary btn-reset-process-view" type="button">Reset search and filters</button>'
+      ? `<button class="btn-secondary btn-reset-process-view" type="button">${escapeHtml(t("empty.resetView"))}</button>`
       : `<button class="btn-primary btn-create-first-process" type="button">
-          <span class="inline-icon-text">${icon("plus", 14)} ${hasProcesses ? "Create Selection Process" : "Create First Selection Process"}</span>
+          <span class="inline-icon-text">${icon("plus", 14)} ${escapeHtml(t(hasProcesses ? "newProcess.submit" : "empty.createFirst"))}</span>
         </button>`}
   `;
   empty.querySelector(".btn-create-first-process")?.addEventListener("click", () => {
@@ -393,22 +376,13 @@ function renderEmptyState(containerEl, context) {
 
 function resolveEmptyStateCopy(hasProcesses, hasCustomView, statusTabIsEmpty, statusCopy) {
   if (hasCustomView) {
-    return {
-      title: "No selection processes match this view",
-      description: "Try different criteria, or reset your search, period, and filters to see all processes.",
-    };
+    return { title: t("empty.customView.title"), description: t("empty.customView.description") };
   }
   if (statusTabIsEmpty) return statusCopy;
   if (hasProcesses) {
-    return {
-      title: "No selection processes match your current search or filters",
-      description: "Try adjusting or clearing your search and filters.",
-    };
+    return { title: t("empty.noMatch.title"), description: t("empty.noMatch.description") };
   }
-  return {
-    title: "No selection processes found",
-    description: "Track your interviews, recruiters, salary negotiations, and interview questions in one place.",
-  };
+  return { title: t("empty.none.title"), description: t("empty.none.description") };
 }
 
 /**
@@ -444,11 +418,11 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
       heading.className = `process-status-group-heading status-${status}`;
       heading.dataset.status = status;
       const label = document.createElement("span");
-      label.textContent = status[0].toUpperCase() + status.slice(1);
+      label.textContent = statusLabel(status);
       const count = document.createElement("span");
       count.className = "process-status-group-count";
       count.textContent = String(statusJobs.length);
-      count.setAttribute("aria-label", `${statusJobs.length} processes`);
+      count.setAttribute("aria-label", t("card.processCount", { count: statusJobs.length }));
       heading.append(label, count);
       containerEl.appendChild(heading);
     }
@@ -465,7 +439,7 @@ export function renderCardGrid(containerEl, jobs = [], modalEl = null, backdropE
               await onGlobalRefresh?.({ restoreScrollY });
               announceCardReorder(job, newOrder);
             })
-            .catch(() => showToast("Could not save card order", "error"));
+            .catch(() => showToast(t("card.reorderFailed"), "error"));
         })
         : () => false;
       bindCardNavigation(card, job, modalEl, backdropEl, onGlobalRefresh, isDragActive);
@@ -482,8 +456,13 @@ function announceCardReorder(job, newOrder) {
   const announcer = document.querySelector("#card-reorder-announcer");
   const position = newOrder.indexOf(String(job.id));
   if (!announcer || position < 0) return;
-  const company = isUnknownCompany(job.company_name) ? "undisclosed company" : job.company_name;
-  announcer.textContent = `${job.position_title} at ${company} moved to position ${position + 1} of ${newOrder.length}.`;
+  announcer.textContent = t("card.moved", { process: describeProcess(job), position: position + 1, total: newOrder.length });
+}
+
+/** Names a process for assistive technology, e.g. "Engineer at Acme". */
+function describeProcess(job) {
+  const company = isUndisclosedCompany(job.company_name) ? t("company.undisclosed") : job.company_name;
+  return t("card.processAt", { position: job.position_title, company });
 }
 
 /**

@@ -1,7 +1,9 @@
+import { t } from "../i18n.js";
+
 let dialogSequence = 0;
 
 /** Shows a themed confirmation dialog and resolves to whether the action was confirmed. */
-export function confirmAction({ title, message, confirmLabel = "Continue", cancelLabel = "Cancel", danger = false }) {
+export function confirmAction({ title, message, confirmLabel = t("common.continue"), cancelLabel = t("common.cancel"), danger = false }) {
   const dialog = document.createElement("dialog");
   if (typeof dialog.showModal !== "function") {
     return Promise.resolve(window.confirm(`${title}\n\n${message}`));

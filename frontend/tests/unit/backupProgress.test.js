@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { showBackupProgress } from '../../public/js/utils/backupProgress.js';
+import { setLanguage } from '../../public/js/i18n.js';
 
 describe('backupProgress', () => {
   beforeEach(() => {
@@ -17,6 +18,18 @@ describe('backupProgress', () => {
     expect(panel).not.toBeNull();
     expect(panel.classList.contains('backup-progress-active')).toBe(true);
     expect(panel.querySelector('.backup-progress-message').textContent).toBe('Backing up to Google Drive…');
+  });
+
+  it('keeps the dismiss label in the selected language after a switch', () => {
+    showBackupProgress('Backing up…');
+    const close = document.querySelector('.backup-progress-close');
+    expect(close.getAttribute('aria-label')).toBe('Dismiss');
+    try {
+      setLanguage('es', { persist: false });
+      expect(close.getAttribute('aria-label')).toBe('Descartar');
+    } finally {
+      setLanguage('en', { persist: false });
+    }
   });
 
   it('reuses the same panel across calls', () => {

@@ -213,6 +213,9 @@
 }
 
 .meeting-time-badge .svg-icon { width: 11px; height: 11px; }
+/* On narrow rows the badge breaks between the date and the time, never inside either. */
+.meeting-time-badge:has(.meeting-time-part) { flex-wrap: wrap; column-gap: 4px; row-gap: 2px; }
+.meeting-time-part { white-space: nowrap; }
 
 /* Grouped Day Sections */
 .schedule-day-group {

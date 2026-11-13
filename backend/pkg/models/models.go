@@ -149,15 +149,17 @@ type Job struct {
 	SearchPeriodID            *string         `json:"search_period_id"`
 
 	// Derived / populated fields
-	CurrentStageTitle *string       `json:"current_stage_title,omitempty"`
-	CurrentStageIndex *int          `json:"current_stage_index,omitempty"`
-	TotalStagesCount  int           `json:"total_stages_count,omitempty"`
-	Interviewers      []Interviewer `json:"interviewers,omitempty"`
-	Stages            []Stage       `json:"stages,omitempty"`
-	Attachments       []Attachment  `json:"attachments,omitempty"`
-	SelectedCVVersion *CVVersion    `json:"selected_cv_version"`
-	Technologies      []Technology  `json:"technologies,omitempty"`
-	History           []JobHistory  `json:"history,omitempty"`
+	CurrentStageTitle *string `json:"current_stage_title,omitempty"`
+	// CurrentStageTitleIsType is true when CurrentStageTitle is the stage type because the stage has no custom title.
+	CurrentStageTitleIsType bool          `json:"current_stage_title_is_type,omitempty"`
+	CurrentStageIndex       *int          `json:"current_stage_index,omitempty"`
+	TotalStagesCount        int           `json:"total_stages_count,omitempty"`
+	Interviewers            []Interviewer `json:"interviewers,omitempty"`
+	Stages                  []Stage       `json:"stages,omitempty"`
+	Attachments             []Attachment  `json:"attachments,omitempty"`
+	SelectedCVVersion       *CVVersion    `json:"selected_cv_version"`
+	Technologies            []Technology  `json:"technologies,omitempty"`
+	History                 []JobHistory  `json:"history,omitempty"`
 
 	// UserID identifies the owning account. It is only populated when loading
 	// an install-wide snapshot for the local disaster-recovery mirror

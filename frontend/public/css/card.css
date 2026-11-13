@@ -220,7 +220,13 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
 .process-filter-panel-content { display: grid; gap: 12px; min-width: 0; }
 .process-filter-status { display: grid; gap: 7px; margin: 0; padding: 0; border: 0; }
 .process-filter-status legend { color: var(--text-secondary); font-size: 13px; font-weight: 600; }
-.status-filter-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+/* optionGrid.js stacks a group into one column when any label stops fitting its column. */
+.filter-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+.filter-option-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.filter-option-grid.is-stacked { grid-template-columns: minmax(0, 1fr); }
+.filter-option-grid > label { min-width: 0; white-space: nowrap; }
+.filter-option-grid.is-stacked > label { white-space: normal; }
+.filter-option-grid.is-stacked > label > span:not(.tab-count) { min-width: 0; overflow-wrap: anywhere; }
 .status-filter-option { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; }
 .status-filter-option:has(input:checked) { border-color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-surface)); color: var(--text-primary); }
 .status-filter-option input,
@@ -242,17 +248,17 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
 .process-filter-single legend,
 .process-filter-salary legend,
 .process-filter-technologies legend { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; box-sizing: border-box; }
-.process-filter-referral { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; border: 0; }
-.process-filter-referral legend { grid-column: 1 / -1; margin-bottom: 1px; }
-.process-filter-referral label { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 42px; padding: 0 9px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; }
+.process-filter-referral { margin: 0; padding: 0; border: 0; }
+.process-filter-referral legend { margin-bottom: 1px; }
+.process-filter-referral label { display: flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 9px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; }
 .process-filter-referral label:has(input:checked) { border-color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-surface)); color: var(--text-primary); }
 .process-filter-referral label:focus-within,
 .process-filter-arrangements label:focus-within,
 .status-filter-option:focus-within { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
 .process-filter-field { min-width: 0; }
-.process-filter-arrangements { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; border: 0; }
-.process-filter-arrangements legend { grid-column: 1 / -1; margin-bottom: 1px; }
-.process-filter-arrangements label { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 42px; padding: 0 9px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; }
+.process-filter-arrangements { margin: 0; padding: 0; border: 0; }
+.process-filter-arrangements legend { margin-bottom: 1px; }
+.process-filter-arrangements label { display: flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 9px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; }
 .process-filter-arrangements label:has(input:checked) { border-color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-surface)); color: var(--text-primary); }
 .process-filter-salary input,
 .process-filter-salary select {
@@ -267,6 +273,7 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
   color: var(--text-primary);
   font: 12px var(--font-sans);
 }
+.process-filter-salary input { padding-right: 10px; }
 .process-filter-technologies { display: grid; gap: 7px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .process-filter-technologies legend { margin-bottom: 1px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .process-filter-technologies > input { box-sizing: border-box; width: 100%; height: 38px; padding: 7px 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-primary); font: 13px var(--font-sans); }
@@ -308,6 +315,7 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
 .process-sort-trigger:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .process-sort-menu { position: absolute; z-index: 25; top: calc(100% + 5px); right: 0; display: grid; width: max-content; min-width: 220px; max-width: min(260px, calc(100vw - 32px)); padding: 6px; border: 1px solid var(--border-medium); border-radius: var(--radius-sm); background: var(--bg-surface-elevated); box-shadow: var(--shadow-lg); }
 .process-sort-menu[hidden] { display: none; }
+.process-sort-compact { display: none; }
 .process-sort-menu-heading { padding: 8px 10px 4px; color: var(--text-muted); font: 600 11px var(--font-sans); letter-spacing: .04em; text-transform: uppercase; }
 .process-sort-menu-heading:not(:first-child) { margin-top: 3px; border-top: 1px solid var(--border-subtle); }
 .process-sort-menu button { min-height: 38px; padding: 8px 10px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: 500 13px var(--font-sans); text-align: left; cursor: pointer; }
@@ -407,18 +415,19 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
 @media (max-width: 640px) {
   .cards-grid { grid-template-columns: minmax(0, 1fr); }
   .board-view-switch { gap: 18px; }
-  .process-toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; }
-  .toolbar-search-filter { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; grid-column: 1; grid-row: 1; gap: 8px; width: 100%; max-width: 421px; min-width: 0; }
+  /* Phones give search its own row so translated control labels never squeeze it. */
+  .process-toolbar { grid-template-columns: max-content minmax(0, 1fr) max-content max-content; align-items: center; gap: 8px; }
+  .toolbar-search-filter { display: contents; }
   .process-filter-control { grid-column: 1; grid-row: 1; justify-self: start; width: max-content; }
-  .process-search { grid-column: 2; grid-row: 1; justify-self: stretch; align-self: start; width: 100%; inline-size: 100%; max-width: 342px; max-inline-size: 342px; }
-  .toolbar-search-filter #btn-new-process { grid-column: 3; grid-row: 1; }
+  .process-search { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; align-self: start; width: 100%; inline-size: 100%; max-width: none; max-inline-size: none; }
+  .toolbar-search-filter #btn-new-process { grid-column: 4; grid-row: 1; }
   .toolbar-view-controls { display: contents; }
-  .process-sort-control { grid-column: 2; grid-row: 1; justify-self: end; flex: 0 0 auto; }
+  .process-sort-control { grid-column: 3; grid-row: 1; justify-self: end; flex: 0 0 auto; }
   .process-sort-trigger { gap: 4px; }
   #process-sort-current { display: none; }
-  .process-sort-trigger::before { content: "Sort"; }
-  .process-toolbar-active-state { grid-column: 1 / -1; grid-row: 2; }
-  .process-filter-summary { grid-column: 1 / -1; grid-row: 3; justify-self: end; }
+  .process-sort-compact { display: inline; }
+  .process-toolbar-active-state { grid-column: 1 / -1; grid-row: 3; }
+  .process-filter-summary { grid-column: 1 / -1; grid-row: 4; justify-self: end; }
   .process-filter-trigger,
   .process-sort-trigger { min-height: 44px; padding-inline: 8px; }
   .process-filter-chip,
@@ -439,9 +448,6 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
   .status-filter-option,
   .process-filter-arrangements label,
   .process-filter-referral label { min-height: 44px; }
-  .process-filter-arrangements { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .process-filter-arrangements label,
-  .process-filter-referral label { gap: 5px; padding-inline: 4px; font-size: 12px; }
   .process-filter-technology-options label { min-height: 44px; }
 
   .search-period-manager { gap: 16px; padding: 14px 12px 18px; }
@@ -662,7 +668,6 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
   font-weight: 600;
   padding: 3px 8px;
   border-radius: var(--radius-full);
-  text-transform: capitalize;
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
@@ -925,13 +930,15 @@ body[data-demo="true"] .demo-inactivity-note strong { color: var(--text-primary)
 .card-stage-summary {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 220px;
   overflow: hidden;
   color: var(--text-accent-soft);
   font-weight: 500;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* A long stage title ends in an ellipsis inside the card; the summary's tooltip keeps the full title. */
+.card-stage-summary > .inline-icon-text { display: flex; min-width: 0; }
+.card-stage-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .card-footer {
   position: absolute;
@@ -1148,14 +1155,9 @@ html.is-reordering-cards body {
 }
 
 @media (max-width: 480px) {
-  .card-body {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-    justify-items: start;
-    column-gap: 8px;
-    row-gap: 12px;
-  }
+  /* Tags flow onto new lines instead of fixed columns, so longer translations never break a tag. */
+  .card-body { row-gap: 12px; }
+  .card-body > * { white-space: nowrap; }
 
   .referral-tag::after {
     position: absolute;
@@ -1187,7 +1189,6 @@ html.is-reordering-cards body {
 }
 
 @media (max-width: 640px) {
-  .process-toolbar-active-state { grid-column: 1 / -1; grid-row: 3; }
   .process-filter-panel {
     position: fixed;
     inset: 0;

@@ -265,7 +265,7 @@ describe('api', () => {
     global.fetch.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: 'no google account connected' }) });
     await expect(api.getGoogleFolders()).rejects.toThrow('no google account connected');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
-    await expect(api.setGoogleFolder('', '')).rejects.toThrow('Failed to save Drive folder');
+    await expect(api.setGoogleFolder('', '')).rejects.toThrow('Failed to save the Drive folder selection');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) });
     await expect(api.backupNowGoogle()).rejects.toThrow('Drive backup failed');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
@@ -313,5 +313,18 @@ describe('api', () => {
     mockResponse({ id: 'job', attachments: [{ id: 'file/1' }] });
     const job = await api.getJob('job');
     expect(job.attachments[0].download_url).toBe('/api/attachments/file%2F1/download');
+  });
+
+  it('reports a failed connection in the interface language and passes cancellations through', async () => {
+    global.fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(api.getJobs()).rejects.toThrow('Could not reach War Room. Check your connection and try again.');
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    global.fetch.mockRejectedValueOnce(abort);
+    await expect(api.getJobs()).rejects.toBe(abort);
+  });
+
+  it('shows server messages through their translations', async () => {
+    mockResponse({ error: 'sign in required' }, 401, false);
+    await expect(api.createTechnology({})).rejects.toThrow('Sign in to continue.');
   });
 });

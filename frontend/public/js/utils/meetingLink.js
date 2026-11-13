@@ -3,6 +3,8 @@
  */
 
 import { icon } from "../icons.js";
+import { t } from "../i18n.js";
+import { escapeHtml } from "./sanitize.js";
 
 /**
  * Renders a meeting link's icon and label for its format.
@@ -13,6 +15,6 @@ import { icon } from "../icons.js";
  * @returns {string} HTML for the link content; on-site meetings link to Maps.
  */
 export function renderMeetingLinkContent(meetingType, joinLabel, size) {
-  const [iconName, label] = meetingType === "onsite" ? ["pin", "Open in Maps"] : ["video", joinLabel];
-  return `${icon(iconName, size)} ${label} ${icon("arrowUpRight", 11)}`;
+  const [iconName, label] = meetingType === "onsite" ? ["pin", t("meeting.openInMaps")] : ["video", joinLabel];
+  return `${icon(iconName, size)} ${escapeHtml(label)} ${icon("arrowUpRight", 11)}`;
 }

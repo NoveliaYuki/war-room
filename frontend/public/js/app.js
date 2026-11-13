@@ -4,6 +4,7 @@
  */
 
 import { api } from "./api.js";
+import { LANGUAGE_CHANGE_EVENT, getLocale, setTranslatedAttribute, setTranslatedText, t } from "./i18n.js";
 import { renderCardGrid } from "./components/cardGrid.js";
 import { renderScheduleView } from "./components/scheduleView.js";
 import { renderScheduleLoadingState } from "./components/loadingViews.js";
@@ -22,6 +23,7 @@ import { confirmAction } from "./utils/confirmDialog.js";
 import { escapeAttr, escapeHtml } from "./utils/sanitize.js";
 import { renderMarkdown } from "./utils/markdown.js";
 import { filterJobs } from "./utils/processFilters.js";
+import { arrangementLabel, statusLabel } from "./utils/labels.js";
 import { readSavedSortMode, sortJobsForDisplay } from "./utils/processOrdering.js";
 
 if (typeof window !== "undefined") {
@@ -198,11 +200,10 @@ function getActiveTheme() {
 /** Updates the theme toggle's accessible label for the next action. */
 function updateThemeToggle() {
   if (!themeToggle) return;
-  const nextTheme = getActiveTheme() === "dark" ? "light" : "dark";
-  const label = `Switch to ${nextTheme} theme`;
-  themeToggle.setAttribute("aria-label", label);
-  themeToggle.title = label;
-  if (themeCurrentLabel) themeCurrentLabel.textContent = getActiveTheme() === "dark" ? "Dark" : "Light";
+  const labelKey = getActiveTheme() === "dark" ? "theme.switchToLight" : "theme.switchToDark";
+  setTranslatedAttribute(themeToggle, "aria-label", labelKey);
+  setTranslatedAttribute(themeToggle, "title", labelKey);
+  if (themeCurrentLabel) setTranslatedText(themeCurrentLabel, getActiveTheme() === "dark" ? "theme.currentDark" : "theme.currentLight");
 }
 
 themeToggle?.addEventListener("click", () => {
@@ -238,13 +239,24 @@ async function handleSignOut() {
   window.location.reload();
 }
 
-/** Returns a short display name for the header pill: first name, email local-part, or "Account". */
+/** Returns a short display name for the header pill: first name, email local-part, or "" when unknown. */
 function simplifiedAccountName(accountInfo) {
   const name = accountInfo?.name?.trim();
   if (name) return name.split(/\s+/)[0];
   const email = accountInfo?.email?.trim();
   if (email) return email.split("@")[0];
-  return "Account";
+  return "";
+}
+
+/** Shows a person's name, or a translated fallback that follows language changes. */
+function setAccountName(element, name) {
+  if (!element) return;
+  if (!name) {
+    setTranslatedText(element, "account.fallbackName");
+    return;
+  }
+  delete element.dataset.i18n;
+  element.textContent = name;
 }
 
 /** Fetches the signed-in account once and applies its name/photo everywhere the account menu shows them. */
@@ -261,7 +273,7 @@ async function loadAccountInfo() {
 
 /** Shows the account's custom or Google photo on the small header pill, and sets the pill's name label. */
 function renderAccountAvatar(accountInfo) {
-  if (accountMenuLabel) accountMenuLabel.textContent = simplifiedAccountName(accountInfo);
+  setAccountName(accountMenuLabel, simplifiedAccountName(accountInfo));
   applyAvatarPhoto(accountAvatarImg, accountAvatarFallback, accountInfo);
 }
 
@@ -270,7 +282,7 @@ function renderAccountIdentity(accountInfo) {
   if (!accountIdentityBlock) return;
   if (!accountInfo) { accountIdentityBlock.hidden = true; return; }
   accountIdentityBlock.hidden = false;
-  if (accountIdentityName) accountIdentityName.textContent = accountInfo.name?.trim() || accountInfo.email || "Account";
+  setAccountName(accountIdentityName, accountInfo.name?.trim() || accountInfo.email || "");
   if (accountIdentityEmail) accountIdentityEmail.textContent = accountInfo.email || "";
   applyAvatarPhoto(accountIdentityAvatarImg, accountIdentityAvatarFallback, accountInfo);
   if (removeAvatarButton) removeAvatarButton.hidden = !accountInfo.avatar_url;
@@ -320,9 +332,9 @@ avatarFileInput?.addEventListener("change", async () => {
     const user = await api.uploadAvatar(file);
     renderAccountAvatar(user);
     renderAccountIdentity(user);
-    showToast("Profile picture updated", "success");
+    showToast(t("account.photoUpdated"), "success");
   } catch (error) {
-    showToast(error.message || "Failed to update profile picture", "error");
+    showToast(error.message || t("account.photoUpdateFailed"), "error");
   } finally {
     avatarFileInput.value = "";
   }
@@ -332,9 +344,9 @@ removeAvatarButton?.addEventListener("click", async () => {
     const user = await api.removeAvatar();
     renderAccountAvatar(user);
     renderAccountIdentity(user);
-    showToast("Reverted to your Google photo", "success");
+    showToast(t("account.photoReverted"), "success");
   } catch (error) {
-    showToast(error.message || "Failed to remove profile picture", "error");
+    showToast(error.message || t("account.photoRemoveFailed"), "error");
   }
 });
 
@@ -378,22 +390,22 @@ document.querySelector("#btn-data-management-menu")?.addEventListener("click", (
 function renderGoogleAccount() {
   if (!googleAccountSection) return;
   if (isDemoMode) {
-    googleAccountSection.innerHTML = `<p class="account-note">Google Drive backup is not available in the browser demo.</p>`;
+    googleAccountSection.innerHTML = `<p class="account-note">${escapeHtml(t("google.demoUnavailable"))}</p>`;
     return;
   }
   if (!googleStatus) {
-    googleAccountSection.innerHTML = `<p class="account-note">Loading Google Drive status…</p>`;
+    googleAccountSection.innerHTML = `<p class="account-note">${escapeHtml(t("google.loadingStatus"))}</p>`;
     return;
   }
   if (!googleStatus.configured) {
-    googleAccountSection.innerHTML = `<p class="account-heading">${icon("cloud", 15)} Google Drive backup</p>
-      <p class="account-note">Not configured. Add the Google OAuth client and GOOGLE_BACKUP_ENCRYPTION_KEY to .env, then restart the app.</p>`;
+    googleAccountSection.innerHTML = `<p class="account-heading">${icon("cloud", 15)} ${escapeHtml(t("google.heading"))}</p>
+      <p class="account-note">${escapeHtml(t("google.notConfigured"))}</p>`;
     return;
   }
   if (!googleStatus.connected) {
-    googleAccountSection.innerHTML = `<p class="account-heading">${icon("cloud", 15)} Google Drive backup</p>
-      <p class="account-note">Backs up automatically when a job card is created or its status changes.</p>
-      <a class="btn-primary account-connect" href="/api/google/connect">Connect Google account</a>`;
+    googleAccountSection.innerHTML = `<p class="account-heading">${icon("cloud", 15)} ${escapeHtml(t("google.heading"))}</p>
+      <p class="account-note">${escapeHtml(t("google.autoBackupNote"))}</p>
+      <a class="btn-primary account-connect" href="/api/google/connect">${escapeHtml(t("google.connectAccount"))}</a>`;
     return;
   }
   renderConnectedGoogleAccount();
@@ -401,18 +413,18 @@ function renderGoogleAccount() {
 
 /** Renders the connected Google account with folder and backup actions. */
 function renderConnectedGoogleAccount() {
-  const folder = googleStatus.folder_name || "My Drive (root)";
-  const last = googleStatus.last_backup_at ? `Last backup: ${new Date(googleStatus.last_backup_at).toLocaleString()}` : "No backup yet";
-  const failed = googleStatus.last_status === "error" ? `<p class="account-note account-error">Last backup failed. Use Backup now to retry.</p>` : "";
-  const cleanupPending = googleStatus.last_status === "cleanup_pending" ? `<p class="account-note">Backup succeeded; Drive could not remove an older copy yet. Use Backup now to retry cleanup.</p>` : "";
+  const folder = googleStatus.folder_name || t("google.rootFolder");
+  const last = googleStatus.last_backup_at ? t("google.lastBackup", { date: new Date(googleStatus.last_backup_at).toLocaleString(getLocale()) }) : t("google.noBackup");
+  const failed = googleStatus.last_status === "error" ? `<p class="account-note account-error">${escapeHtml(t("google.lastBackupFailed"))}</p>` : "";
+  const cleanupPending = googleStatus.last_status === "cleanup_pending" ? `<p class="account-note">${escapeHtml(t("google.cleanupPending"))}</p>` : "";
   googleAccountSection.innerHTML = `<div class="account-status-card">
-      <p class="account-heading">${icon("cloud", 15)} Google Drive backup</p>
-      <p class="account-note">${icon("folder", 13)} Folder: ${escapeHtml(folder)}</p>
+      <p class="account-heading">${icon("cloud", 15)} ${escapeHtml(t("google.heading"))}</p>
+      <p class="account-note">${icon("folder", 13)} ${escapeHtml(t("google.folder", { folder }))}</p>
       <p class="account-note">${escapeHtml(last)}</p>${failed}${cleanupPending}
     </div>
     <div class="account-actions">
-      <button class="account-menu-item" id="google-choose-folder" type="button">${icon("folder", 16)}<span>Choose folder</span></button>
-      <button class="account-menu-item" id="google-backup-now" type="button">${icon("upload", 16)}<span>Backup now</span></button>
+      <button class="account-menu-item" id="google-choose-folder" type="button">${icon("folder", 16)}<span>${escapeHtml(t("google.chooseFolder"))}</span></button>
+      <button class="account-menu-item" id="google-backup-now" type="button">${icon("upload", 16)}<span>${escapeHtml(t("google.backupNow"))}</span></button>
     </div>
     <p id="google-folder-status" class="account-note account-error" role="status" aria-live="polite" hidden></p>`;
   googleAccountSection.querySelector("#google-choose-folder")?.addEventListener("click", (event) => {
@@ -434,12 +446,12 @@ async function refreshGoogleStatus() {
 
 async function openFolderPicker(button, message) {
   if (!googleStatus?.picker_api_key) {
-    setFolderPickerMessage(message, "Google Picker is not configured. Add a restricted Google Picker API key to .env and restart War Room.");
-    showToast("Google Drive folder selection needs a Google Picker API key.", "error");
+    setFolderPickerMessage(message, t("google.pickerNotConfigured"));
+    showToast(t("google.pickerKeyRequired"), "error");
     return;
   }
   if (!googleStatus?.picker_app_id) {
-    setFolderPickerMessage(message, "Google Picker cannot identify the Cloud project. Set GOOGLE_CLOUD_PROJECT_NUMBER in .env and restart War Room.");
+    setFolderPickerMessage(message, t("google.pickerProjectMissing"));
     return;
   }
   setFolderPickerMessage(message, "");
@@ -460,7 +472,7 @@ function loadGooglePicker() {
     script.src = "https://apis.google.com/js/api.js";
     script.async = true;
     script.onload = resolve;
-    script.onerror = () => reject(new Error("Google Drive folder picker failed to load"));
+    script.onerror = () => reject(new Error(t("google.pickerLoadFailed")));
     document.head.append(script);
   });
   return pickerScriptPromise;
@@ -469,13 +481,13 @@ function loadGooglePicker() {
 function handleGooglePickerResult(data) {
   if (data.action !== window.google.picker.Action.PICKED) return;
   const folder = data.docs?.[0];
-  if (folder?.id) void chooseGoogleFolder(folder.id, folder.name || "Drive folder");
+  if (folder?.id) void chooseGoogleFolder(folder.id, folder.name || t("google.defaultFolderName"));
 }
 
 async function showGoogleDrivePicker(button, message) {
   if (!button || !googleStatus?.picker_api_key || !googleStatus?.picker_app_id) return;
   button.disabled = true;
-  setFolderPickerMessage(message, "Opening Google Drive folder picker…");
+  setFolderPickerMessage(message, t("google.openingPicker"));
   try {
     await loadGooglePicker();
     await new Promise((resolve, reject) => window.gapi.load("picker", { callback: resolve, onerror: reject }));
@@ -495,7 +507,7 @@ async function showGoogleDrivePicker(button, message) {
     picker.setVisible(true);
     setFolderPickerMessage(message, "");
   } catch (err) {
-    setFolderPickerMessage(message, err?.message || "Could not open the Drive folder picker.");
+    setFolderPickerMessage(message, err?.message || t("google.pickerOpenFailed"));
   } finally {
     button.disabled = false;
   }
@@ -506,26 +518,26 @@ async function chooseGoogleFolder(id, name) {
     googleStatus = await api.setGoogleFolder(id || "", name || "");
     renderGoogleAccount();
     renderGoogleBackupOption();
-    showToast(id ? `Drive backup folder set to ${name}` : "Drive backups will be saved in My Drive", "success");
+    showToast(id ? t("google.folderSet", { name }) : t("google.folderRootSet"), "success");
   } catch (err) {
-    showToast(err.message || "Failed to save Drive folder", "error");
+    showToast(err.message || t("google.folderSaveFailed"), "error");
   }
 }
 
 async function runGoogleBackupNow() {
   if (googleBackupInFlight) return;
   googleBackupInFlight = true;
-  const progress = showBackupProgress("Backing up to Google Drive…");
+  const progress = showBackupProgress(t("google.backingUp"));
   try {
     googleStatus = await api.backupNowGoogle();
     renderGoogleAccount();
     const status = modalEl.querySelector("#google-drive-backup-status");
-    if (status) status.textContent = "Google Drive backup uploaded.";
-    progress.success("Google Drive backup uploaded");
+    if (status) status.textContent = t("google.backupUploadedStatus");
+    progress.success(t("google.backupUploaded"));
   } catch (err) {
     const status = modalEl.querySelector("#google-drive-backup-status");
-    if (status) status.textContent = err.message || "Google Drive backup failed";
-    progress.error(err.message || "Google Drive backup failed");
+    if (status) status.textContent = err.message || t("google.backupFailed");
+    progress.error(err.message || t("google.backupFailed"));
     void refreshGoogleStatus();
   } finally {
     googleBackupInFlight = false;
@@ -536,41 +548,41 @@ function renderGoogleBackupOption() {
   const option = modalEl.querySelector("#google-drive-backup-option");
   if (!option) return;
   if (isDemoMode) {
-    option.innerHTML = "<p>Google Drive backup is unavailable in the browser demo.</p>";
+    option.innerHTML = `<p>${escapeHtml(t("google.dataDemoUnavailable"))}</p>`;
     return;
   }
   if (!googleStatus) {
-    option.innerHTML = "<p>Checking Google Drive connection…</p>";
+    option.innerHTML = `<p>${escapeHtml(t("google.checkingConnection"))}</p>`;
     return;
   }
   if (!googleStatus.configured) {
-    option.innerHTML = "<p>Google Drive backup is not configured. Add the OAuth client and encryption key to .env, then restart War Room.</p>";
+    option.innerHTML = `<p>${escapeHtml(t("google.dataNotConfigured"))}</p>`;
     return;
   }
   if (!googleStatus.connected) {
-    option.innerHTML = '<p>Sign in to upload an encrypted backup to your Google Drive.</p><a class="btn-primary" id="btn-google-drive-backup" href="/api/google/connect">Connect Google Drive</a>';
+    option.innerHTML = `<p>${escapeHtml(t("google.signInToUpload"))}</p><a class="btn-primary" id="btn-google-drive-backup" href="/api/google/connect">${escapeHtml(t("google.connectDrive"))}</a>`;
     return;
   }
-  const folder = escapeHtml(googleStatus.folder_name || "My Drive (root)");
-  option.innerHTML = `<p>Backup folder: <strong id="google-drive-backup-folder">${folder}</strong></p>
-    <button class="btn-secondary" id="btn-google-drive-choose-folder" type="button">Choose Drive folder</button>
+  const folder = escapeHtml(googleStatus.folder_name || t("google.rootFolder"));
+  option.innerHTML = `<p>${escapeHtml(t("google.backupFolder"))} <strong id="google-drive-backup-folder">${folder}</strong></p>
+    <button class="btn-secondary" id="btn-google-drive-choose-folder" type="button">${escapeHtml(t("google.chooseDriveFolder"))}</button>
     <div class="data-transfer-status" id="google-drive-folder-status" role="status" aria-live="polite"></div>
-    <p>Upload an encrypted backup to Google Drive now.</p>
-    <button class="btn-primary" id="btn-google-drive-backup" type="button">Back up to Google Drive</button>
+    <p>${escapeHtml(t("google.uploadNowNote"))}</p>
+    <button class="btn-primary" id="btn-google-drive-backup" type="button">${escapeHtml(t("google.backUpToDrive"))}</button>
     <div class="data-transfer-status" id="google-drive-backup-status" role="status" aria-live="polite"></div>
-    <p>Revoking disconnects Google Drive backup and signs you out everywhere.</p>
-    <button class="btn-danger" id="btn-google-drive-revoke" type="button">Revoke Google Drive access</button>`;
+    <p>${escapeHtml(t("google.revokeNote"))}</p>
+    <button class="btn-danger" id="btn-google-drive-revoke" type="button">${escapeHtml(t("google.revoke"))}</button>`;
   option.querySelector("#btn-google-drive-choose-folder").addEventListener("click", (event) => {
     void openFolderPicker(event.currentTarget, option.querySelector("#google-drive-folder-status"));
   });
   option.querySelector("#btn-google-drive-backup").addEventListener("click", () => {
     const button = option.querySelector("#btn-google-drive-backup");
     button.disabled = true;
-    button.textContent = "Uploading…";
+    button.textContent = t("common.uploading");
     void runGoogleBackupNow().finally(() => {
       if (!button.isConnected) return;
       button.disabled = false;
-      button.textContent = "Back up to Google Drive";
+      button.textContent = t("google.backUpToDrive");
     });
   });
   option.querySelector("#btn-google-drive-revoke").addEventListener("click", () => void revokeGoogleDriveAccess());
@@ -584,7 +596,7 @@ async function refreshDataGoogleStatus() {
   } catch {
     googleStatus = null;
     const option = modalEl.querySelector("#google-drive-backup-option");
-    if (option) option.innerHTML = "<p>Could not check Google Drive status. Close and reopen this dialog to try again.</p>";
+    if (option) option.innerHTML = `<p>${escapeHtml(t("google.statusCheckFailed"))}</p>`;
     return;
   }
   renderGoogleBackupOption();
@@ -593,9 +605,9 @@ async function refreshDataGoogleStatus() {
 /** Revokes the Google Drive grant; this also signs out every session for the account. */
 async function revokeGoogleDriveAccess() {
   const confirmed = await confirmAction({
-    title: "Revoke Google Drive access?",
-    message: "This disconnects Google Drive backup and signs you out everywhere, since sign-in and Drive now share the same Google consent.",
-    confirmLabel: "Revoke and sign out",
+    title: t("google.revokeTitle"),
+    message: t("google.revokeMessage"),
+    confirmLabel: t("google.revokeConfirm"),
     danger: true,
   });
   if (!confirmed) return;
@@ -603,7 +615,7 @@ async function revokeGoogleDriveAccess() {
     await api.revokeGoogleDrive();
     window.location.reload();
   } catch (err) {
-    showToast(err.message || "Failed to revoke Google Drive access", "error");
+    showToast(err.message || t("google.revokeFailed"), "error");
   }
 }
 
@@ -614,7 +626,7 @@ async function revokeGoogleDriveAccess() {
   params.delete("google");
   const rest = params.toString();
   window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
-  showToast(result === "connected" ? "Google account connected" : "Google sign-in failed", result === "connected" ? "success" : "error");
+  showToast(result === "connected" ? t("google.connected") : t("google.signInFailed"), result === "connected" ? "success" : "error");
   void refreshGoogleStatus();
 })();
 
@@ -622,7 +634,7 @@ async function revokeGoogleDriveAccess() {
 function closeMobileMenu() {
   if (!menuToggle || !headerControls) return;
   menuToggle.setAttribute("aria-expanded", "false");
-  menuToggle.setAttribute("aria-label", "Open navigation menu");
+  setTranslatedAttribute(menuToggle, "aria-label", "header.openMenu");
   headerControls.classList.remove("is-open");
 }
 
@@ -770,7 +782,7 @@ function clearAppLoadError() {
   appLoadErrorEl.hidden = true;
   if (appLoadRetryButton) {
     appLoadRetryButton.disabled = false;
-    appLoadRetryButton.textContent = "Try again";
+    setTranslatedText(appLoadRetryButton, "common.tryAgain");
   }
 }
 
@@ -781,7 +793,7 @@ function showAppLoadError() {
   appLoadErrorEl.hidden = false;
   if (appLoadRetryButton) {
     appLoadRetryButton.disabled = false;
-    appLoadRetryButton.textContent = "Try again";
+    setTranslatedText(appLoadRetryButton, "common.tryAgain");
   }
 }
 
@@ -828,24 +840,38 @@ function readSavedStatuses(statuses) {
 function renderSearchPeriodOptions() {
   if (!searchPeriodFilter || !searchPeriodMenu || !searchPeriodCurrent || !searchPeriodTrigger) return;
   const options = [
-    { value: "all", label: "All periods", menuLabel: "All periods" },
-    { value: "unassigned", label: "No period", menuLabel: "No period" },
-    ...searchPeriods.map((period) => ({ value: period.id, label: period.name, menuLabel: `${period.name} · ${period.start_date} – ${period.end_date || "Present"}` })),
+    { value: "all", labelKey: "searchPeriods.all", menuLabel: t("searchPeriods.all") },
+    { value: "unassigned", labelKey: "searchPeriods.none", menuLabel: t("searchPeriods.none") },
+    ...searchPeriods.map((period) => ({ value: period.id, label: period.name, menuLabel: formatSearchPeriodLabel(period) })),
   ];
   const selected = searchPeriods.some((period) => period.id === processFilters.searchPeriod)
     || ["all", "unassigned"].includes(processFilters.searchPeriod) ? processFilters.searchPeriod : "all";
   processFilters.searchPeriod = selected;
   searchPeriodFilter.value = selected;
   const selectedOption = options.find((option) => option.value === selected);
-  searchPeriodCurrent.textContent = selectedOption.label;
-  searchPeriodCurrent.dataset.compactLabel = selected === "all" ? "All"
-    : selected === "unassigned" ? "No period" : searchPeriodCurrent.textContent;
-  searchPeriodTrigger.title = selectedOption.menuLabel;
+  showSearchPeriodName(selectedOption);
+  searchPeriodCurrent.dataset.compactLabel = selected === "all" ? t("searchPeriods.compactAll") : searchPeriodCurrent.textContent;
   searchPeriodTrigger.dataset.selected = String(selected !== "all");
-  searchPeriodTrigger.setAttribute("aria-label", `Search period: ${selectedOption.menuLabel}`);
+  setTranslatedAttribute(searchPeriodTrigger, "title", "searchPeriods.trigger", { period: selectedOption.menuLabel });
+  setTranslatedAttribute(searchPeriodTrigger, "aria-label", "searchPeriods.trigger", { period: selectedOption.menuLabel });
   searchPeriodMenu.innerHTML = `
     <div class="search-period-menu-options" role="presentation">${options.map((option) => `<button type="button" role="menuitemradio" aria-checked="${option.value === selected}" data-search-period="${escapeHtml(option.value)}">${escapeHtml(option.menuLabel)}</button>`).join("")}</div>
-    <div class="search-period-menu-footer"><button type="button" role="menuitem" data-manage-search-periods>Manage search periods</button></div>`;
+    <div class="search-period-menu-footer"><button type="button" role="menuitem" data-manage-search-periods>${escapeHtml(t("searchPeriods.manage"))}</button></div>`;
+}
+
+/** Labels a saved period with its name and date range. */
+function formatSearchPeriodLabel(period) {
+  return `${period.name} · ${period.start_date} – ${period.end_date || t("searchPeriods.present")}`;
+}
+
+/** Shows the selected period; built-in choices keep following language changes. */
+function showSearchPeriodName(option) {
+  if (option.labelKey) {
+    setTranslatedText(searchPeriodCurrent, option.labelKey);
+    return;
+  }
+  delete searchPeriodCurrent.dataset.i18n;
+  searchPeriodCurrent.textContent = option.label;
 }
 
 function periodForToday() {
@@ -856,8 +882,8 @@ function periodForToday() {
 
 function searchPeriodOptions(selectedID) {
   return [
-    `<option value="">No period</option>`,
-    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(period.name)} · ${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</option>`),
+    `<option value="">${escapeHtml(t("searchPeriods.none"))}</option>`,
+    ...searchPeriods.map((period) => `<option value="${escapeHtml(period.id)}" ${period.id === selectedID ? "selected" : ""}>${escapeHtml(formatSearchPeriodLabel(period))}</option>`),
   ].join("");
 }
 
@@ -948,9 +974,9 @@ function updateProcessFilterSummary() {
 
 function renderProcessFilterChip({ category, label, value = "" }) {
   const valueAttribute = value ? `data-filter-value="${escapeHtml(value)}"` : "";
-  const accessibleLabel = category === "searchPeriod" ? label.replace(/^Period: /, "") : label;
+  const clearLabel = t(category === "searchPeriod" ? "filters.clearSearchPeriod" : "filters.clearFilter", { label });
   const periodIcon = category === "searchPeriod" ? '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>' : "";
-  return `<button type="button" class="process-filter-chip${category === "searchPeriod" ? " search-period-scope-chip" : ""}" data-remove-filter="${category}" ${valueAttribute} aria-label="Clear ${category === "searchPeriod" ? "search period" : "filter"}: ${escapeHtml(accessibleLabel)}" title="${escapeHtml(label)}">${periodIcon}<span>${escapeHtml(label)}</span><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m3 3 6 6m0-6L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>`;
+  return `<button type="button" class="process-filter-chip${category === "searchPeriod" ? " search-period-scope-chip" : ""}" data-remove-filter="${category}" ${valueAttribute} aria-label="${escapeHtml(clearLabel)}" title="${escapeHtml(label)}">${periodIcon}<span>${escapeHtml(label)}</span><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m3 3 6 6m0-6L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>`;
 }
 
 function getActiveProcessFilterCount() {
@@ -968,14 +994,14 @@ function getActiveProcessFilterCount() {
 function updateProcessFilterTriggerLabel(activeFilterCount) {
   if (!processFilterTrigger) return;
   const count = activeFilterCount ?? getActiveProcessFilterCount();
-  const filterDescription = count ? `; ${count} active ${count === 1 ? "filter" : "filters"}` : "; no active filters";
-  processFilterTrigger.setAttribute("aria-label", `Filters${filterDescription}`);
+  if (count) setTranslatedAttribute(processFilterTrigger, "aria-label", "filters.triggerActive", { count });
+  else setTranslatedAttribute(processFilterTrigger, "aria-label", "filters.triggerNone");
 }
 
 function getProcessFilterChips() {
   return [
-    ...(processFilters.statuses.length ? [{ category: "statuses", label: `Status: ${processFilters.statuses.map((status) => status[0].toUpperCase() + status.slice(1)).join(", ")}` }] : []),
-    ...processFilters.arrangements.map((value) => ({ category: "arrangement", value, label: ({ remote: "Remote", hybrid: "Hybrid", on_site: "On-site" })[value] || value })),
+    ...(processFilters.statuses.length ? [{ category: "statuses", label: t("filters.statusChip", { statuses: processFilters.statuses.map(statusLabel).join(", ") }) }] : []),
+    ...processFilters.arrangements.map((value) => ({ category: "arrangement", value, label: arrangementLabel(value) || value })),
     ...getReferralFilterChips(),
     ...getSalaryFilterChips(),
     ...getTechnologyFilterChips(),
@@ -984,16 +1010,17 @@ function getProcessFilterChips() {
 
 function getReferralFilterChips() {
   if (!processFilters.referral) return [];
-  return [{ category: "referral", label: processFilters.referral === "yes" ? "Referral" : "No referral" }];
+  return [{ category: "referral", label: t(processFilters.referral === "yes" ? "referral.yes" : "referral.none") }];
 }
 
 function getSalaryFilterChips() {
   const chips = [];
-  if (processFilters.expectedSalaryQuery) chips.push({ category: "expectedSalary", label: `Target: ${processFilters.expectedSalaryQuery}` });
+  if (processFilters.expectedSalaryQuery) chips.push({ category: "expectedSalary", label: t("filters.targetChip", { query: processFilters.expectedSalaryQuery }) });
   if (processFilters.postedSalaryMin !== null || processFilters.postedSalaryMax !== null || processFilters.currency) {
-    const lower = processFilters.postedSalaryMin === null ? "Any" : processFilters.postedSalaryMin.toLocaleString();
-    const upper = processFilters.postedSalaryMax === null ? "Any" : processFilters.postedSalaryMax.toLocaleString();
-    chips.push({ category: "postingSalary", label: `Posting ${lower}–${upper}${processFilters.currency ? ` ${processFilters.currency}` : ""}` });
+    const lower = processFilters.postedSalaryMin === null ? t("filters.any") : processFilters.postedSalaryMin.toLocaleString(getLocale());
+    const upper = processFilters.postedSalaryMax === null ? t("filters.any") : processFilters.postedSalaryMax.toLocaleString(getLocale());
+    const range = `${lower}–${upper}${processFilters.currency ? ` ${processFilters.currency}` : ""}`;
+    chips.push({ category: "postingSalary", label: t("filters.postingChip", { range }) });
   }
   return chips;
 }
@@ -1047,10 +1074,8 @@ function updateSortControl() {
   processSortControlEl.hidden = !isStatusTab;
   if (!isStatusTab) return;
   const mode = readSavedSortMode(window.localStorage, currentFilter);
-  const labels = { "added-newest": "Added · Newest", "added-oldest": "Added · Oldest", "status-newest": "Status · Newest", "status-oldest": "Status · Oldest", advanced: "Advanced", early: "Least advanced", manual: "Manual" };
-  const fullLabels = { "added-newest": "newest added first", "added-oldest": "oldest added first", "status-newest": "most recently changed first", "status-oldest": "least recently changed first", advanced: "most advanced stage first", early: "least advanced stage first", manual: "manual order" };
-  processSortCurrent.textContent = labels[mode];
-  processSortTrigger.setAttribute("aria-label", `Sort processes: ${fullLabels[mode]}`);
+  setTranslatedText(processSortCurrent, `sort.short.${mode}`);
+  setTranslatedAttribute(processSortTrigger, "aria-label", `sort.full.${mode}`);
   processSortOptions.forEach((option) => option.setAttribute("aria-checked", String(option.dataset.sortMode === mode)));
 }
 
@@ -1173,7 +1198,7 @@ async function submitNewJobForm(event, form, closeForm, technologyIds) {
     event.preventDefault();
     const payload = buildJobPayload(form);
     await api.createJob({ ...payload, technology_ids: await technologyIds() });
-    showToast("Selection process created successfully!", "success");
+    showToast(t("newProcess.created"), "success");
     closeForm();
     setFilter("waiting");
     refreshApp();
@@ -1273,7 +1298,7 @@ function closeDataModal() {
 
 function defaultSearchPeriodName(startDate, endDate) {
   if (!startDate) return "";
-  const formatMonth = (value) => new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+  const formatMonth = (value) => new Intl.DateTimeFormat(getLocale(), { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
   const startLabel = formatMonth(startDate);
   if (!endDate) return startLabel;
   const endLabel = formatMonth(endDate);
@@ -1293,20 +1318,20 @@ async function openSearchPeriodsModal() {
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
     <div class="modal-header data-transfer-header">
-      <div><div class="modal-title">Search Periods</div><div class="modal-company">Jobs without a period that fall within a period’s date range are grouped automatically. Leave the end date blank while the search is active.</div></div>
-      <button class="btn-secondary" id="btn-close-search-periods" type="button" aria-label="Close">${icon("close", 18)}</button>
+      <div><div class="modal-title">${escapeHtml(t("searchPeriods.title"))}</div><div class="modal-company">${escapeHtml(t("searchPeriods.intro"))}</div></div>
+      <button class="btn-secondary" id="btn-close-search-periods" type="button" aria-label="${escapeAttr(t("common.close"))}">${icon("close", 18)}</button>
     </div>
     <div class="search-period-manager">
       <form id="search-period-form" class="search-period-form">
         <input type="hidden" name="id" />
-        <label>Name<input name="name" maxlength="100" required placeholder="${escapeAttr(suggestedPeriodName)}" /></label>
+        <label>${escapeHtml(t("searchPeriods.name"))}<input name="name" maxlength="100" required placeholder="${escapeAttr(suggestedPeriodName)}" /></label>
         <div class="form-grid form-grid-two">
-          <label>Start date<input name="start_date" type="date" required /></label>
-          <label>End date<input name="end_date" type="date" /><span class="search-period-optional">Optional · leave blank while the search is active</span></label>
+          <label>${escapeHtml(t("searchPeriods.startDate"))}<input name="start_date" type="date" required /></label>
+          <label>${escapeHtml(t("searchPeriods.endDate"))}<input name="end_date" type="date" /><span class="search-period-optional">${escapeHtml(t("searchPeriods.endDateHint"))}</span></label>
         </div>
         <div class="search-period-form-actions">
-          <button class="btn-primary" type="submit">Create period</button>
-          <button class="btn-secondary" id="btn-cancel-search-period-edit" type="button" hidden>Cancel editing</button>
+          <button class="btn-primary" type="submit">${escapeHtml(t("searchPeriods.create"))}</button>
+          <button class="btn-secondary" id="btn-cancel-search-period-edit" type="button" hidden>${escapeHtml(t("searchPeriods.cancelEdit"))}</button>
         </div>
       </form>
       <div id="search-period-list" class="search-period-list"></div>
@@ -1328,18 +1353,18 @@ async function openSearchPeriodsModal() {
     form.reset();
     idField.value = "";
     autoName = true;
-    submitButton.textContent = "Create period";
+    submitButton.textContent = t("searchPeriods.create");
     cancelEdit.hidden = true;
   };
   const renderList = () => {
     list.innerHTML = searchPeriods.length ? searchPeriods.map((period) => `
       <article class="search-period-row">
-        <div><strong>${escapeHtml(period.name)}</strong><span>${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || "Present")}</span><small>${period.job_count} job${period.job_count === 1 ? "" : "s"}</small></div>
+        <div><strong>${escapeHtml(period.name)}</strong><span>${escapeHtml(period.start_date)} – ${escapeHtml(period.end_date || t("searchPeriods.present"))}</span><small>${escapeHtml(t("searchPeriods.jobCount", { count: period.job_count }))}</small></div>
         <div class="search-period-actions">
-          <button class="btn-secondary" type="button" data-edit-period="${escapeHtml(period.id)}">Edit</button>
-          <button class="btn-secondary" type="button" data-delete-period="${escapeHtml(period.id)}">Delete</button>
+          <button class="btn-secondary" type="button" data-edit-period="${escapeHtml(period.id)}">${escapeHtml(t("common.edit"))}</button>
+          <button class="btn-secondary" type="button" data-delete-period="${escapeHtml(period.id)}">${escapeHtml(t("common.delete"))}</button>
         </div>
-      </article>`).join("") : '<div class="search-period-empty"><strong>No search periods yet</strong><span>Create one above. Jobs without a period that fall within its date range will be grouped automatically.</span></div>';
+      </article>`).join("") : `<div class="search-period-empty"><strong>${escapeHtml(t("searchPeriods.emptyTitle"))}</strong><span>${escapeHtml(t("searchPeriods.emptyBody"))}</span></div>`;
   };
   const focusPeriodAfterDelete = (id, fallbackIndex) => {
     const deleteButtons = [...list.querySelectorAll("[data-delete-period]")];
@@ -1374,7 +1399,7 @@ async function openSearchPeriodsModal() {
         try { window.localStorage.setItem(PROCESS_FILTER_STORAGE_KEY, JSON.stringify(processFilters)); } catch { /* Keep the new period selected until this page closes. */ }
       }
       await refreshApp();
-      showToast("Search period saved", "success");
+      showToast(t("searchPeriods.saved"), "success");
     } catch (error) { showToast(error.message, "error"); }
   });
   list.addEventListener("click", async (event) => {
@@ -1388,7 +1413,7 @@ async function openSearchPeriodsModal() {
       startField.value = period.start_date;
       endField.value = period.end_date;
       autoName = false;
-      submitButton.textContent = "Save changes";
+      submitButton.textContent = t("common.saveChanges");
       cancelEdit.hidden = false;
       nameField.focus();
     }
@@ -1398,9 +1423,9 @@ async function openSearchPeriodsModal() {
       const fallbackIndex = [...list.querySelectorAll("[data-delete-period]")]
         .findIndex((button) => button.dataset.deletePeriod === period.id);
       const confirmed = await confirmAction({
-        title: "Delete search period?",
-        message: `Deleting this period leaves its ${period.job_count} job card${period.job_count === 1 ? "" : "s"} saved without a search period.`,
-        confirmLabel: "Delete period",
+        title: t("searchPeriods.deleteTitle"),
+        message: t("searchPeriods.deleteMessage", { count: period.job_count }),
+        confirmLabel: t("searchPeriods.deleteConfirm"),
         danger: true,
       });
       if (!confirmed) return;
@@ -1413,7 +1438,7 @@ async function openSearchPeriodsModal() {
         await reload();
         focusPeriodAfterDelete(period.id, fallbackIndex);
         await refreshApp();
-        showToast("Search period deleted; its job cards remain saved without a period", "success");
+        showToast(t("searchPeriods.deleted"), "success");
       } catch (error) { showToast(error.message, "error"); }
     }
   });
@@ -1469,31 +1494,31 @@ function openDataModal() {
   modalEl.classList.add("data-transfer-modal");
   modalEl.innerHTML = `
     <div class="modal-header data-transfer-header">
-      <div><div class="modal-title">Data &amp; Backups</div><div class="modal-company">Move your War Room data between machines</div></div>
-      <button class="btn-secondary" id="btn-close-data-modal" type="button" aria-label="Close">${icon("close", 18)}</button>
+      <div><div class="modal-title">${escapeHtml(t("data.title"))}</div><div class="modal-company">${escapeHtml(t("data.subtitle"))}</div></div>
+      <button class="btn-secondary" id="btn-close-data-modal" type="button" aria-label="${escapeAttr(t("common.close"))}">${icon("close", 18)}</button>
     </div>
     <div class="data-transfer-content">
       <section class="data-transfer-section">
-        <h3>Export backup</h3>
-        <p>${isDemoMode ? "Encrypted backup transfer is available in the local War Room app, not in the browser demo." : "Download an encrypted War Room backup. Import decrypts it automatically when this installation has the matching backup key."}</p>
-        <button class="btn-primary" id="btn-export-backup" type="button" ${isDemoMode ? "disabled" : ""}>${icon("download", 15)} Export encrypted backup</button>
+        <h3>${escapeHtml(t("data.exportTitle"))}</h3>
+        <p>${escapeHtml(t(isDemoMode ? "data.exportDemo" : "data.exportBody"))}</p>
+        <button class="btn-primary" id="btn-export-backup" type="button" ${isDemoMode ? "disabled" : ""}>${icon("download", 15)} ${escapeHtml(t("data.exportButton"))}</button>
       </section>
       <section class="data-transfer-section">
-        <h3>Google Drive backup</h3>
+        <h3>${escapeHtml(t("google.heading"))}</h3>
         <div id="google-drive-backup-option" aria-live="polite"></div>
       </section>
       <section class="data-transfer-section">
-        <h3>Import backup</h3>
-        <p>${isDemoMode ? "Encrypted backup import is unavailable in the browser demo." : "Choose an encrypted War Room backup (.wrbackup). Plain ZIP files are not accepted."}</p>
-        <label class="data-transfer-file-label" for="backup-import-file">Backup file</label>
+        <h3>${escapeHtml(t("data.importTitle"))}</h3>
+        <p>${escapeHtml(t(isDemoMode ? "data.importDemo" : "data.importBody"))}</p>
+        <label class="data-transfer-file-label" for="backup-import-file">${escapeHtml(t("data.backupFile"))}</label>
         <div class="data-transfer-file-picker">
-          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".wrbackup,application/octet-stream" aria-label="Choose encrypted backup file" tabindex="-1" ${isDemoMode ? "disabled" : ""} />
-          <button id="backup-import-choose" class="data-transfer-choose" type="button" ${isDemoMode ? "disabled" : ""}>Choose file</button>
-          <span id="backup-import-file-name" class="data-transfer-file-name" role="status" aria-live="polite" aria-atomic="true">No file selected</span>
+          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".wrbackup,application/octet-stream" aria-label="${escapeAttr(t("data.chooseBackupFile"))}" tabindex="-1" ${isDemoMode ? "disabled" : ""} />
+          <button id="backup-import-choose" class="data-transfer-choose" type="button" ${isDemoMode ? "disabled" : ""}>${escapeHtml(t("common.chooseFile"))}</button>
+          <span id="backup-import-file-name" class="data-transfer-file-name" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(t("common.noFileSelected"))}</span>
         </div>
-        <div class="data-transfer-warning">Import replaces all processes, the technology catalog, company logos, and uploaded files currently saved in this War Room.</div>
-        <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" ${isDemoMode ? "disabled" : ""} /> I understand this replaces the current data</label>
-        <button class="btn-danger" id="btn-import-backup" type="button" disabled>Import and replace data</button>
+        <div class="data-transfer-warning">${escapeHtml(t("data.importWarning"))}</div>
+        <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" ${isDemoMode ? "disabled" : ""} /> ${escapeHtml(t("data.importConfirm"))}</label>
+        <button class="btn-danger" id="btn-import-backup" type="button" disabled>${escapeHtml(t("data.importButton"))}</button>
         <div class="data-transfer-status" id="backup-import-status" aria-live="polite"></div>
       </section>
     </div>`;
@@ -1508,7 +1533,7 @@ function openDataModal() {
   const updateImportButton = () => { importButton.disabled = !fileInput.files.length || !confirmation.checked; };
   modalEl.querySelector("#backup-import-choose").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {
-    modalEl.querySelector("#backup-import-file-name").textContent = fileInput.files[0]?.name || "No file selected";
+    modalEl.querySelector("#backup-import-file-name").textContent = fileInput.files[0]?.name || t("common.noFileSelected");
     updateImportButton();
   });
   confirmation.addEventListener("change", updateImportButton);
@@ -1552,9 +1577,9 @@ async function downloadBackup(event) {
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast("Backup downloaded", "success");
+    showToast(t("data.downloaded"), "success");
   } catch (err) {
-    showToast(err.message || "Failed to export backup", "error");
+    showToast(err.message || t("data.exportFailed"), "error");
   } finally {
     button.disabled = false;
   }
@@ -1565,26 +1590,26 @@ async function importBackup(file, allowEmpty = false) {
   const button = modalEl.querySelector("#btn-import-backup");
   const status = modalEl.querySelector("#backup-import-status");
   button.disabled = true;
-  status.textContent = "Validating and importing backup…";
+  status.textContent = t("data.importing");
   try {
     await api.importBackup(file, allowEmpty);
     closeDataModal();
-    showToast("Backup imported successfully", "success");
+    showToast(t("data.imported"), "success");
     await refreshApp();
   } catch (err) {
     if (err.requiresEmptyConfirmation) {
       button.disabled = false;
       status.textContent = "";
       const confirmed = await confirmAction({
-        title: "Replace this workspace with an empty backup?",
-        message: "This ZIP contains no saved processes. Continuing will remove the processes currently in your workspace.",
-        confirmLabel: "Replace workspace",
+        title: t("data.emptyBackupTitle"),
+        message: t("data.emptyBackupMessage"),
+        confirmLabel: t("data.emptyBackupConfirm"),
         danger: true,
       });
       if (confirmed) await importBackup(file, true);
       return;
     }
-    status.textContent = err.message || "Failed to import backup";
+    status.textContent = err.message || t("data.importFailed");
     button.disabled = false;
   }
 }
@@ -1638,8 +1663,8 @@ function openNewProcessModal() {
   backdropEl.classList.add("active");
   modalEl.innerHTML = `
     <div class="modal-header">
-      <h2 class="modal-title inline-icon-text">${icon("plus", 16)} Add New Selection Process</h2>
-      <button class="modal-close-btn" type="button" aria-label="Close dialog">${icon("close", 14)}</button>
+      <h2 class="modal-title inline-icon-text">${icon("plus", 16)} ${escapeHtml(t("newProcess.heading"))}</h2>
+      <button class="modal-close-btn" type="button" aria-label="${escapeAttr(t("common.closeDialog"))}">${icon("close", 14)}</button>
     </div>
     ${jobImportEnabled ? renderProcessEntry() : ""}
     <form id="new-process-form" class="process-form" ${jobImportEnabled ? "hidden" : ""}>
@@ -1647,76 +1672,76 @@ function openNewProcessModal() {
       <input type="hidden" name="employment_type" />
       ${renderJobImportStatus()}
       <div class="process-form-defaults" role="note">
-        <span class="process-form-defaults-status status-pill waiting">Waiting</span>
-        <span>New cards start in this status. Without a referral, today is recorded as the CV sent date and your latest uploaded CV is linked when available.</span>
+        <span class="process-form-defaults-status status-pill waiting">${escapeHtml(t("status.waiting"))}</span>
+        <span>${escapeHtml(t("newProcess.defaultsNote"))}</span>
       </div>
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label" for="create-position-title">Position Title *</label>
-          <input id="create-position-title" type="text" name="position_title" placeholder="e.g. Senior AI Systems Engineer" autocomplete="organization-title" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="create-position-title">${escapeHtml(t("form.positionTitleRequired"))}</label>
+          <input id="create-position-title" type="text" name="position_title" placeholder="${escapeAttr(t("form.positionTitlePlaceholder"))}" autocomplete="organization-title" required style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label" for="create-company-name">Company Name (optional)</label>
-          <input id="create-company-name" type="text" name="company_name" placeholder="e.g. Acme" autocomplete="organization" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
-          <span class="process-form-helper">If the client is not disclosed, leave this blank; the card will use “Unknown.”</span>
+          <label class="meta-label" for="create-company-name">${escapeHtml(t("form.companyNameOptional"))}</label>
+          <input id="create-company-name" type="text" name="company_name" placeholder="${escapeAttr(t("form.companyNamePlaceholder"))}" autocomplete="organization" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <span class="process-form-helper">${escapeHtml(t("newProcess.companyHelp"))}</span>
         </div>
       </div>
 
       ${searchPeriods.length ? `<div>
-        <label class="meta-label" for="create-search-period">Search Period</label>
+        <label class="meta-label" for="create-search-period">${escapeHtml(t("form.searchPeriod"))}</label>
         <select id="create-search-period" name="search_period_id">
           ${searchPeriodOptions(periodForToday()?.id || "")}
         </select>
       </div>` : ""}
 
-      <h3 class="edit-section-heading">Job posting &amp; application links</h3>
+      <h3 class="edit-section-heading">${escapeHtml(t("newProcess.linksHeading"))}</h3>
       <div class="form-grid form-grid-two">
         <div>
-          <label class="meta-label" for="create-job-post-url">Job Posting URL (Optional)</label>
+          <label class="meta-label" for="create-job-post-url">${escapeHtml(t("form.jobPostUrlOptional"))}</label>
           <input id="create-job-post-url" type="url" name="job_post_url" placeholder="https://..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
         <div>
-          <label class="meta-label" for="create-application-url">Company Application Page (Optional)</label>
-          <input id="create-application-url" type="url" name="application_url" placeholder="https://company.com/careers/..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+          <label class="meta-label" for="create-application-url">${escapeHtml(t("form.applicationPageOptional"))}</label>
+          <input id="create-application-url" type="url" name="application_url" placeholder="${escapeAttr(t("form.applicationUrlPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
         </div>
       </div>
-      <span class="process-form-helper">Both links are optional.</span>
+      <span class="process-form-helper">${escapeHtml(t("newProcess.linksHelp"))}</span>
 
       <div>
-        <label class="meta-label inline-icon-text" for="create-company-overview">${icon("building", 13)} Company & Role Overview</label>
+        <label class="meta-label inline-icon-text" for="create-company-overview">${icon("building", 13)} ${escapeHtml(t("form.companyOverview"))}</label>
         <div class="create-overview-editor">
-          <div class="markdown-editor-tabs" role="tablist" aria-label="Company and role overview editor mode">
-            <button id="create-overview-tab-source" type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="create-overview-source-panel" tabindex="0">Markdown</button>
-            <button id="create-overview-tab-preview" type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="create-overview-preview" tabindex="-1">Preview</button>
+          <div class="markdown-editor-tabs" role="tablist" aria-label="${escapeAttr(t("markdown.editorMode", { field: t("markdown.field.companyOverview") }))}">
+            <button id="create-overview-tab-source" type="button" class="markdown-editor-tab is-active" role="tab" aria-selected="true" aria-controls="create-overview-source-panel" tabindex="0">${escapeHtml(t("markdown.source"))}</button>
+            <button id="create-overview-tab-preview" type="button" class="markdown-editor-tab" role="tab" aria-selected="false" aria-controls="create-overview-preview" tabindex="-1">${escapeHtml(t("markdown.preview"))}</button>
           </div>
           <div id="create-overview-source-panel" role="tabpanel" aria-labelledby="create-overview-tab-source">
-            <textarea id="create-company-overview" class="role-description-textarea" name="company_overview" rows="4" placeholder="Paste the full role description from the job posting." aria-describedby="create-company-overview-help" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+            <textarea id="create-company-overview" class="role-description-textarea" name="company_overview" rows="4" placeholder="${escapeAttr(t("form.companyOverviewPlaceholder"))}" aria-describedby="create-company-overview-help" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
           </div>
           <div id="create-overview-preview" class="markdown-field-preview create-overview-preview markdown-preview" role="tabpanel" aria-labelledby="create-overview-tab-preview" tabindex="0" hidden></div>
         </div>
-        <span id="create-company-overview-help" class="process-form-helper">Paste the complete role description; formatting is kept. Use Preview to check it.</span>
+        <span id="create-company-overview-help" class="process-form-helper">${escapeHtml(t("newProcess.overviewHelp"))}</span>
       </div>
 
       ${renderTechnologySuggestions()}
 
       <details class="process-form-disclosure">
         <summary class="process-form-disclosure-summary">
-          <span class="process-form-disclosure-copy"><strong>Additional job details</strong><span>Optional salary, recruiter, company domain and keywords</span></span>
+          <span class="process-form-disclosure-copy"><strong>${escapeHtml(t("newProcess.additionalDetails"))}</strong><span>${escapeHtml(t("newProcess.additionalDetailsHint"))}</span></span>
           ${icon("chevronDown", 16)}
         </summary>
         <div class="process-form-disclosure-content">
           <div class="form-grid form-grid-salary">
             <div>
-              <label class="meta-label" for="create-salary-type">Salary Type</label>
+              <label class="meta-label" for="create-salary-type">${escapeHtml(t("form.salaryType"))}</label>
               <select id="create-salary-type" name="salary_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-                <option value="limited">Limited Range (Min - Max)</option>
-                <option value="no_min">Up to Max (No Minimum)</option>
-                <option value="no_max">From Min (No Maximum)</option>
-                <option value="unknown" selected>Unknown / Undisclosed</option>
+                <option value="limited">${escapeHtml(t("salaryType.limited"))}</option>
+                <option value="no_min">${escapeHtml(t("salaryType.noMin"))}</option>
+                <option value="no_max">${escapeHtml(t("salaryType.noMax"))}</option>
+                <option value="unknown" selected>${escapeHtml(t("salaryType.unknown"))}</option>
               </select>
             </div>
             <div>
-              <label class="meta-label" for="create-salary-currency">Currency</label>
+              <label class="meta-label" for="create-salary-currency">${escapeHtml(t("form.currency"))}</label>
               <select id="create-salary-currency" name="salary_currency" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
                 <option value="EUR" selected>EUR</option>
                 <option value="USD">USD</option>
@@ -1724,44 +1749,44 @@ function openNewProcessModal() {
               </select>
             </div>
             <div>
-              <label class="meta-label" for="create-salary-min">Minimum Salary</label>
-              <input id="create-salary-min" type="number" name="salary_min" placeholder="e.g. 80000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+              <label class="meta-label" for="create-salary-min">${escapeHtml(t("form.minimumSalary"))}</label>
+              <input id="create-salary-min" type="number" name="salary_min" placeholder="${escapeAttr(t("form.minimumSalaryPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
             </div>
             <div>
-              <label class="meta-label" for="create-salary-max">Maximum Salary</label>
-              <input id="create-salary-max" type="number" name="salary_max" placeholder="e.g. 110000" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+              <label class="meta-label" for="create-salary-max">${escapeHtml(t("form.maximumSalary"))}</label>
+              <input id="create-salary-max" type="number" name="salary_max" placeholder="${escapeAttr(t("form.maximumSalaryPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
             </div>
           </div>
 
           <div class="form-grid form-grid-three">
             <div>
-              <label class="meta-label" for="create-recruiter-type">Recruiter Source</label>
+              <label class="meta-label" for="create-recruiter-type">${escapeHtml(t("form.recruiterSource"))}</label>
               <select id="create-recruiter-type" name="recruiter_type" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);">
-                <option value="none">Direct / No Recruiter</option>
-                <option value="internal">Internal Recruiter / Talent</option>
-                <option value="external">External Agency Recruiter</option>
+                <option value="none">${escapeHtml(t("recruiterSource.none"))}</option>
+                <option value="internal">${escapeHtml(t("recruiterSource.internal"))}</option>
+                <option value="external">${escapeHtml(t("recruiterSource.external"))}</option>
               </select>
             </div>
             <div>
-              <label class="meta-label" for="create-recruiter-name">Recruiter Name (Optional)</label>
-              <input id="create-recruiter-name" type="text" name="recruiter_name" autocomplete="name" placeholder="e.g. Alex Rivera" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+              <label class="meta-label" for="create-recruiter-name">${escapeHtml(t("form.recruiterNameOptional"))}</label>
+              <input id="create-recruiter-name" type="text" name="recruiter_name" autocomplete="name" placeholder="${escapeAttr(t("form.recruiterNamePlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
             </div>
             <div>
-              <label class="meta-label" for="create-recruiter-agency">Recruiting Agency (If External)</label>
-              <input id="create-recruiter-agency" type="text" name="recruiter_agency" autocomplete="organization" placeholder="e.g. CyberTalent Search" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+              <label class="meta-label" for="create-recruiter-agency">${escapeHtml(t("form.recruitingAgency"))}</label>
+              <input id="create-recruiter-agency" type="text" name="recruiter_agency" autocomplete="organization" placeholder="${escapeAttr(t("form.recruitingAgencyPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
             </div>
           </div>
 
           <div>
-            <label class="meta-label" for="create-company-domain">Company Domain (For Logo)</label>
+            <label class="meta-label" for="create-company-domain">${escapeHtml(t("form.companyDomain"))}</label>
             <input id="create-company-domain" type="text" name="company_domain" placeholder="example.com" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
           </div>
 
           <div>
-            <label class="meta-label" for="create-keyword-note">Keywords and notes</label>
-            <input id="create-keyword-note" type="text" name="keyword_note" maxlength="100" placeholder="e.g. Remote EU, Seed startup, Rust+Go, async-first culture" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
+            <label class="meta-label" for="create-keyword-note">${escapeHtml(t("form.keywords"))}</label>
+            <input id="create-keyword-note" type="text" name="keyword_note" maxlength="100" placeholder="${escapeAttr(t("form.keywordsPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); font-family: var(--font-mono);" />
             <div style="font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 2px;">
-              <span id="keyword-char-count">0</span> / 100 chars
+              <span id="keyword-char-count">0</span> ${escapeHtml(t("form.characterLimit", { limit: 100 }))}
             </div>
           </div>
         </div>
@@ -1769,28 +1794,28 @@ function openNewProcessModal() {
 
       <details class="process-form-disclosure">
         <summary class="process-form-disclosure-summary">
-          <span class="process-form-disclosure-copy"><strong>Interview preparation</strong><span>Optional motivations, experience, salary target and notes</span></span>
+          <span class="process-form-disclosure-copy"><strong>${escapeHtml(t("newProcess.preparation"))}</strong><span>${escapeHtml(t("newProcess.preparationHint"))}</span></span>
           ${icon("chevronDown", 16)}
         </summary>
         <div class="process-form-disclosure-content">
           <div>
-            <label class="meta-label inline-icon-text" for="create-reasons-to-change">${icon("compass", 13)} Why I Want to Change Company (Top FAQ & Motivations)</label>
-            <textarea id="create-reasons-to-change" name="reasons_to_change" rows="3" placeholder="Why do you want to change company? Key motivations, strategic rationale, growth drivers..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+            <label class="meta-label inline-icon-text" for="create-reasons-to-change">${icon("compass", 13)} ${escapeHtml(t("newProcess.reasonsToChange"))}</label>
+            <textarea id="create-reasons-to-change" name="reasons_to_change" rows="3" placeholder="${escapeAttr(t("form.reasonsToChangePlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
           </div>
 
           <div>
-            <label class="meta-label inline-icon-text" for="create-relevant-experience">${icon("user", 13)} Relevant Experience</label>
-            <textarea id="create-relevant-experience" name="experience_notes" rows="3" placeholder="Experience and examples that match this role..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+            <label class="meta-label inline-icon-text" for="create-relevant-experience">${icon("user", 13)} ${escapeHtml(t("form.relevantExperience"))}</label>
+            <textarea id="create-relevant-experience" name="experience_notes" rows="3" placeholder="${escapeAttr(t("form.relevantExperiencePlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
           </div>
 
           <div>
-            <label class="meta-label inline-icon-text" for="create-expected-salary">${icon("euro", 13)} Expected Salary for This Offer</label>
-            <input id="create-expected-salary" type="text" name="expected_salary" placeholder="e.g. €85k base + equity" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
+            <label class="meta-label inline-icon-text" for="create-expected-salary">${icon("euro", 13)} ${escapeHtml(t("form.expectedSalary"))}</label>
+            <input id="create-expected-salary" type="text" name="expected_salary" placeholder="${escapeAttr(t("form.expectedSalaryPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary);" />
           </div>
 
           <div>
-            <label class="meta-label inline-icon-text" for="create-interview-notes">${icon("fileText", 13)} My Notes / Anything Else (Optional)</label>
-            <textarea id="create-interview-notes" name="interview_notes" rows="3" placeholder="Write anything else you want to remember about this selection process..." style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
+            <label class="meta-label inline-icon-text" for="create-interview-notes">${icon("fileText", 13)} ${escapeHtml(t("newProcess.myNotes"))}</label>
+            <textarea id="create-interview-notes" name="interview_notes" rows="3" placeholder="${escapeAttr(t("form.myNotesPlaceholder"))}" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-primary); resize: vertical; line-height: 1.4;"></textarea>
           </div>
         </div>
       </details>
@@ -1798,15 +1823,15 @@ function openNewProcessModal() {
       <div class="process-form-referral-choice">
         <input type="checkbox" name="is_referral" id="create-referral-cb" style="accent-color: #c084fc; width: 16px; height: 16px; cursor: pointer;" />
         <label for="create-referral-cb" class="process-form-referral-label">
-          ${icon("userCheck", 13)} Direct Candidate Referral (Check if this opportunity is from a referral)
+          ${icon("userCheck", 13)} ${escapeHtml(t("newProcess.referral"))}
         </label>
       </div>
 
-      <p class="process-stage-creation-note">Interview stages start empty. Add only stages confirmed by the employer, or add them as the process unfolds.</p>
+      <p class="process-stage-creation-note">${escapeHtml(t("newProcess.stagesNote"))}</p>
 
       <div class="form-actions">
-        <button type="button" class="btn-secondary btn-cancel">Cancel</button>
-        <button type="submit" class="btn-primary">Create Selection Process</button>
+        <button type="button" class="btn-secondary btn-cancel">${escapeHtml(t("common.cancel"))}</button>
+        <button type="submit" class="btn-primary">${escapeHtml(t("newProcess.submit"))}</button>
       </div>
     </form>
   `;
@@ -1827,7 +1852,7 @@ function openNewProcessModal() {
     const isPreview = index === 1;
     overviewSource.hidden = isPreview;
     overviewPreview.hidden = !isPreview;
-    if (isPreview) overviewPreview.innerHTML = renderMarkdown(overviewInput.value) || '<span class="empty-note">Nothing to preview yet.</span>';
+    if (isPreview) overviewPreview.innerHTML = renderMarkdown(overviewInput.value) || `<span class="empty-note">${escapeHtml(t("markdown.nothingToPreview"))}</span>`;
     overviewTabs.forEach((tab, tabIndex) => {
       tab.classList.toggle("is-active", tabIndex === index);
       tab.setAttribute("aria-selected", String(tabIndex === index));
@@ -2140,7 +2165,7 @@ searchInput.addEventListener("input", () => {
 searchFocusButton?.addEventListener("click", () => searchInput.focus());
 appLoadRetryButton?.addEventListener("click", () => {
   appLoadRetryButton.disabled = true;
-  appLoadRetryButton.textContent = "Retrying…";
+  setTranslatedText(appLoadRetryButton, "common.retrying");
   void refreshApp();
 });
 
@@ -2151,7 +2176,7 @@ window.addEventListener("war-room:open-technology-library", openTechnologyLibrar
 menuToggle?.addEventListener("click", () => {
   const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
   menuToggle.setAttribute("aria-expanded", String(!isOpen));
-  menuToggle.setAttribute("aria-label", isOpen ? "Open navigation menu" : "Close navigation menu");
+  setTranslatedAttribute(menuToggle, "aria-label", isOpen ? "header.openMenu" : "header.closeMenu");
   headerControls?.classList.toggle("is-open", !isOpen);
   syncBoardViewSwitchOffset();
 });
@@ -2162,6 +2187,18 @@ backdropEl.addEventListener("click", (e) => {
   }
 });
 
+/**
+ * Re-renders language-dependent views from current state. Keyed elements update
+ * themselves; modals cannot be open while the account menu changes the language.
+ */
+function handleLanguageChange() {
+  renderGoogleAccount();
+  renderSearchPeriodOptions();
+  updateProcessFilterSummary();
+  void refreshApp({ restoreScrollY: window.scrollY });
+}
+
+window.addEventListener(LANGUAGE_CHANGE_EVENT, handleLanguageChange);
 window.addEventListener("keydown", handleGlobalKeydown);
 window.addEventListener("scroll", saveWindowScrollPosition, { passive: true });
 window.addEventListener("pagehide", saveWindowScrollPosition);
