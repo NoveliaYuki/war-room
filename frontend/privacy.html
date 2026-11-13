@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/public/js/language.js"></script>
+  <title>War Room · Privacy policy</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2338bdf8%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/><circle cx=%2212%22 cy=%2212%22 r=%226%22/><circle cx=%2212%22 cy=%2212%22 r=%222%22/></svg>" />
+  <style>
+    :root { color-scheme: light dark; --bg: #ffffff; --text: #1f2937; --muted: #4b5563; --border: #e5e7eb; --link: #2563eb; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --text: #e5e7eb; --muted: #9ca3af; --border: #1f2937; --link: #7aa7ff; } }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+    nav { display: flex; flex-wrap: wrap; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    a { color: var(--link); }
+    h1 { font-size: 1.9rem; line-height: 1.25; margin: 24px 0 4px; }
+    h2 { font-size: 1.2rem; margin: 32px 0 8px; }
+    .updated { color: var(--muted); margin: 0; }
+    /* Shows the page language set by language.js; a language link in the nav shows that language instead. */
+    .policy { display: none; }
+    html[lang="en"] .policy[lang="en"], html[lang="es"] .policy[lang="es"], html[lang="ca"] .policy[lang="ca"] { display: block; }
+    body:has(.policy:target) .policy { display: none; }
+    body:has(.policy:target) .policy:target { display: block; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav aria-label="Language">
+      <a href="#en" hreflang="en" lang="en">English</a>
+      <a href="#es" hreflang="es" lang="es">Español</a>
+      <a href="#ca" hreflang="ca" lang="ca">Català</a>
+    </nav>
+
+    <article id="en" class="policy" lang="en">
+      <h1>War Room privacy policy</h1>
+      <p class="updated">Last updated: 13 November 2026</p>
+
+      <h2>Who runs War Room</h2>
+      <p>War Room is open-source software for tracking job interview processes. Each installation is run by its own operator on a server they control, and the data entered into it stays on that server. This policy describes what the software collects and how it uses it. The public demo at warroomdemo.dev works only inside your browser; see <a href="#en-demo">The demo</a> below.</p>
+
+      <h2>Information from your Google account</h2>
+      <p>War Room requires Google Sign-In. When you sign in, it receives your Google account's email address, name, and profile photo. It uses them only to check that your email address is on the operator's list of allowed accounts, to identify your account, and to show your name and photo in the app.</p>
+      <p>Signing in also grants access to Google Drive with the <code>drive.file</code> permission. With it, War Room can only see and change files that it creates or that you choose in Google's folder picker. It uses this access only to save encrypted backups of your data to the Drive folder you choose. It cannot read any other file in your Drive.</p>
+
+      <h2>Information you enter</h2>
+      <p>War Room stores the interview processes, stages, notes, interviewers, salary details, attachments, and CV versions you enter. They are kept in the installation's database and file storage on the operator's server. They are sent elsewhere only in these cases:</p>
+      <ul>
+        <li>Backups go to your own Google Drive, encrypted, when you set up Drive backups.</li>
+        <li>When you import a job from a link, the server downloads that web page to fill in the form.</li>
+        <li>If the operator turns on company logo lookup (it is off by default), the server sends each company's web domain to Google's favicon service to fetch its logo.</li>
+      </ul>
+
+      <h2>Security</h2>
+      <p>Google access tokens are encrypted before they are stored. Sessions use a secure, HTTP-only cookie that lasts up to 30 days. Personal API tokens are stored only as hashes. Backup files are encrypted.</p>
+
+      <h2>Cookies and browser storage</h2>
+      <p>War Room sets one cookie, which keeps you signed in. It also keeps your language, theme, filter, and sort choices in your browser's local storage. It uses no advertising or analytics cookies and does not track you across websites.</p>
+
+      <h2>Server logs</h2>
+      <p>The server records each request, including the IP address, for troubleshooting and security. These logs stay on the operator's server and are rotated automatically.</p>
+
+      <h2>Sharing</h2>
+      <p>War Room does not sell your information, show advertising, or share your information with third parties, other than with Google in the cases described above. War Room's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+      <h2>Keeping and deleting your information</h2>
+      <p>Your information is kept until you delete it. You can delete processes and files in the app. Revoking Google Drive access in Data &amp; backups withdraws War Room's Google access, deletes your personal API tokens, and signs you out everywhere. You can also remove War Room's access at any time from your <a href="https://myaccount.google.com/permissions">Google Account permissions</a>. To delete your account and all of its data, ask the operator of your installation.</p>
+
+      <h2 id="en-demo">The demo</h2>
+      <p>The demo at warroomdemo.dev has no sign-in and no server. Its sample data and anything you change are kept only in your browser's storage. To delete them, clear this site's data in your browser.</p>
+
+      <h2>Changes and contact</h2>
+      <p>Changes to this policy are published on this page and in the <a href="https://github.com/NoveliaYuki/war-room">War Room repository</a>. For questions, open an issue in the repository or contact the operator of your installation.</p>
+    </article>
+
+    <article id="es" class="policy" lang="es">
+      <h1>Política de privacidad de War Room</h1>
+      <p class="updated">Última actualización: 13 de noviembre de 2026</p>
+
+      <h2>Quién gestiona War Room</h2>
+      <p>War Room es un software de código abierto para hacer el seguimiento de procesos de selección. Cada instalación la gestiona su propio operador en un servidor que controla, y los datos que se introducen en ella se quedan en ese servidor. Esta política describe qué datos recoge el software y cómo los usa. La demo pública de warroomdemo.dev funciona solo dentro de tu navegador; consulta <a href="#es-demo">La demo</a> más abajo.</p>
+
+      <h2>Datos de tu cuenta de Google</h2>
+      <p>War Room requiere iniciar sesión con Google. Al iniciar sesión, recibe la dirección de correo, el nombre y la foto de perfil de tu cuenta de Google. Solo los usa para comprobar que tu dirección de correo está en la lista de cuentas autorizadas del operador, para identificar tu cuenta y para mostrar tu nombre y tu foto en la aplicación.</p>
+      <p>Al iniciar sesión también concedes acceso a Google Drive con el permiso <code>drive.file</code>. Con él, War Room solo puede ver y modificar los archivos que crea o los que eliges en el selector de carpetas de Google. Solo usa este acceso para guardar copias de seguridad cifradas de tus datos en la carpeta de Drive que elijas. No puede leer ningún otro archivo de tu Drive.</p>
+
+      <h2>Datos que introduces</h2>
+      <p>War Room guarda los procesos de selección, fases, notas, entrevistadores, datos salariales, archivos adjuntos y versiones del CV que introduces. Se guardan en la base de datos y el almacenamiento de archivos de la instalación, en el servidor del operador. Solo se envían a otro lugar en estos casos:</p>
+      <ul>
+        <li>Las copias de seguridad se guardan cifradas en tu propio Google Drive, si configuras las copias en Drive.</li>
+        <li>Al importar una oferta desde un enlace, el servidor descarga esa página web para rellenar el formulario.</li>
+        <li>Si el operador activa la búsqueda de logotipos de empresas (está desactivada por defecto), el servidor envía el dominio web de cada empresa al servicio de favicons de Google para obtener su logotipo.</li>
+      </ul>
+
+      <h2>Seguridad</h2>
+      <p>Los tokens de acceso de Google se cifran antes de guardarse. Las sesiones usan una cookie segura y solo HTTP que dura hasta 30 días. Los tokens de API personales solo se guardan como hashes. Los archivos de copia de seguridad están cifrados.</p>
+
+      <h2>Cookies y almacenamiento del navegador</h2>
+      <p>War Room usa una sola cookie, que mantiene tu sesión iniciada. También guarda tus preferencias de idioma, tema, filtros y orden en el almacenamiento local del navegador. No usa cookies de publicidad ni de analítica, ni te rastrea en otros sitios web.</p>
+
+      <h2>Registros del servidor</h2>
+      <p>El servidor registra cada solicitud, incluida la dirección IP, para resolver problemas y por seguridad. Estos registros se quedan en el servidor del operador y se rotan automáticamente.</p>
+
+      <h2>Cesión de datos</h2>
+      <p>War Room no vende tus datos, no muestra publicidad y no cede tus datos a terceros, salvo a Google en los casos descritos arriba. El uso y la transferencia que hace War Room de la información recibida de las API de Google cumplen la <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de datos de usuario de los servicios de API de Google</a>, incluidos los requisitos de uso limitado.</p>
+
+      <h2>Conservación y eliminación de tus datos</h2>
+      <p>Tus datos se conservan hasta que los eliminas. Puedes eliminar procesos y archivos en la aplicación. Al revocar el acceso a Google Drive en Datos y copias de seguridad, War Room pierde el acceso a Google, se eliminan tus tokens de API personales y se cierran todas tus sesiones. También puedes quitar el acceso de War Room en cualquier momento desde los <a href="https://myaccount.google.com/permissions">permisos de tu cuenta de Google</a>. Para eliminar tu cuenta y todos sus datos, pídeselo al operador de tu instalación.</p>
+
+      <h2 id="es-demo">La demo</h2>
+      <p>La demo de warroomdemo.dev no tiene inicio de sesión ni servidor. Sus datos de ejemplo y todo lo que cambies se guardan solo en el almacenamiento de tu navegador. Para eliminarlos, borra los datos de este sitio en tu navegador.</p>
+
+      <h2>Cambios y contacto</h2>
+      <p>Los cambios en esta política se publican en esta página y en el <a href="https://github.com/NoveliaYuki/war-room">repositorio de War Room</a>. Si tienes preguntas, abre una incidencia en el repositorio o contacta con el operador de tu instalación.</p>
+    </article>
+
+    <article id="ca" class="policy" lang="ca">
+      <h1>Política de privadesa de War Room</h1>
+      <p class="updated">Darrera actualització: 13 de novembre de 2026</p>
+
+      <h2>Qui gestiona War Room</h2>
+      <p>War Room és un programari de codi obert per fer el seguiment de processos de selecció. Cada instal·lació la gestiona el seu propi operador en un servidor que controla, i les dades que s'hi introdueixen es queden en aquest servidor. Aquesta política descriu quines dades recull el programari i com les fa servir. La demo pública de warroomdemo.dev funciona només dins del teu navegador; consulta <a href="#ca-demo">La demo</a> més avall.</p>
+
+      <h2>Dades del teu compte de Google</h2>
+      <p>War Room requereix iniciar la sessió amb Google. En iniciar la sessió, rep l'adreça electrònica, el nom i la foto de perfil del teu compte de Google. Només els fa servir per comprovar que la teva adreça electrònica és a la llista de comptes autoritzats de l'operador, per identificar el teu compte i per mostrar el teu nom i la teva foto a l'aplicació.</p>
+      <p>En iniciar la sessió també concedeixes accés a Google Drive amb el permís <code>drive.file</code>. Amb aquest permís, War Room només pot veure i modificar els fitxers que crea o els que tries al selector de carpetes de Google. Només fa servir aquest accés per desar còpies de seguretat xifrades de les teves dades a la carpeta de Drive que triïs. No pot llegir cap altre fitxer del teu Drive.</p>
+
+      <h2>Dades que introdueixes</h2>
+      <p>War Room desa els processos de selecció, fases, notes, entrevistadors, dades salarials, fitxers adjunts i versions del CV que introdueixes. Es desen a la base de dades i a l'emmagatzematge de fitxers de la instal·lació, al servidor de l'operador. Només s'envien a un altre lloc en aquests casos:</p>
+      <ul>
+        <li>Les còpies de seguretat es desen xifrades al teu propi Google Drive, si configures les còpies a Drive.</li>
+        <li>En importar una oferta des d'un enllaç, el servidor baixa aquella pàgina web per omplir el formulari.</li>
+        <li>Si l'operador activa la cerca de logotips d'empreses (està desactivada per defecte), el servidor envia el domini web de cada empresa al servei de favicons de Google per obtenir-ne el logotip.</li>
+      </ul>
+
+      <h2>Seguretat</h2>
+      <p>Els testimonis d'accés de Google es xifren abans de desar-se. Les sessions fan servir una galeta segura i només HTTP que dura fins a 30 dies. Els testimonis d'API personals només es desen com a resums criptogràfics. Els fitxers de còpia de seguretat estan xifrats.</p>
+
+      <h2>Galetes i emmagatzematge del navegador</h2>
+      <p>War Room fa servir una sola galeta, que manté la teva sessió iniciada. També desa les teves preferències d'idioma, tema, filtres i ordre a l'emmagatzematge local del navegador. No fa servir galetes de publicitat ni d'analítica, ni et fa el seguiment en altres llocs web.</p>
+
+      <h2>Registres del servidor</h2>
+      <p>El servidor registra cada sol·licitud, inclosa l'adreça IP, per resoldre problemes i per seguretat. Aquests registres es queden al servidor de l'operador i es roten automàticament.</p>
+
+      <h2>Cessió de dades</h2>
+      <p>War Room no ven les teves dades, no mostra publicitat i no cedeix les teves dades a tercers, tret de Google en els casos descrits més amunt. L'ús i la transferència que fa War Room de la informació rebuda de les API de Google compleixen la <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de dades d'usuari dels serveis d'API de Google</a>, inclosos els requisits d'ús limitat.</p>
+
+      <h2>Conservació i eliminació de les teves dades</h2>
+      <p>Les teves dades es conserven fins que les elimines. Pots eliminar processos i fitxers a l'aplicació. En revocar l'accés a Google Drive a Dades i còpies de seguretat, War Room perd l'accés a Google, s'eliminen els teus testimonis d'API personals i es tanquen totes les teves sessions. També pots treure l'accés de War Room en qualsevol moment des dels <a href="https://myaccount.google.com/permissions">permisos del teu compte de Google</a>. Per eliminar el teu compte i totes les seves dades, demana-ho a l'operador de la teva instal·lació.</p>
+
+      <h2 id="ca-demo">La demo</h2>
+      <p>La demo de warroomdemo.dev no té inici de sessió ni servidor. Les seves dades d'exemple i tot el que canviïs es desen només a l'emmagatzematge del teu navegador. Per eliminar-les, esborra les dades d'aquest lloc al navegador.</p>
+
+      <h2>Canvis i contacte</h2>
+      <p>Els canvis en aquesta política es publiquen en aquesta pàgina i al <a href="https://github.com/NoveliaYuki/war-room">repositori de War Room</a>. Si tens preguntes, obre una incidència al repositori o contacta amb l'operador de la teva instal·lació.</p>
+    </article>
+  </main>
+</body>
+</html>
