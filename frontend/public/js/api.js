@@ -130,6 +130,26 @@ const backendApi = {
     return res.json();
   },
 
+  /** Returns the automatic Drive backup schedule and its last result. */
+  async getBackupSchedule() {
+    const res = await send("/api/google/backup-schedule", { cache: "no-store" });
+    if (!res.ok) throw new Error(t("api.httpError", { status: res.status }));
+    return res.json();
+  },
+
+  /** Saves the automatic Drive backup schedule. */
+  async saveBackupSchedule(schedule) {
+    const res = await send("/api/google/backup-schedule", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(schedule),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: t("backupSchedule.saveFailed") }));
+      throw new Error(serverMessage(error.error, t("backupSchedule.saveFailed")));
+    }
+    return res.json();
+  },
+
   /** Uploads a Drive backup immediately. */
   async backupNowGoogle() {
     const res = await send("/api/google/backup", { method: "POST" });

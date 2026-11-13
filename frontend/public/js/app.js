@@ -12,6 +12,7 @@ import { captureLoadingView, revealLoadedContent } from "./utils/loadingTransiti
 import { openDetailModal } from "./components/detailModal.js";
 import { openCvLibrary } from "./components/cvLibrary.js";
 import { openTechnologyLibrary } from "./components/technologyLibrary.js";
+import { mountBackupSchedule } from "./components/backupSchedule.js";
 import { bindJobImport, renderJobImportStatus, renderProcessEntry, renderTechnologySuggestions } from "./components/jobImport.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
@@ -415,7 +416,8 @@ function renderGoogleAccount() {
 function renderConnectedGoogleAccount() {
   const folder = googleStatus.folder_name || t("google.rootFolder");
   const last = googleStatus.last_backup_at ? t("google.lastBackup", { date: new Date(googleStatus.last_backup_at).toLocaleString(getLocale()) }) : t("google.noBackup");
-  const failed = googleStatus.last_status === "error" ? `<p class="account-note account-error">${escapeHtml(t("google.lastBackupFailed"))}</p>` : "";
+  const failedKey = { error: "google.lastBackupFailed", reauth_required: "google.reauthRequired" }[googleStatus.last_status];
+  const failed = failedKey ? `<p class="account-note account-error">${escapeHtml(t(failedKey))}</p>` : "";
   const cleanupPending = googleStatus.last_status === "cleanup_pending" ? `<p class="account-note">${escapeHtml(t("google.cleanupPending"))}</p>` : "";
   googleAccountSection.innerHTML = `<div class="account-status-card">
       <p class="account-heading">${icon("cloud", 15)} ${escapeHtml(t("google.heading"))}</p>
@@ -1506,6 +1508,7 @@ function openDataModal() {
       <section class="data-transfer-section">
         <h3>${escapeHtml(t("google.heading"))}</h3>
         <div id="google-drive-backup-option" aria-live="polite"></div>
+        <div id="google-backup-schedule"></div>
       </section>
       <section class="data-transfer-section">
         <h3>${escapeHtml(t("data.importTitle"))}</h3>
@@ -1524,7 +1527,8 @@ function openDataModal() {
     </div>`;
   backdropEl.classList.add("active");
   activateModal(modalEl, "#btn-close-data-modal");
-  void refreshDataGoogleStatus();
+  const scheduleContainer = modalEl.querySelector("#google-backup-schedule");
+  void refreshDataGoogleStatus().then(() => mountBackupSchedule(scheduleContainer, { demo: isDemoMode, driveStatus: googleStatus }));
   modalEl.querySelector("#btn-close-data-modal").addEventListener("click", closeDataModal);
   modalEl.querySelector("#btn-export-backup").addEventListener("click", downloadBackup);
   const fileInput = modalEl.querySelector("#backup-import-file");

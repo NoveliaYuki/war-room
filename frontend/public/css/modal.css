@@ -2026,3 +2026,24 @@ body.is-resizing-split * {
   .general-process-group > .group-header { align-items: flex-start; flex-direction: column; }
   .general-process-group .btn-edit-details { white-space: nowrap; }
 }
+
+/* Automatic Drive backup schedule in Data & backups. */
+.backup-schedule { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border-subtle); }
+.backup-schedule-heading { display: flex; align-items: center; gap: 7px; margin: 0 0 6px; font-size: 14px; }
+.backup-schedule-fields { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.backup-schedule-fields:disabled { opacity: 0.6; }
+.backup-schedule-frequency { min-width: 0; margin: 0; padding: 0; border: 0; }
+.backup-schedule-frequency legend { margin-bottom: 6px; padding: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.backup-schedule-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.backup-schedule-options label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; box-sizing: border-box; border: 1px solid var(--border-medium); border-radius: var(--radius-full); background: var(--bg-surface); color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.backup-schedule-options label:has(input:checked) { border-color: var(--accent-blue); }
+.backup-schedule-when { display: flex; flex-wrap: wrap; gap: 12px; }
+.backup-schedule-when label { display: grid; gap: 5px; min-width: 0; flex: 1 1 140px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.backup-schedule-when label[hidden] { display: none; }
+.backup-schedule-when select, .backup-schedule-when input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-primary); font: 13px var(--font-sans); }
+.data-transfer-section p.backup-schedule-summary { margin: 0; color: var(--text-primary); font-weight: 600; }
+.data-transfer-section p.backup-schedule-summary:empty { display: none; }
+.backup-schedule-fields .btn-primary { justify-self: start; }
+.data-transfer-section p.backup-schedule-note { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.data-transfer-section p.backup-schedule-note.account-error { color: var(--danger, #d9534f); }
+.backup-schedule-note svg { flex: none; margin-top: 2px; }

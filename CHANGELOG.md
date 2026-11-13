@@ -1,3 +1,22 @@
+Version 0.6.0 — 2026-11-13 · Release: [v0.6.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.6.0)
+
+# Highlights
+- Google Drive backups can now run on a schedule. In **Data & backups**, choose Off, Every day, or Every week on a chosen day, and a time of day; War Room describes the choice in one sentence, such as "Backs up every Monday at 9:00 AM", with no cron syntax anywhere.
+- The panel shows when the next automatic backup runs and how the last one went, including when Google access has expired or been revoked and you need to sign in again.
+
+# What changed
+- Add `GET` and `PUT /api/google/backup-schedule`. A schedule is stored as structured fields (frequency, weekday, time of day, and the browser's IANA time zone) in the new `backup_schedules` table (migration 25). Every account, including existing ones, starts with automatic backups off, so nothing changes until you turn them on.
+- Validate every schedule field on the server: frequency must be off, daily, or weekly; the weekday 0 to 6; the time strict 24-hour `HH:MM`; and the time zone a named IANA zone (never the server's own). Errors are translated in every language.
+- Run due backups from a background scheduler that checks once a minute, keeps the chosen wall-clock time across daylight-saving changes, uploads at most two backups at once, and claims each run before starting it, so a run never repeats after a restart. A run missed while the server was down happens once at startup. Shutdown stops the scheduler before the database closes.
+- Record each automatic run's result: completed, failed, skipped because Drive is not connected or not set up on the server, or failed because Google access expired or was revoked. Signing in again clears the expired-access message.
+- Show an expired or revoked Google grant in the account menu and on Backup now with its own translated message instead of a generic failure.
+- Embed the time zone database in the backend binary so schedules work in any zone.
+- Add the `BACKUP_SCHEDULER_ENABLED` setting (default `true`); the isolated test backend turns it off.
+- In the browser demo, show the schedule control disabled with an explanation that automatic backups need a signed-in account.
+
+# References
+- [#9](https://github.com/NoveliaYuki/war-room/pull/9) / noissue
+
 Version 0.4.0 — 2026-11-09 · Release: [v0.4.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.4.0)
 
 # Highlights

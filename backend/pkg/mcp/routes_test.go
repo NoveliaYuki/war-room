@@ -39,6 +39,8 @@ var routesWithoutTools = map[string]string{ // #nosec G101 -- route paths and re
 	"GET /api/google/status":                    "Drive setup happens in the browser",
 	"PUT /api/google/folder":                    "Drive setup happens in the browser",
 	"POST /api/google/backup":                   "Drive backups are started in the browser",
+	"GET /api/google/backup-schedule":           "Drive setup happens in the browser",
+	"PUT /api/google/backup-schedule":           "Drive setup happens in the browser",
 	"POST /api/google/revoke":                   "revoking Google access is a user decision in the browser",
 	"GET /api/backup/export":                    "backups are encrypted files the user downloads",
 	"POST /api/backup/import":                   "restoring a backup replaces data and needs the user",

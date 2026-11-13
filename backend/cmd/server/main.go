@@ -35,6 +35,7 @@ func main() {
 		"data_dir", cfg.DataDir, "static_dir", cfg.StaticDir, "log_level", cfg.LogLevel, "log_format", cfg.LogFormat,
 		"test_mode", cfg.TestMode, "https_only_sessions", cfg.SessionCookieSecure,
 		"job_import_enabled", cfg.JobImportEnabled, "logo_lookup_enabled", cfg.LogoLookupEnabled,
+		"backup_scheduler_enabled", cfg.BackupSchedulerEnabled,
 		"allowed_email_count", len(cfg.AuthAllowedEmails))
 
 	service.RemoveStaleBackupTempFiles(cfg.DataDir)
@@ -59,8 +60,11 @@ func main() {
 	logGoogleConfigurationIssues(driveSvc)
 	jobSvc.SetDriveTrigger(driveSvc.Trigger)
 	service.StartInactiveWaitingSchedulerWithCallback(schedulerContext, repo, 24*time.Hour, driveSvc.Trigger)
+	scheduleSvc := service.NewBackupScheduleService(repo, time.Now)
+	defer startBackupScheduler(schedulerContext, cfg, repo, driveSvc)()
 	h := handlers.NewHandler(jobSvc, logoSvc, cfg)
 	h.SetDriveService(driveSvc)
+	h.SetBackupScheduleService(scheduleSvc)
 	h.SetAuthService(authSvc)
 
 	mux := http.NewServeMux()
@@ -76,6 +80,25 @@ func main() {
 
 	srv := newHTTPServer(cfg, handlerWithMiddleware)
 	runServer(srv, cfg)
+}
+
+// startBackupScheduler starts the automatic Drive backup scheduler, checking
+// for due backups every minute, and returns a function that stops it. Stop
+// runs before the database closes and waits briefly for running uploads.
+func startBackupScheduler(ctx context.Context, cfg *config.Config, repo *repository.Repository, drive *service.DriveBackupService) func() {
+	if !cfg.BackupSchedulerEnabled {
+		slog.Info("scheduled google drive backups are disabled")
+		return func() {}
+	}
+	ticker := time.NewTicker(time.Minute)
+	scheduler := service.NewBackupScheduler(repo, drive.BackupNow, time.Now)
+	scheduler.Start(ctx, ticker.C)
+	return func() {
+		ticker.Stop()
+		if !scheduler.Stop(10 * time.Second) {
+			slog.Warn("scheduled google drive backups were still running at shutdown")
+		}
+	}
 }
 
 // logGoogleConfigurationIssues prints exactly which Google-related

@@ -208,7 +208,7 @@ func TestAPITokenMigrationPreservesUsersAndCascadesOnDelete(t *testing.T) {
 	db := openMigrationTestDB(t)
 	mustMigrationExec(t, db, schemaSQL)
 	mustMigrationSchema(t, db)
-	mustMigrationExec(t, db, "DROP TABLE api_tokens; DELETE FROM schema_migrations WHERE version = 24")
+	mustMigrationExec(t, db, "DROP TABLE api_tokens; DELETE FROM schema_migrations WHERE version >= 24")
 	mustMigrationExec(t, db, `INSERT INTO users (id, google_sub, email) VALUES ('legacy-user', 'sub-1', 'legacy@example.com')`)
 
 	mustMigrationSchema(t, db)
