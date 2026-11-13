@@ -30,8 +30,10 @@ const (
 	requestID  = "mcp-test-request"
 )
 
-var allTools = []string{"list_jobs", "get_job", "create_job", "update_job", "list_technologies",
-	"create_technology", "update_technology", "list_cv_versions", "create_stage", "update_stage"}
+var allTools = []string{"list_jobs", "get_job", "create_job", "update_job", "count_jobs", "set_job_cv_version",
+	"list_technologies", "create_technology", "update_technology", "list_cv_versions", "create_stage", "update_stage",
+	"reorder_stages", "list_meetings", "create_question", "update_question", "reorder_questions",
+	"list_search_periods", "create_search_period", "update_search_period"}
 
 // newJobService returns a service over a fresh database holding ownerID's
 // job "job-1" and an empty account for strangerID.
@@ -133,7 +135,10 @@ func TestListToolsExposesEveryToolWithItsRequiredFields(t *testing.T) {
 		}
 	}
 	for name, want := range map[string][]string{"create_job": {"company_name", "position_title"}, "update_job": {"id", "changes"},
-		"create_stage": {"job_id", "stage_type"}, "update_stage": {"id", "changes"}} {
+		"create_stage": {"job_id", "stage_type"}, "update_stage": {"id", "changes"}, "set_job_cv_version": {"id", "version_id"},
+		"reorder_stages": {"job_id", "stage_ids"}, "create_question": {"stage_id", "question"}, "update_question": {"id", "changes"},
+		"reorder_questions": {"stage_id", "question_ids"}, "create_search_period": {"name", "start_date"},
+		"update_search_period": {"id", "name", "start_date"}} {
 		if !slices.Equal(required[name], want) {
 			t.Errorf("%s required = %v, want %v", name, required[name], want)
 		}
@@ -373,17 +378,77 @@ func (f *fakeJobs) UpdateStage(userID, _ string, _ models.UpdateStageInput) (*mo
 	return nil, f.err
 }
 
+func (f *fakeJobs) ReorderStages(userID, _ string, _ []string) error {
+	f.seen(userID)
+	return f.err
+}
+
+func (f *fakeJobs) GetJobCounts(userID string) (*models.JobCounts, error) {
+	f.seen(userID)
+	return nil, f.err
+}
+
+func (f *fakeJobs) AssignCVVersion(userID, _ string, _ *string) error {
+	f.seen(userID)
+	return f.err
+}
+
+func (f *fakeJobs) GetScheduledMeetings(userID string) ([]models.ScheduledMeeting, error) {
+	f.seen(userID)
+	return nil, f.err
+}
+
+func (f *fakeJobs) CreateQuestion(userID string, _ models.CreateQuestionInput) (*models.Question, error) {
+	f.seen(userID)
+	return nil, f.err
+}
+
+func (f *fakeJobs) UpdateQuestion(userID, _ string, _ models.UpdateQuestionInput) (*models.Question, error) {
+	f.seen(userID)
+	return nil, f.err
+}
+
+func (f *fakeJobs) ReorderQuestions(userID, _ string, _ []string) error {
+	f.seen(userID)
+	return f.err
+}
+
+func (f *fakeJobs) ListSearchPeriods(userID string) ([]models.SearchPeriod, error) {
+	f.seen(userID)
+	return nil, f.err
+}
+
+func (f *fakeJobs) CreateSearchPeriod(userID string, _ models.SearchPeriodInput) (*models.SearchPeriod, error) {
+	f.seen(userID)
+	return nil, f.err
+}
+
+func (f *fakeJobs) UpdateSearchPeriod(userID, _ string, _ models.SearchPeriodInput) error {
+	f.seen(userID)
+	return f.err
+}
+
 var validArguments = map[string]map[string]any{
-	"list_jobs":         {},
-	"get_job":           {"id": "job-1"},
-	"create_job":        {"company_name": "Acme", "position_title": "Engineer"},
-	"update_job":        {"id": "job-1", "changes": map[string]any{}},
-	"list_technologies": {},
-	"create_technology": {"name": "Go"},
-	"update_technology": {"id": "tech-1", "name": "Go"},
-	"list_cv_versions":  {},
-	"create_stage":      {"job_id": "job-1", "stage_type": "HR"},
-	"update_stage":      {"id": "stage-1", "changes": map[string]any{}},
+	"list_jobs":            {},
+	"get_job":              {"id": "job-1"},
+	"create_job":           {"company_name": "Acme", "position_title": "Engineer"},
+	"update_job":           {"id": "job-1", "changes": map[string]any{}},
+	"list_technologies":    {},
+	"create_technology":    {"name": "Go"},
+	"update_technology":    {"id": "tech-1", "name": "Go"},
+	"list_cv_versions":     {},
+	"create_stage":         {"job_id": "job-1", "stage_type": "HR"},
+	"update_stage":         {"id": "stage-1", "changes": map[string]any{}},
+	"count_jobs":           {},
+	"set_job_cv_version":   {"id": "job-1", "version_id": nil},
+	"reorder_stages":       {"job_id": "job-1", "stage_ids": []string{"stage-1"}},
+	"list_meetings":        {},
+	"create_question":      {"stage_id": "stage-1", "question": "Why us?"},
+	"update_question":      {"id": "question-1", "changes": map[string]any{}},
+	"reorder_questions":    {"stage_id": "stage-1", "question_ids": []string{"question-1"}},
+	"list_search_periods":  {},
+	"create_search_period": {"name": "Spring", "start_date": "2026-03-01"},
+	"update_search_period": {"id": "period-1", "name": "Spring", "start_date": "2026-03-01"},
 }
 
 func TestEveryToolMapsServiceErrorsForTheClient(t *testing.T) {
@@ -410,7 +475,8 @@ func TestEveryToolMapsServiceErrorsForTheClient(t *testing.T) {
 
 func TestListsAreNeverNull(t *testing.T) {
 	session, _ := connect(t, &fakeJobs{}, ownerID)
-	for name, key := range map[string]string{"list_jobs": "jobs", "list_technologies": "technologies", "list_cv_versions": "versions"} {
+	for name, key := range map[string]string{"list_jobs": "jobs", "list_technologies": "technologies", "list_cv_versions": "versions",
+		"list_meetings": "meetings", "list_search_periods": "search_periods"} {
 		output := mustCall(t, session, name, map[string]any{})
 		if list, ok := output[key].([]any); !ok || len(list) != 0 {
 			t.Errorf("%s %s = %#v, want an empty list", name, key, output[key])

@@ -22,10 +22,21 @@ var routeTools = map[string]string{
 	"PUT /api/stages/{id}":             "update_stage",
 	"PUT /api/stages/{id}/schedule":    "update_stage",
 	"PUT /api/stages/{id}/set-current": "update_stage",
+	"PUT /api/stages/reorder":          "reorder_stages",
+	"GET /api/jobs/counts":             "count_jobs",
+	"PUT /api/jobs/{id}/cv-version":    "set_job_cv_version",
+	"GET /api/meetings":                "list_meetings",
+	"POST /api/questions":              "create_question",
+	"PUT /api/questions/{id}":          "update_question",
+	"PUT /api/questions/reorder":       "reorder_questions",
+	"GET /api/search-periods":          "list_search_periods",
+	"POST /api/search-periods":         "create_search_period",
+	"PUT /api/search-periods/{id}":     "update_search_period",
 }
 
 // routesWithoutTools records why an API route has no MCP tool. A new route
-// must be added to routeTools with a tool, or here with a reason.
+// must be added to routeTools with a tool, or here with a lasting reason; a
+// deferral such as "not available to agents yet" is not one.
 var routesWithoutTools = map[string]string{ // #nosec G101 -- route paths and reasons, not credentials.
 	"GET /":                                     "serves the browser app",
 	"GET /api/health":                           "reports container health",
@@ -59,17 +70,7 @@ var routesWithoutTools = map[string]string{ // #nosec G101 -- route paths and re
 	"DELETE /api/technologies/{id}":             "deleting stays a user action in the app",
 	"DELETE /api/technologies/{id}/assignments": "deleting stays a user action in the app",
 	"POST /api/jobs/import-preview":             "agents read postings themselves and call create_job",
-	"PUT /api/jobs/{id}/cv-version":             "not available to agents yet; create_job links the latest CV",
-	"GET /api/jobs/counts":                      "not available to agents yet; list_jobs returns every status",
 	"PUT /api/jobs/reorder":                     "board order is arranged by the user",
-	"GET /api/meetings":                         "not available to agents yet; get_job returns each stage's meeting",
-	"POST /api/questions":                       "not available to agents yet",
-	"PUT /api/questions/{id}":                   "not available to agents yet",
-	"PUT /api/questions/reorder":                "not available to agents yet",
-	"PUT /api/stages/reorder":                   "not available to agents yet",
-	"GET /api/search-periods":                   "not available to agents yet",
-	"POST /api/search-periods":                  "not available to agents yet",
-	"PUT /api/search-periods/{id}":              "not available to agents yet",
 }
 
 var routePattern = regexp.MustCompile(`mux\.HandleFunc\("([A-Z]+ /[^"]*)"`)
@@ -92,6 +93,49 @@ func TestEveryAPIRouteIsCoveredOrExplained(t *testing.T) {
 		}
 	}
 	assertListedRoutesExist(t, routes)
+	assertReasonsAreNotDeferrals(t, routesWithoutTools)
+}
+
+// deferrals are phrases that postpone a tool instead of explaining why a
+// route has none.
+var deferrals = []string{"not available to agents yet", "not yet", "todo", "for now", "later"}
+
+// assertReasonsAreNotDeferrals reports routes whose recorded reason is blank
+// or only postpones the tool, so a missing tool cannot pass as explained.
+func assertReasonsAreNotDeferrals(t *testing.T, reasons map[string]string) {
+	t.Helper()
+	for route, reason := range reasons {
+		if deferral := deferralIn(reason); deferral != "" {
+			t.Errorf("%s: %q is a deferral, not a reason: add an MCP tool or record why agents must not have one", route, deferral)
+		}
+	}
+}
+
+func deferralIn(reason string) string {
+	normalized := strings.ToLower(strings.TrimSpace(reason))
+	if normalized == "" {
+		return "(blank)"
+	}
+	for _, deferral := range deferrals {
+		if strings.Contains(normalized, deferral) {
+			return deferral
+		}
+	}
+	return ""
+}
+
+func TestDeferralsAreNotReasons(t *testing.T) {
+	for _, reason := range []string{"not available to agents yet", "Not available to agents yet; get_job covers it",
+		"(not yet)", "TODO", "  ", "browser only for now", "agents can do this later"} {
+		if deferralIn(reason) == "" {
+			t.Errorf("deferralIn(%q) accepted a deferral", reason)
+		}
+	}
+	for _, reason := range routesWithoutTools {
+		if deferral := deferralIn(reason); deferral != "" {
+			t.Errorf("recorded reason %q contains %q", reason, deferral)
+		}
+	}
 }
 
 // assertListedRoutesExist reports listed routes the API no longer registers.

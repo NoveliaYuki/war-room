@@ -1,3 +1,20 @@
+Version 0.4.2 — 2026-11-13
+
+# Highlights
+- Agents can now do through the MCP server everything the app's API offers except deleting records, uploading files, Google Drive and backup setup, and arranging the board.
+- The MCP route check no longer accepts "not available to agents yet" as a reason, so a route cannot quietly go without a tool again.
+
+# What changed
+- Add the MCP tools `count_jobs`, `set_job_cv_version`, `reorder_stages`, `list_meetings`, `create_question`, `update_question`, `reorder_questions`, `list_search_periods`, `create_search_period`, and `update_search_period`. Each reuses the API's service layer and acts only on the token owner's records.
+- Return the API's "invalid ordering" message from a reorder tool that names an unknown, foreign, or repeated ID, and reject an empty ordering, instead of reporting an internal error.
+- Report "not found" from `update_question` with no changes when the question belongs to another account or does not exist, instead of an empty success.
+- Fail `TestEveryAPIRouteIsCoveredOrExplained` when a recorded reason is blank or only defers the tool, such as "not available to agents yet", "todo", or "for now".
+- Cover every new tool with unit tests at 100% statement coverage and with integration tests through the production middleware chain, including another account's token trying to change the owner's questions, stages, search periods, and CV version.
+- List every MCP tool in the README's Agent access section.
+
+# References
+- [#9](https://github.com/NoveliaYuki/war-room/pull/9) / noissue
+
 Version 0.4.0 — 2026-11-09 · Release: [v0.4.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.4.0)
 
 # Highlights
