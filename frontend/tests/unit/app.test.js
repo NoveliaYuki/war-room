@@ -713,6 +713,36 @@ describe('application entry point', () => {
     await flush();
     expect(mocks.showToast).toHaveBeenCalledWith('Failed to export backup', 'error');
 
+    // The CSV export reads every process, not only the filtered board, and builds the file in the browser.
+    const csvButton = document.querySelector('#btn-export-csv');
+    expect(csvButton.textContent).toContain('Download CSV');
+    expect(csvButton.disabled).toBe(false);
+    const csvClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    URL.createObjectURL.mockClear();
+    mocks.api.getJobs.mockClear();
+    mocks.api.getJobs.mockResolvedValueOnce([{ company_name: 'Acme', position_title: 'Engineer', status: 'waiting' }]);
+    mocks.api.getSearchPeriods.mockResolvedValueOnce([]);
+    csvButton.click();
+    expect(csvButton.disabled).toBe(true);
+    await flush();
+    expect(mocks.api.getJobs).toHaveBeenCalledWith('all');
+    const csvBlob = URL.createObjectURL.mock.calls.at(-1)[0];
+    expect(csvBlob.type).toBe('text/csv;charset=utf-8');
+    expect(new Uint8Array(await csvBlob.arrayBuffer()).slice(0, 3)).toEqual(new Uint8Array([0xef, 0xbb, 0xbf]));
+    expect(csvClick).toHaveBeenCalled();
+    expect(mocks.showToast).toHaveBeenCalledWith('CSV file downloaded', 'success');
+    expect(csvButton.disabled).toBe(false);
+    csvClick.mockRestore();
+    mocks.api.getJobs.mockRejectedValueOnce(new Error('jobs failed'));
+    csvButton.click();
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('jobs failed', 'error');
+    mocks.api.getJobs.mockRejectedValueOnce(new Error(''));
+    csvButton.click();
+    await flush();
+    expect(mocks.showToast).toHaveBeenCalledWith('Failed to export CSV file', 'error');
+    expect(csvButton.disabled).toBe(false);
+
     const importFile = document.querySelector('#backup-import-file');
     Object.defineProperty(importFile, 'files', { configurable: true, value: [backupFile] });
     importFile.dispatchEvent(new Event('change'));

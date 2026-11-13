@@ -1,3 +1,24 @@
+Version 0.5.0 — 2026-11-13 · Release: [v0.5.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.5.0)
+
+# Highlights
+- Export the board as a CSV file for Excel, Google Sheets, or Numbers from **Data & Backups**, signed in and in the browser demo. Headers, statuses, work arrangements, employment types, and stage types follow the selected language.
+- War Room has a privacy policy in English, Spanish, and Catalan at `/privacy.html`, linked from the sign-in screen and the account menu (from 0.4.1).
+- The MCP server now covers every remaining API route: interview questions, search periods, stage order, meetings, board counts, and the CV version a job uses (from 0.4.2).
+
+# What changed
+- Add an "Export to a spreadsheet" section to Data & Backups. It downloads every process, not only the filtered board, as `war-room-board-YYYY-MM-DD.csv`, with company, role, status, current stage, work arrangement, employment type, salary range and currency, referral, recruiter details, tech stack, CV version and file, CV sent and first recruiter contact dates, search period, posting and application links, and the dates the process was added, last changed status, and was last updated.
+- Build the CSV in the browser from the jobs API, with no new backend route. It uses RFC 4180 quoting, CRLF line endings, and a UTF-8 byte order mark so spreadsheets show accented text correctly; dates are ISO `YYYY-MM-DD`, and text you entered is exported as typed.
+- Prefix cells that start with `=`, `+`, `-`, `@`, a tab, or a carriage return with a single quote, so text from imported job postings cannot run as a spreadsheet formula.
+- The CSV file is created on your device and is not encrypted; use the encrypted backup to move data between installations.
+- Add `privacy.html` to the app image and the static demo build. It opens in the interface language, with links to the other languages (from 0.4.1).
+- Describe what War Room collects from Google Sign-In and Drive (`drive.file`), what it stores and where, cookies and browser storage, server logs, sharing, the Google API Services User Data Policy, deletion, and how the demo keeps data in the browser (from 0.4.1).
+- Add the MCP tools `count_jobs`, `set_job_cv_version`, `reorder_stages`, `list_meetings`, `create_question`, `update_question`, `reorder_questions`, `list_search_periods`, `create_search_period`, and `update_search_period`, with unit and integration tests. The route coverage test now rejects deferral reasons, so every API route needs a tool or a real reason (from 0.4.2).
+
+# References
+- [#8](https://github.com/NoveliaYuki/war-room/pull/8) / noissue
+- [#9](https://github.com/NoveliaYuki/war-room/pull/9) / noissue
+- [#10](https://github.com/NoveliaYuki/war-room/pull/10) / noissue
+
 Version 0.4.0 — 2026-11-09 · Release: [v0.4.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.4.0)
 
 # Highlights
