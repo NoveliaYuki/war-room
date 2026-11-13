@@ -15,7 +15,7 @@ Version 0.6.0 — 2026-11-13 · Release: [v0.6.0](https://github.com/NoveliaYuki
 - In the browser demo, show the schedule control disabled with an explanation that automatic backups need a signed-in account.
 
 # References
-- [#9](https://github.com/NoveliaYuki/war-room/pull/9) / noissue
+- [#11](https://github.com/NoveliaYuki/war-room/pull/11) / noissue
 
 Version 0.4.0 — 2026-11-09 · Release: [v0.4.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.4.0)
 
