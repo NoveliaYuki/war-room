@@ -1,0 +1,23 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - cyclop
+    - gosec
+    - revive
+
+  settings:
+    cyclop:
+      max-complexity: 10
+      package-average: 6
+    revive:
+      rules:
+        - name: exported
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
