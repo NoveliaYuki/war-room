@@ -31,7 +31,7 @@ Version 0.1.0 — 2026-11-17 · Release: [v0.1.0](https://github.com/NoveliaYuki
 - The schedule routes are set up in the browser, so the MCP route coverage test records them without tools; spreadsheet import adds no API routes, so the MCP server and its tools are unchanged.
 
 # References
-- PR_LINK / noissue
+- [#2](https://github.com/NoveliaYuki/war-room/pull/2) / noissue
 
 Version 0.0.1 — 2026-11-16 · Issues: none · Release: [v0.0.1](https://github.com/NoveliaYuki/war-room/releases/tag/v0.0.1)
 
