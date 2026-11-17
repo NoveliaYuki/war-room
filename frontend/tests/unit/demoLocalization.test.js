@@ -183,6 +183,30 @@ describe('demo store language', () => {
     expect((updated.history || []).map((entry) => entry.action)).not.toContain('changed company');
   });
 
+  it('serves sample text in a requested language without changing the interface language', async () => {
+    const { demoApi, i18n } = await loadStore('en');
+    expect((await demoApi.getJobs('all', '', { language: 'es' })).find((job) => job.id === 'demo-1').position_title).toBe('Ingeniero/a frontend sénior');
+    expect((await demoApi.getJob('demo-1', { language: 'ca' })).position_title).toBe('Enginyer/a frontend sènior');
+    expect((await demoApi.getSearchPeriods({ language: 'es' })).map((period) => period.name)).toEqual(['Actual', 'Junio de 2021']);
+    expect((await demoApi.getJob('demo-1')).position_title).toBe('Senior Frontend Engineer');
+    expect(i18n.getLanguage()).toBe('en');
+  });
+
+  it('imports an unedited sample board exported in another language without any change', async () => {
+    const { demoApi, i18n } = await loadStore('es');
+    // Loaded after the store so they share its interface language.
+    const { buildBoardWorkbook, loadJobStages } = await import('../../public/js/utils/boardWorkbook.js');
+    const { buildImportPlan, planSize } = await import('../../public/js/utils/importPlan.js');
+    const { readWorkbook } = await import('../../public/js/utils/spreadsheetReader.js');
+    const [jobs, periods] = await Promise.all([demoApi.getJobs('all'), demoApi.getSearchPeriods()]);
+    const spreadsheet = await readWorkbook(buildBoardWorkbook(jobs, periods, await loadJobStages(jobs, (id) => demoApi.getJob(id))));
+    i18n.setLanguage('en');
+    const plan = await buildImportPlan(spreadsheet, demoApi);
+    expect(plan.warnings).toEqual([]);
+    expect(planSize(plan)).toBe(0);
+    expect(jobs.length).toBeGreaterThan(5);
+  });
+
   it('fills the sample import draft in the selected language', async () => {
     const { demoApi } = await loadStore('ca');
     const preview = await demoApi.previewJobImport({ url: 'https://jobs.example.com/1' });

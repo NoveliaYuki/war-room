@@ -54,10 +54,12 @@ function boardRow(sheet, index = 2) {
 }
 
 describe('boardSheet', () => {
-  it('writes numbered group headers merged over their columns, and numbered column headers', () => {
+  it('writes numbered group headers merged over their columns, numbered column headers, and a hidden process ID', () => {
     const sheet = boardSheet([fullJob]);
     expect(sheet.name).toBe('Board');
-    expect(sheet.columns).toHaveLength(26);
+    expect(sheet.columns).toHaveLength(27);
+    expect(sheet.columns.map((column) => Boolean(column.hidden)).lastIndexOf(false)).toBe(25);
+    expect(sheet.columns[26].hidden).toBe(true);
     expect(values(sheet.rows[0]).filter(Boolean)).toEqual(['1 Job specification', '2 Process', '3 Application', '4 Recruiter']);
     expect(sheet.rows[0].every((cell) => cell.kind === 'group')).toBe(true);
     expect(sheet.merges).toEqual(['A1:K1', 'L1:Q1', 'R1:V1', 'W1:Z1']);
@@ -66,7 +68,7 @@ describe('boardSheet', () => {
       '1.7 Published salary – maximum', '1.8 Currency', '1.9 Your expected salary', '1.10 Tech stack', '1.11 Job posting link',
       '2.1 Status', '2.2 Current stage', '2.3 Search period', '2.4 Date added', '2.5 Status changed', '2.6 Last updated',
       '3.1 CV version', '3.2 CV file', '3.3 CV sent date', '3.4 Application link', '3.5 Referral',
-      '4.1 Name', '4.2 Agency', '4.3 Contact details', '4.4 First contact',
+      '4.1 Name', '4.2 Agency', '4.3 Contact details', '4.4 First contact', 'Process ID',
     ]);
     expect(sheet.rows[1].every((cell) => cell.kind === 'header')).toBe(true);
     expect(sheet.frozenRows).toBe(2);
@@ -84,7 +86,7 @@ describe('boardSheet', () => {
       Status: 'Ongoing', 'Current stage': 'Technical', 'Search period': 'Autumn 2026',
       'Date added': dateSerial(2026, 11, 1), 'Status changed': dateSerial(2026, 11, 5), 'Last updated': dateSerial(2026, 11, 6),
       'CV version': 3, 'CV file': 'cv-2026.pdf', 'CV sent date': dateSerial(2026, 11, 2), 'Application link': null, Referral: 'Yes',
-      Name: 'Núria Puig', Agency: null, 'Contact details': 'nuria@example.com', 'First contact': null,
+      Name: 'Núria Puig', Agency: null, 'Contact details': 'nuria@example.com', 'First contact': null, 'Process ID': 'job-1',
     });
     const kinds = Object.fromEntries(sheet.rows[1].map((cell, column) => [cell.value, sheet.rows[2][column].kind]));
     expect(kinds['1.3 Description']).toBe('wrap');
@@ -237,7 +239,9 @@ describe('buildBoardWorkbook', () => {
     expect([...workbook.querySelectorAll('sheet')].map((sheet) => sheet.getAttribute('name'))).toEqual(['Board', 'Interview questions']);
     const board = files.get('xl/worksheets/sheet1.xml');
     expect(board).toContain('<mergeCell ref="A1:K1"/>');
-    expect(board).toContain('<autoFilter ref="A2:Z3"/>');
+    expect(board).toContain('<autoFilter ref="A2:AA3"/>');
+    expect(board).toContain('<col min="27" max="27" width="38" customWidth="1" hidden="1"/>');
+    expect(board).toContain('<c r="AA3" s="1" t="inlineStr"><is><t xml:space="preserve">job-1</t></is></c>');
     expect(board).toContain('<c r="A3" s="1" t="inlineStr"><is><t xml:space="preserve">=HYPERLINK(&quot;https://evil.example&quot;,&quot;x&quot;)</t></is></c>');
     expect(board).not.toContain('<f>');
     expect(board).toContain(`<c r="F3" s="3"><v>60000</v></c>`);

@@ -265,7 +265,7 @@ type schemaExecutor interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-const latestSchemaVersion = 24
+const latestSchemaVersion = 25
 
 func migrateSchema(db *sql.DB) error {
 	var currentVersion int
@@ -430,6 +430,9 @@ func runLaterSchemaMigration(executor schemaExecutor, version int) error {
 }
 
 func runFinalSchemaMigration(executor schemaExecutor, version int) error {
+	if version >= 25 {
+		return runBackupScheduleSchemaMigration(executor, version)
+	}
 	if version >= 17 {
 		return runAuthSchemaMigration(executor, version)
 	}
@@ -716,6 +719,44 @@ func migrateAPITokens(executor schemaExecutor) error {
 			expires_at INTEGER NOT NULL
 		)`, "create api tokens table"},
 		{"CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id)", "index api tokens by user"},
+	}
+	for _, statement := range statements {
+		if err := executeMigrationSQL(executor, statement.sql, statement.description); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// runBackupScheduleSchemaMigration dispatches migrations from v25 on, which
+// started with scheduled Google Drive backups.
+func runBackupScheduleSchemaMigration(executor schemaExecutor, version int) error {
+	if version == 25 {
+		return migrateBackupSchedules(executor)
+	}
+	return fmt.Errorf("unknown migration version %d", version)
+}
+
+// migrateBackupSchedules adds each account's automatic Drive backup schedule.
+// It is a separate table rather than columns on google_drive_accounts because
+// revoking Google access deletes that row, while the schedule is a preference
+// that should survive signing in again. Accounts without a row are Off, so
+// existing installations keep backing up only on job changes.
+func migrateBackupSchedules(executor schemaExecutor) error {
+	statements := []struct{ sql, description string }{
+		{`CREATE TABLE IF NOT EXISTS backup_schedules (
+			user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			frequency TEXT NOT NULL DEFAULT 'off' CHECK (frequency IN ('off', 'daily', 'weekly')),
+			weekday INTEGER NOT NULL DEFAULT 1 CHECK (weekday BETWEEN 0 AND 6),
+			minute_of_day INTEGER NOT NULL DEFAULT 540 CHECK (minute_of_day BETWEEN 0 AND 1439),
+			time_zone TEXT NOT NULL DEFAULT 'UTC' CHECK (length(time_zone) BETWEEN 1 AND 64),
+			next_run_at INTEGER NULL,
+			last_run_at INTEGER NULL,
+			last_run_result TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			CHECK ((frequency = 'off') = (next_run_at IS NULL))
+		)`, "create backup schedules table"},
+		{"CREATE INDEX IF NOT EXISTS idx_backup_schedules_due ON backup_schedules(next_run_at) WHERE next_run_at IS NOT NULL", "index backup schedules by next run"},
 	}
 	for _, statement := range statements {
 		if err := executeMigrationSQL(executor, statement.sql, statement.description); err != nil {

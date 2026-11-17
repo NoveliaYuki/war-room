@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), getTechnologies: vi.fn(), getSearchPeriods: vi.fn(), createSearchPeriod: vi.fn(), updateSearchPeriod: vi.fn(), deleteSearchPeriod: vi.fn(), createJob: vi.fn(), getJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn(), getCvVersions: vi.fn() },
+  api: { getJobCounts: vi.fn(), getMeetings: vi.fn(), getJobs: vi.fn(), getTechnologies: vi.fn(), getSearchPeriods: vi.fn(), createSearchPeriod: vi.fn(), updateSearchPeriod: vi.fn(), deleteSearchPeriod: vi.fn(), createJob: vi.fn(), getJob: vi.fn(), exportBackup: vi.fn(), importBackup: vi.fn(), getCvVersions: vi.fn(), updateJob: vi.fn() },
   renderCardGrid: vi.fn(), renderScheduleView: vi.fn(), closeWithFlip: vi.fn((_modal, backdrop, done) => {
     backdrop?.classList.remove('active');
     done?.();
@@ -678,55 +678,66 @@ describe('application entry point', () => {
     expect(document.querySelector('.modal-title')).toBeNull();
 
 
-    // Encrypted export and import use the same dialog and confirmation regardless of data adapter.
+    // One import picker recognizes an encrypted backup and replaces the data only after confirmation.
     dataButton.click();
-    expect(document.querySelector('#btn-export-backup').textContent).toContain('encrypted backup');
+    expect([...document.querySelectorAll('.data-transfer-section h3')].map((heading) => heading.textContent)).toEqual(['Export', 'Import', 'Google Drive backup']);
     expect(document.querySelector('#btn-import-backup').disabled).toBe(true);
-    const fileInput = document.querySelector('#backup-import-file');
+    const fileInput = document.querySelector('#data-import-file');
     const backupFile = new File(['encrypted'], 'backup.wrbackup', { type: 'application/octet-stream' });
     Object.defineProperty(fileInput, 'files', { configurable: true, value: [backupFile] });
     fileInput.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(document.querySelector('#data-import-backup').hidden).toBe(false));
     expect(document.querySelector('#btn-import-backup').disabled).toBe(true);
     document.querySelector('#backup-import-confirm').click();
     expect(document.querySelector('#btn-import-backup').disabled).toBe(false);
     mocks.api.importBackup.mockResolvedValueOnce({ success: true });
     document.querySelector('#btn-import-backup').click();
-    await flush();
+    await vi.waitFor(() => expect(document.querySelector('#detail-modal').innerHTML).toBe(''));
     expect(mocks.api.importBackup).toHaveBeenCalledWith(backupFile, false);
-    expect(document.querySelector('#detail-modal').innerHTML).toBe('');
 
+    // The export button downloads the selected format and names it.
     dataButton.click();
+    const exportButton = document.querySelector('#btn-export-data');
+    const backupFormat = document.querySelector('input[name=data-export-format][value=backup]');
+    const sheetFormat = document.querySelector('input[name=data-export-format][value=spreadsheet]');
+    expect(sheetFormat.checked).toBe(true);
+    expect(exportButton.textContent).toContain('Download Excel file');
+    backupFormat.click();
+    expect(exportButton.textContent).toContain('Download encrypted backup');
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:backup'), revokeObjectURL: vi.fn() }));
     mocks.api.exportBackup.mockResolvedValueOnce(new Blob(['encrypted'], { type: 'application/octet-stream' }));
-    document.querySelector('#btn-export-backup').click();
+    exportButton.click();
     await flush();
     expect(anchorClick).toHaveBeenCalled();
+    expect(anchorClick.mock.contexts.at(-1).download).toMatch(/^war-room-backup-\d{4}-\d{2}-\d{2}\.wrbackup$/);
     expect(mocks.showToast).toHaveBeenCalledWith('Backup downloaded', 'success');
     anchorClick.mockRestore();
     mocks.api.exportBackup.mockRejectedValueOnce(new Error('export failed'));
-    document.querySelector('#btn-export-backup').click();
+    exportButton.click();
     await flush();
     expect(mocks.showToast).toHaveBeenCalledWith('export failed', 'error');
     mocks.api.exportBackup.mockRejectedValueOnce(new Error(''));
-    document.querySelector('#btn-export-backup').click();
+    exportButton.click();
     await flush();
     expect(mocks.showToast).toHaveBeenCalledWith('Failed to export backup', 'error');
 
     // The spreadsheet export reads every process, not only the filtered board, with each job's stages, and builds the workbook in the browser.
-    const sheetButton = document.querySelector('#btn-export-spreadsheet');
-    expect(sheetButton.textContent).toContain('Download Excel file');
-    expect(sheetButton.disabled).toBe(false);
+    sheetFormat.click();
+    expect(exportButton.textContent).toContain('Download Excel file');
+    expect(exportButton.disabled).toBe(false);
     const sheetClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     URL.createObjectURL.mockClear();
+    mocks.api.exportBackup.mockClear();
     mocks.api.getJobs.mockClear();
     mocks.api.getJobs.mockResolvedValueOnce([{ id: 'job-1', company_name: 'Acme', position_title: 'Engineer', status: 'waiting', created_at: 1, order_index: 0 }]);
     mocks.api.getSearchPeriods.mockResolvedValueOnce([]);
     mocks.api.getJob.mockResolvedValueOnce({ id: 'job-1', stages: [{ id: 'stage-1', stage_type: 'HR', questions: [{ id: 'q-1', question: 'Why us?' }] }] });
-    sheetButton.click();
-    expect(sheetButton.disabled).toBe(true);
+    exportButton.click();
+    expect(exportButton.disabled).toBe(true);
     await flush();
     await flush();
+    expect(mocks.api.exportBackup).not.toHaveBeenCalled();
     expect(mocks.api.getJobs).toHaveBeenCalledWith('all');
     expect(mocks.api.getJob).toHaveBeenCalledWith('job-1');
     const sheetBlob = URL.createObjectURL.mock.calls.at(-1)[0];
@@ -734,42 +745,36 @@ describe('application entry point', () => {
     expect(new Uint8Array(await sheetBlob.arrayBuffer()).slice(0, 4)).toEqual(new Uint8Array([0x50, 0x4b, 0x03, 0x04]));
     expect(sheetClick.mock.contexts.at(-1).download).toMatch(/^war-room-board-\d{4}-\d{2}-\d{2}\.xlsx$/);
     expect(mocks.showToast).toHaveBeenCalledWith('Excel file downloaded', 'success');
-    expect(sheetButton.disabled).toBe(false);
+    expect(exportButton.disabled).toBe(false);
     sheetClick.mockRestore();
     mocks.api.getJobs.mockRejectedValueOnce(new Error('jobs failed'));
-    sheetButton.click();
+    exportButton.click();
     await flush();
     expect(mocks.showToast).toHaveBeenCalledWith('jobs failed', 'error');
     mocks.api.getJobs.mockRejectedValueOnce(new Error(''));
-    sheetButton.click();
+    exportButton.click();
     await flush();
     expect(mocks.showToast).toHaveBeenCalledWith('Failed to export Excel file', 'error');
-    expect(sheetButton.disabled).toBe(false);
+    expect(exportButton.disabled).toBe(false);
+    document.querySelector('#btn-close-data-modal').click();
+    dataButton.click();
 
-    const importFile = document.querySelector('#backup-import-file');
-    Object.defineProperty(importFile, 'files', { configurable: true, value: [backupFile] });
-    importFile.dispatchEvent(new Event('change'));
-    document.querySelector('#backup-import-confirm').click();
-    const importButton = document.querySelector('#btn-import-backup');
-    mocks.api.importBackup.mockRejectedValueOnce(new Error('broken ZIP'));
-    importButton.click();
-    await flush();
-    expect(document.querySelector('#backup-import-status').textContent).toBe('broken ZIP');
-    expect(importButton.disabled).toBe(false);
-    mocks.api.importBackup.mockRejectedValueOnce(new Error(''));
-    importButton.click();
-    await flush();
-    expect(document.querySelector('#backup-import-status').textContent).toBe('Failed to import backup');
-    const emptyBackup = Object.assign(new Error('empty'), { requiresEmptyConfirmation: true });
-    mocks.confirmAction.mockReset().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    mocks.api.importBackup.mockRejectedValueOnce(emptyBackup);
-    importButton.click();
-    await vi.waitFor(() => expect(mocks.confirmAction).toHaveBeenCalledOnce());
-    await vi.waitFor(() => expect(importButton.disabled).toBe(false));
-    expect(importButton.disabled).toBe(false);
-    mocks.api.importBackup.mockRejectedValueOnce(emptyBackup).mockResolvedValueOnce({ success: true });
-    importButton.click();
-    await vi.waitFor(() => expect(mocks.api.importBackup).toHaveBeenLastCalledWith(backupFile, true));
+    // An edited spreadsheet is previewed, then saved; Data & Backups closes and the board reloads.
+    mocks.api.getJobs.mockResolvedValueOnce([{ id: 'job-1', company_name: 'Acme', position_title: 'Engineer', status: 'waiting', technologies: [] }]);
+    mocks.api.getSearchPeriods.mockResolvedValueOnce([]);
+    mocks.api.getTechnologies.mockResolvedValueOnce([]);
+    mocks.api.getCvVersions.mockResolvedValueOnce([]);
+    mocks.api.updateJob.mockResolvedValueOnce({});
+    const sheetInput = document.querySelector('#data-import-file');
+    Object.defineProperty(sheetInput, 'files', { configurable: true, value: [new File(['Process ID,Company,Role,Status\njob-1,Acme,Engineer,Ongoing'], 'board.csv')] });
+    sheetInput.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(document.querySelector('#btn-import-spreadsheet').disabled).toBe(false));
+    const countsBeforeImport = mocks.api.getJobCounts.mock.calls.length;
+    document.querySelector('#btn-import-spreadsheet').click();
+    await vi.waitFor(() => expect(document.querySelector('#data-import-section')).toBeNull());
+    expect(mocks.api.updateJob).toHaveBeenCalledWith('job-1', { status: 'ongoing' });
+    expect(mocks.showToast).toHaveBeenCalledWith('1 change imported', 'success');
+    await vi.waitFor(() => expect(mocks.api.getJobCounts.mock.calls.length).toBeGreaterThan(countsBeforeImport));
     dataButton.click();
     document.querySelector('#modal-backdrop').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(document.querySelector('.modal-title')).toBeNull();

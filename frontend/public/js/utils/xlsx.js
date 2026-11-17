@@ -40,6 +40,16 @@ function truncate(text) {
 }
 
 /**
+ * Returns text as a cell stores it: cleaned for XML and cut to Excel's cell limit.
+ *
+ * @param {unknown} value - Text to store; null and undefined become "".
+ * @returns {string} The cell text.
+ */
+export function cellText(value) {
+  return truncate(cleanText(value));
+}
+
+/**
  * Escapes text for an XML element or attribute.
  *
  * @param {string} text - Text that is already valid XML 1.0.
@@ -98,7 +108,7 @@ function cellXml(cell, reference) {
   if (NUMERIC_KINDS.has(cell.kind) && Number.isFinite(Number(cell.value))) {
     return `<c r="${reference}" s="${style}"><v>${Number(cell.value)}</v></c>`;
   }
-  const text = escapeXml(truncate(cleanText(cell.value)));
+  const text = escapeXml(cellText(cell.value));
   return `<c r="${reference}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
 }
 

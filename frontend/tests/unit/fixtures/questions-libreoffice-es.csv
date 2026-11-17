@@ -1,0 +1,5 @@
+Empresa;Puesto;Fase;Pregunta;Notas de respuesta;Formulada;ID del proceso;ID de la fase;ID de la pregunta
+Acme, Inc.;"Senior ""Platform"" Engineer";Primer contacto;Why us?;"Mission
+and team";No;job-1;stage-a;q-1
+Acme, Inc.;"Senior ""Platform"" Engineer";Primer contacto;Salary?;;Sí;job-1;stage-a;q-2
+Acme, Inc.;"Senior ""Platform"" Engineer";Técnica;Design a cache;;No;job-1;stage-b;q-3

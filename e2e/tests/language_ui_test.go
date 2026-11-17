@@ -219,7 +219,18 @@ func languageScreens() []languageScreen {
 		{"data and backups", func(t *testing.T, run *languageRun, capture func(string)) {
 			openAccountMenu(t, run)
 			requireClick(t, run, "#btn-data-management-menu")
+			waitForLocator(t, run.page.Locator(".backup-schedule[data-ready=true]"), "backup schedule")
 			capture("")
+			previewSpreadsheetImport(t, run)
+			capture("spreadsheet import preview")
+			chooseBackupImport(t, run)
+			capture("encrypted backup import")
+			if run.mode.signedIn {
+				requireClick(t, run, "label.data-format-option:has(input[value=backup])")
+				capture("encrypted backup format")
+				requireClick(t, run, "#backup-schedule-form label:has(input[value=weekly])")
+				capture("weekly backup schedule")
+			}
 		}},
 		{"schedule", func(t *testing.T, run *languageRun, capture func(string)) {
 			requireClick(t, run, "#tab-schedule")
@@ -339,6 +350,34 @@ func openAccountMenu(t *testing.T, run *languageRun) {
 	if !clickIfVisible(t, run, "#btn-account-menu") && !toggled {
 		t.Fatalf("account menu is missing (%s, %s, %dpx)", run.language, run.mode.name, run.width)
 	}
+}
+
+// previewSpreadsheetImport chooses a board CSV that adds a process and names a missing one, so the
+// preview shows counts, changes, and a warning; nothing is saved.
+func previewSpreadsheetImport(t *testing.T, run *languageRun) {
+	t.Helper()
+	csv := "Process ID,Company,Role,Status\nlanguage-check-missing,Lingua Gone,Lingua Gone Role,Waiting\n,Lingua Imports,Lingua Import Role,Ongoing\n"
+	if err := run.page.Locator("#data-import-file").SetInputFiles([]playwright.InputFile{{Name: "board.csv", Buffer: []byte(csv)}}); err != nil {
+		t.Fatalf("choose a spreadsheet (%s, %s, %dpx): %v", run.language, run.mode.name, run.width, err)
+	}
+	waitForLocator(t, run.page.Locator("#data-import-preview .spreadsheet-import-notice"), "spreadsheet import preview")
+	settleLanguagePage(t, run.page)
+}
+
+// chooseBackupImport chooses an encrypted backup, which shows the replace warning when signed in and an
+// explanation in the demo; nothing is imported.
+func chooseBackupImport(t *testing.T, run *languageRun) {
+	t.Helper()
+	backup := playwright.InputFile{Name: "war-room-backup.wrbackup", Buffer: []byte("WRBACKUP\x02language check")}
+	if err := run.page.Locator("#data-import-file").SetInputFiles([]playwright.InputFile{backup}); err != nil {
+		t.Fatalf("choose a backup (%s, %s, %dpx): %v", run.language, run.mode.name, run.width, err)
+	}
+	recognized := run.page.Locator("#data-import-preview > p")
+	if run.mode.signedIn {
+		recognized = run.page.Locator("#data-import-backup .data-transfer-warning")
+	}
+	waitForLocator(t, recognized, "recognized backup")
+	settleLanguagePage(t, run.page)
 }
 
 // openFixtureDetails opens the fixture job; pane 0 is the overview and pane 1 the stages on phones.

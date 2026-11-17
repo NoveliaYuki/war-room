@@ -100,6 +100,14 @@ func doRequest(client *http.Client, req *http.Request) (*http.Response, error) {
 	return res, transportError(err)
 }
 
+// IsGoogleAccessExpired reports whether err means Google no longer accepts
+// the stored refresh token (revoked, expired, or issued to another client),
+// so only signing in again can restore Drive backups.
+func IsGoogleAccessExpired(err error) bool {
+	var apiErr *GoogleAPIError
+	return errors.As(err, &apiErr) && (apiErr.Reason == "invalid_grant" || apiErr.Reason == "unauthorized_client")
+}
+
 func transportError(err error) error {
 	var urlErr *url.Error
 	if !errors.As(err, &urlErr) {

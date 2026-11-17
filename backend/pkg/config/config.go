@@ -25,6 +25,7 @@ type Config struct {
 	CORSAllowed               string
 	LogoLookupEnabled         bool
 	JobImportEnabled          bool
+	BackupSchedulerEnabled    bool
 	GoogleClientID            string
 	GoogleClientSecret        string
 	GoogleBackupEncryptionKey string
@@ -58,6 +59,7 @@ func Load() *Config {
 		CORSAllowed:               valueOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"),
 		LogoLookupEnabled:         boolOrDefault("LOGO_LOOKUP_ENABLED", false),
 		JobImportEnabled:          boolOrDefault("JOB_IMPORT_ENABLED", true),
+		BackupSchedulerEnabled:    boolOrDefault("BACKUP_SCHEDULER_ENABLED", true),
 		GoogleClientID:            os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:        os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleBackupEncryptionKey: os.Getenv("GOOGLE_BACKUP_ENCRYPTION_KEY"),

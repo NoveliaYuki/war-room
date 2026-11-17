@@ -312,9 +312,12 @@
 .data-transfer-confirm input:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .data-transfer-modal .btn-primary,
 .data-transfer-modal .btn-danger { justify-content: center; }
-.data-transfer-content #btn-export-backup,
-.data-transfer-content #backup-import-choose,
+.data-transfer-content #btn-export-data,
+.data-transfer-content #data-import-choose,
 .data-transfer-content #btn-import-backup,
+.data-transfer-content #btn-import-spreadsheet,
+.google-drive-actions > button,
+#google-drive-revoke .btn-danger,
 .cv-library-content #btn-cv-library-upload,
 .cv-version-actions button { min-height: 40px; }
 .data-transfer-modal button:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -326,6 +329,38 @@
   cursor: not-allowed;
 }
 .data-transfer-status { min-height: 18px; margin-top: 10px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.data-import-preview { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.data-import-preview:empty { display: none; }
+.data-import-preview > p { margin: 0 0 12px; }
+.data-import-preview .spreadsheet-import-error { color: var(--status-rejected); }
+.data-transfer-content .data-import-backup[hidden],
+.data-transfer-content #btn-import-spreadsheet[hidden] { display: none; }
+.data-transfer-content .data-import-backup .data-transfer-warning { margin-top: 0; }
+.spreadsheet-import-counts { margin: 0 0 10px; padding-left: 18px; color: var(--text-primary); }
+.spreadsheet-import-changes { margin: 0 0 12px; }
+.spreadsheet-import-changes > summary { cursor: pointer; color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.spreadsheet-import-list { max-height: 220px; margin: 6px 0 0; padding-left: 18px; overflow-y: auto; overscroll-behavior: contain; }
+.spreadsheet-import-list li { margin: 3px 0; overflow-wrap: anywhere; }
+.spreadsheet-import-notice strong { display: block; color: var(--text-primary); }
+.spreadsheet-import-more { list-style: none; margin-left: -18px; color: var(--text-muted); }
+
+/* Export format choice: one card per format, the selected one outlined. */
+.data-format-options { display: grid; gap: 8px; min-width: 0; margin: 0 0 14px; padding: 0; border: 0; }
+.data-format-options legend { margin-bottom: 6px; padding: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.data-format-option { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface); cursor: pointer; transition: border-color var(--duration-fast), background-color var(--duration-fast); }
+.data-format-option:hover { border-color: var(--border-medium); }
+.data-format-option:has(input:checked) { border-color: var(--accent-blue); background: rgba(59, 130, 246, 0.06); }
+.data-format-option:has(input:disabled) { cursor: not-allowed; opacity: 0.7; }
+.data-format-option input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent-blue); cursor: inherit; }
+.data-format-option input:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.data-format-text { display: grid; gap: 3px; min-width: 0; }
+.data-format-text strong { color: var(--text-primary); font-size: 13px; overflow-wrap: anywhere; }
+.data-format-text span { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.google-drive-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Empty status lines stay in the page for screen readers but take no space until they have a message. */
+#google-drive-backup-option .data-transfer-status:empty,
+#data-import-status:empty { min-height: 0; margin-top: 0; }
+#google-drive-revoke:not(:empty) { margin-top: 22px; }
 
 .process-form {
   display: flex;
@@ -1986,9 +2021,12 @@ body.is-resizing-split * {
   .modal-container.data-transfer-modal.search-period-manager-modal { width: calc(100vw - 24px); max-width: 560px; height: auto; max-height: calc(100dvh - 24px); border: 1px solid var(--border-medium); border-radius: var(--radius-xl); }
   .search-period-manager { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .data-transfer-content { padding: 20px 16px 28px; }
-  .data-transfer-content #btn-export-backup,
-  .data-transfer-content #backup-import-choose,
+  .data-transfer-content #btn-export-data,
+  .data-transfer-content #data-import-choose,
   .data-transfer-content #btn-import-backup,
+  .data-transfer-content #btn-import-spreadsheet,
+  .google-drive-actions > button,
+  #google-drive-revoke .btn-danger,
   .cv-library-content #btn-cv-library-upload,
   .cv-version-actions button { min-height: 44px; }
   .cv-library-entry { align-items: flex-start; flex-direction: column; }
@@ -2026,3 +2064,24 @@ body.is-resizing-split * {
   .general-process-group > .group-header { align-items: flex-start; flex-direction: column; }
   .general-process-group .btn-edit-details { white-space: nowrap; }
 }
+
+/* Automatic Drive backup schedule in Data & backups. */
+.backup-schedule { margin-top: 22px; }
+.backup-schedule-heading { display: flex; align-items: center; gap: 7px; margin: 0 0 6px; font-size: 14px; }
+.backup-schedule-fields { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.backup-schedule-fields:disabled { opacity: 0.6; }
+.backup-schedule-frequency { min-width: 0; margin: 0; padding: 0; border: 0; }
+.backup-schedule-frequency legend { margin-bottom: 6px; padding: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.backup-schedule-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.backup-schedule-options label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; box-sizing: border-box; border: 1px solid var(--border-medium); border-radius: var(--radius-full); background: var(--bg-surface); color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.backup-schedule-options label:has(input:checked) { border-color: var(--accent-blue); }
+.backup-schedule-when { display: flex; flex-wrap: wrap; gap: 12px; }
+.backup-schedule-when label { display: grid; gap: 5px; min-width: 0; flex: 1 1 140px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.backup-schedule-when label[hidden] { display: none; }
+.backup-schedule-when select, .backup-schedule-when input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-medium); border-radius: var(--radius-xs); background: var(--bg-surface); color: var(--text-primary); font: 13px var(--font-sans); }
+.data-transfer-section p.backup-schedule-summary { margin: 0; color: var(--text-primary); font-weight: 600; }
+.data-transfer-section p.backup-schedule-summary:empty { display: none; }
+.backup-schedule-fields .btn-primary { justify-self: start; }
+.data-transfer-section p.backup-schedule-note { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.data-transfer-section p.backup-schedule-note.account-error { color: var(--danger, #d9534f); }
+.backup-schedule-note svg { flex: none; margin-top: 2px; }

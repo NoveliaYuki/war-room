@@ -191,6 +191,17 @@ describe('api', () => {
     expect(JSON.parse(global.fetch.mock.lastCall[1].body)).toEqual({ version_id: null });
   });
 
+  it('shows the server message for job, CV, and question changes in the selected language', async () => {
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'position_title is required' }) });
+    await expect(api.updateJob('job-1', { position_title: '' })).rejects.toThrow('Enter a position title.');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ error: 'Question not found' }) });
+    await expect(api.updateQuestion('q-1', {})).rejects.toThrow('This question no longer exists.');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'question text is required' }) });
+    await expect(api.createQuestion({ stage_id: 's', question: '' })).rejects.toThrow('Enter the question text.');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 502, json: async () => null });
+    await expect(api.updateJob('job-1', {})).rejects.toThrow('HTTP error: 502');
+  });
+
   it('reports CV endpoint failures and fallback messages', async () => {
     global.fetch.mockResolvedValueOnce({ ok: false, status: 502 });
     await expect(api.getCvVersions()).rejects.toThrow('HTTP error: 502');
@@ -272,6 +283,23 @@ describe('api', () => {
     await expect(api.getGoogleStatus()).rejects.toThrow('HTTP error: 503');
     global.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
     await expect(api.revokeGoogleDrive()).rejects.toThrow('HTTP error: 503');
+  });
+
+  it('reads and saves the automatic backup schedule', async () => {
+    mockResponse({ frequency: 'off' });
+    await expect(api.getBackupSchedule()).resolves.toEqual({ frequency: 'off' });
+    expect(global.fetch).toHaveBeenLastCalledWith('/api/google/backup-schedule', { cache: 'no-store' });
+    const schedule = { frequency: 'weekly', weekday: 1, time: '09:00', time_zone: 'Europe/Madrid' };
+    mockResponse(schedule);
+    await expect(api.saveBackupSchedule(schedule)).resolves.toEqual(schedule);
+    expect(global.fetch.mock.lastCall[1]).toMatchObject({ method: 'PUT', body: JSON.stringify(schedule) });
+
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) });
+    await expect(api.getBackupSchedule()).rejects.toThrow('HTTP error: 503');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: 'Choose a day of the week' }) });
+    await expect(api.saveBackupSchedule(schedule)).rejects.toThrow('Choose a day of the week.');
+    global.fetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => { throw new Error('not json'); } });
+    await expect(api.saveBackupSchedule(schedule)).rejects.toThrow('Could not save the backup schedule');
   });
 
   it('covers the auth session API', async () => {
