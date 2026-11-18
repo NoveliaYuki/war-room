@@ -1,34 +1,17 @@
-Version 0.1.0 — 2026-11-17 · Release: [v0.1.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.1.0)
+Version 0.1.0 — 2026-11-18 · Release: [v0.1.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.1.0)
 
 # Highlights
-- **Data & Backups** now has one Export and one Import. Export downloads the format you choose, a spreadsheet (`.xlsx`) or an encrypted backup (`.wrbackup`); Import takes either file and recognizes which it is.
-- Import an edited board spreadsheet back into War Room: choose the Excel file from Export, or a CSV saved from its Board sheet, review every change, then import it, signed in or in the browser demo.
-- Only edited cells are saved, so importing an unedited file changes nothing, whichever supported language it was exported in. Rows without a Process ID become new processes, and nothing missing from the file is deleted.
-- Google Drive backups can now run on a schedule. In the Google Drive section, choose Off, Every day, or Every week on a chosen day, and a time of day; War Room describes the choice in one sentence, such as "Backs up every Monday at 9:00 AM", with no cron syntax anywhere.
-- The Google Drive section shows when the next automatic backup runs and how the last one went, including when Google access has expired or been revoked and you need to sign in again.
+- Edit your board in Excel or Sheets and import it back. You review every change before anything is saved.
+- One Data & Backups dialog: pick a spreadsheet or an encrypted backup to export, and import either file.
+- Back up to Google Drive automatically, every day or every week.
 
 # What changed
-- Replace the separate spreadsheet export, encrypted export, and backup import sections with one Export section and one Import section. Export has a File format choice of Spreadsheet (.xlsx) or Encrypted backup (.wrbackup), each with a short description, and one download button named after the selected format. The browser demo shows the encrypted format disabled with an explanation.
-- Import has a single file picker for `.xlsx`, `.csv`, and `.wrbackup` files. It recognizes an encrypted backup by its `.wrbackup` extension or by the marker both backup formats start with, before reading anything else, and reads any other file as a spreadsheet. A backup shows the replace warning, the confirmation, and Import and replace data, as before, and is sent to the server without being read in the browser; a spreadsheet shows its preview and Import changes. A file that is neither is reported in the selected language, and the browser demo explains that it cannot restore backups.
-- Group Google Drive backup in one section: the folder with Choose Drive folder and Back up to Google Drive, then Automatic backups, then Revoke Google Drive access last.
-- Add a hidden Process ID column after the Board sheet's groups so each row can be matched back to its process; the Interview questions sheet already carries process, stage, and question IDs.
-- Read `.xlsx` workbooks whether compressed or not, with shared or inline text and either date system (checked with files saved again by LibreOffice Calc and openpyxl), and comma-, semicolon-, or tab-separated CSV in UTF-8, UTF-16, or Windows-1252. Files are read in the browser, up to 20 MB and 10,000 rows per sheet, with bounded decompression.
-- Read statuses, work arrangements, employment types, Yes and No, and the undisclosed company in any supported language; salaries such as "60,000" or "60.000"; dates as date cells or YYYY-MM-DD; technologies by catalog name or alias; search periods by name; and CV versions by number.
-- Keep the Markdown company and role overview unless its plain-text cell was edited, and warn in the preview when an edit would replace Markdown formatting.
-- Skip, with the row and reason shown in the preview, cells War Room cannot read, edits to read-only columns such as Current stage or Date added, rows whose Process ID or Question ID is unknown or repeated, and new rows without a role or question. Warn when a process changed in War Room after the file was exported.
-- Update interview questions by Question ID, and add a row without a Question ID to the stage named by its Stage ID.
-- Match rows by company and role when a sheet has no Process ID column, such as a board exported before this version.
-- Save one record at a time and list any record that fails with its row and reason; importing the same file again saves only what is left.
-- Show the server's translated reason when saving a process, a question, or a process's CV version fails, instead of an HTTP status code.
-- Add `GET` and `PUT /api/google/backup-schedule`. A schedule is stored as structured fields (frequency, weekday, time of day, and the browser's IANA time zone) in the new `backup_schedules` table (migration 25). Every account, including existing ones, starts with automatic backups off, so nothing changes until you turn them on.
-- Validate every schedule field on the server: frequency must be off, daily, or weekly; the weekday 0 to 6; the time strict 24-hour `HH:MM`; and the time zone a named IANA zone (never the server's own). Errors are translated in every language.
-- Run due backups from a background scheduler that checks once a minute, keeps the chosen wall-clock time across daylight-saving changes, uploads at most two backups at once, and claims each run before starting it, so a run never repeats after a restart. A run missed while the server was down happens once at startup. Shutdown stops the scheduler before the database closes.
-- Record each automatic run's result: completed, failed, skipped because Drive is not connected or not set up on the server, or failed because Google access expired or was revoked. Signing in again clears the expired-access message.
-- Show an expired or revoked Google grant in the account menu and on Backup now with its own translated message instead of a generic failure.
-- Embed the time zone database in the backend binary so schedules work in any zone.
-- Add the `BACKUP_SCHEDULER_ENABLED` setting (default `true`); the isolated test backend turns it off.
-- In the browser demo, show the schedule control disabled with an explanation that automatic backups need a signed-in account.
-- The schedule routes are set up in the browser, so the MCP route coverage test records them without tools; spreadsheet import adds no API routes, so the MCP server and its tools are unchanged.
+- Import accepts `.xlsx`, `.csv` and `.wrbackup` files and detects which one you chose, signed in or in the demo.
+- Only cells you edited are saved. Rows without a Process ID become new processes, and nothing is ever deleted.
+- Export and Import each have a single section; Google Drive backup, its schedule and Revoke are grouped in one place.
+- Automatic backups show when the next one runs and how the last one went, including when you need to sign in again.
+- The Board sheet has a hidden Process ID column so edited rows match their process.
+- Add `GET` and `PUT /api/google/backup-schedule`, a `backup_schedules` table (migration 25) and the `BACKUP_SCHEDULER_ENABLED` setting (default `true`).
 
 # References
 - [#2](https://github.com/NoveliaYuki/war-room/pull/2) / noissue
