@@ -11,6 +11,9 @@ can skip the full suite after reviewing the diff and running `git diff --check`.
 For mixed-scope PRs, run the full suite.
 Use project Docker containers for tools and tests; do not install dependencies on the host.
 Do not stage or commit unless the user explicitly authorizes it.
+For how to run the full suite and set up the browser, emulator, and simulator checks
+(throwaway stack, test sign-in, seeding, Appium, touch gestures, cleanup), read
+[verification-setup.md](verification-setup.md) before starting.
 
 ## 2. Quick Reference
 
@@ -89,7 +92,8 @@ The Playwright runner waits for healthy isolated test backend and frontend servi
 Test services use temporary storage and must never access the app’s persistent volume.
 
 For the normal developer flow, `docker compose up --build -d` starts the app and test stack.
-For a synchronous pre-commit result, run:
+For a synchronous pre-commit result, run the commands below (from a worktree, pass the main checkout's `.env` with
+`--env-file`; [verification-setup.md](verification-setup.md) section 2 explains how to read the result):
 
 ```sh
 docker compose --project-name war-room-precommit up --build --abort-on-container-exit --exit-code-from test test
@@ -117,7 +121,9 @@ requesting a merge.
 
 ## 6. Step 4 — Verify the Reloaded UI in Browsers and Mobile Simulators
 
-For app-affecting changes, follow `AGENTS.md`'s “Start and verify” and “Mobile browser setup” instructions. Rebuild and force-recreate the affected app containers, wait until healthy, then open both `http://localhost:3000` and `http://localhost:3000/?demo` in desktop Google Chrome. Verify the current change in both modes at relevant wide and narrow viewport sizes, in every supported language: switch the language in the account menu and recheck each affected screen in English, Spanish, and Catalan (and any language added to `LANGUAGES` later). Look for text in the wrong language, including browser validation bubbles and error toasts, and for wrapping, clipping, or overflow caused by longer translations. PRs limited to documentation or agent skills have no rendered UI impact and can skip browser checks.
+For app-affecting changes, follow `AGENTS.md`'s “Start and verify” and “Mobile browser setup” instructions, and use
+[verification-setup.md](verification-setup.md) for the throwaway verification stack, test sign-in, seeding, the desktop engine matrix,
+Android and iOS driving, and the touch-check procedure. Rebuild and force-recreate the affected app containers, wait until healthy, then open both `http://localhost:3000` and `http://localhost:3000/?demo` in desktop Google Chrome. Verify the current change in both modes at relevant wide and narrow viewport sizes, in every supported language: switch the language in the account menu and recheck each affected screen in English, Spanish, and Catalan (and any language added to `LANGUAGES` later). Look for text in the wrong language, including browser validation bubbles and error toasts, and for wrapping, clipping, or overflow caused by longer translations. PRs limited to documentation or agent skills have no rendered UI impact and can skip browser checks.
 
 Start the `warroom-firefox-android` Android AVD, start Appium with `./scripts/start-appium.sh`, and verify the changed flow separately in Firefox, Google Chrome, and Chromium. Install a separate Chromium browser build in the AVD if a supported build is available; if none is available, report the exact limitation and do not count Chrome as Chromium coverage. For iOS, use Xcode via `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, boot an available iPhone simulator with `xcrun simctl`, and verify Firefox, Chromium, and Safari. Branded Google Chrome cannot be installed in this iOS simulator because it has no App Store or official Chrome simulator build; skip this browser/platform cell, record that limitation, and continue with the available browsers. Check installed apps using `adb shell pm list packages` and `xcrun simctl listapps booted`; do not report coverage for an absent app. Do not ask the user to connect an iPhone when they have said they do not own one, and do not try to install the App Store build into the simulator. Test the installed unbranded iOS Chromium build as Chromium, not as Google Chrome. Mark any other unavailable browser/platform cell with the exact limitation and continue testing every available browser. Use Appium UiAutomator2/XCUITest native touch actions or direct simulator operation for touch behavior; screenshots and desktop emulation alone do not verify gestures. Inspect both app and demo modes and the affected layout at phone size, in every supported language.
 
