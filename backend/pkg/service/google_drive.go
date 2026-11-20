@@ -795,6 +795,9 @@ func (d *DriveBackupService) commitDriveBackup(userID string, account *driveAcco
 // status. The full error is logged by BackupNow, never stored for clients.
 func (d *DriveBackupService) recordFailure(userID string, account driveAccount, err error) error {
 	account.LastStatus, account.LastError = "error", publicBackupFailure
+	if IsGoogleAccessExpired(err) {
+		account.LastStatus = "reauth_required"
+	}
 	if saveErr := d.saveAccount(userID, account); saveErr != nil {
 		slog.Error("could not record google drive backup failure", "user_id", userID, "error", saveErr.Error())
 	}

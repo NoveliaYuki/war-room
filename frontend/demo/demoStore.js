@@ -406,21 +406,21 @@ function previewDemoImport({ url, description }) {
 }
 
 function listDemoTechnologies() {
-  const shown = jobs.map(presentJob);
+  const shown = jobs.map((job) => presentJob(job));
   return clone(technologies.map((item) => ({ ...item, jobs: shown.filter((job) => (job.technologies || []).some((entry) => entry.id === item.id)).map((job) => ({ id: job.id, company_name: job.company_name, position_title: job.position_title })) })));
 }
 
-/** Returns a copy of a saved job, with current catalog names and sample text in the interface language. */
-function presentJob(job) {
-  return localizeDemoJob(clone(jobWithCurrentTechnologies(job)), getLanguage());
+/** Returns a copy of a saved job, with current catalog names and sample text in the interface language unless another is given. */
+function presentJob(job, language = getLanguage()) {
+  return localizeDemoJob(clone(jobWithCurrentTechnologies(job)), language);
 }
 
 function presentStage(stage) {
   return localizeDemoStage(clone(stage), getLanguage());
 }
 
-function presentPeriod(period) {
-  return { ...clone(period), name: localizeDemoPeriodName(period, getLanguage()) };
+function presentPeriod(period, language = getLanguage()) {
+  return { ...clone(period), name: localizeDemoPeriodName(period, language) };
 }
 
 function makeStage(jobId, payload, orderIndex) {
@@ -493,11 +493,12 @@ export const demoApi = {
   getCompanyLogoUrl(companyName, _companyDomain, jobId) { return getDemoLogoUrl(companyName, jobId); },
   async exportBackup() { throw new Error(t("errors.demoBackupUnavailable")); },
   async importBackup() { throw new Error(t("errors.demoBackupUnavailable")); },
-  async getJobs(status = "all", search = "") {
-    return jobs.filter((job) => status === "all" || job.status === status).map(presentJob).filter((job) => meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index);
+  // A spreadsheet import passes the file's language so unedited sample text matches what was exported.
+  async getJobs(status = "all", search = "", { language } = {}) {
+    return jobs.filter((job) => status === "all" || job.status === status).map((job) => presentJob(job, language)).filter((job) => meetsSearch(job, search)).sort((a, b) => a.order_index - b.order_index);
   },
-  async getSearchPeriods() {
-    return searchPeriods.map((period) => ({ ...presentPeriod(period), job_count: jobs.filter((job) => job.search_period_id === period.id).length }))
+  async getSearchPeriods({ language } = {}) {
+    return searchPeriods.map((period) => ({ ...presentPeriod(period, language), job_count: jobs.filter((job) => job.search_period_id === period.id).length }))
       .sort((left, right) => right.start_date.localeCompare(left.start_date));
   },
   async createSearchPeriod(payload) {
@@ -527,8 +528,8 @@ export const demoApi = {
   async getJobCounts() {
     return { all: jobs.length, waiting: jobs.filter((job) => job.status === "waiting").length, ongoing: jobs.filter((job) => job.status === "ongoing").length, accepted: jobs.filter((job) => job.status === "accepted").length, rejected: jobs.filter((job) => job.status === "rejected").length };
   },
-  async getJob(id) {
-    const job = presentJob(getJob(id));
+  async getJob(id, { language } = {}) {
+    const job = presentJob(getJob(id), language);
     for (const attachment of job.attachments || []) {
       const blob = await readFile(attachment.id);
       if (blob) attachment.download_url = URL.createObjectURL(blob);
@@ -642,7 +643,7 @@ export const demoApi = {
   async createStage(payload) { const job = getJob(payload.job_id); const firstStage = job.stages.length === 0; const stage = makeStage(job.id, payload, job.stages.length); job.stages.push(stage); touchDemoJob(job); if (firstStage) { job.status = "ongoing"; job.status_changed_at = Math.floor(Date.now() / 1000); recordDemoHistory(job, "moved to ongoing", job.status_changed_at); } refreshDerived(job); save(); return clone(stage); },
   async updateStage(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, canonicalDemoStagePayload(stage.id, payload, getLanguage())); touchDemoJob(job); refreshDerived(job); save(); return presentStage(stage); },
   async setCurrentStage(id) { const { job, stage } = getStage(id); job.stages.forEach((item) => { item.status = item.id === stage.id ? "current" : item.status === "current" ? "completed" : item.status; }); touchDemoJob(job); refreshDerived(job); save(); return presentStage(stage); },
-  async getMeetings(date = "") { return jobs.map(presentJob).flatMap((job) => job.stages.filter((stage) => stage.meeting_date && (!date || stage.meeting_date === date)).map((stage) => toMeeting(job, stage))); },
+  async getMeetings(date = "") { return jobs.map((job) => presentJob(job)).flatMap((job) => job.stages.filter((stage) => stage.meeting_date && (!date || stage.meeting_date === date)).map((stage) => toMeeting(job, stage))); },
   async scheduleMeeting(id, payload) { const { job, stage } = getStage(id); Object.assign(stage, canonicalDemoStagePayload(stage.id, payload, getLanguage())); touchDemoJob(job); save(); return presentStage(stage); },
   async deleteStage(id) { const { job, stage } = getStage(id); job.stages = job.stages.filter((item) => item.id !== stage.id); job.attachments.forEach((item) => { if (item.stage_id === stage.id) item.stage_id = null; }); job.stages.forEach((item, index) => { item.order_index = index; }); touchDemoJob(job); refreshDerived(job); save(); return { success: true }; },
   async reorderStages(jobId, ids) { const job = getJob(jobId); const byId = new Map(job.stages.map((stage) => [stage.id, stage])); job.stages = ids.map((id) => byId.get(String(id))).filter(Boolean); job.stages.forEach((stage, index) => { stage.order_index = index; }); touchDemoJob(job); refreshDerived(job); save(); return { success: true }; },

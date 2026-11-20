@@ -1,3 +1,21 @@
+Version 0.1.0 — 2026-11-18 · Release: [v0.1.0](https://github.com/NoveliaYuki/war-room/releases/tag/v0.1.0)
+
+# Highlights
+- Edit your board in Excel or Sheets and import it back. You review every change before anything is saved.
+- One Data & Backups dialog: pick a spreadsheet or an encrypted backup to export, and import either file.
+- Back up to Google Drive automatically, every day or every week.
+
+# What changed
+- Import accepts `.xlsx`, `.csv` and `.wrbackup` files and detects which one you chose, signed in or in the demo.
+- Only cells you edited are saved. Rows without a Process ID become new processes, and nothing is ever deleted.
+- Export and Import each have a single section; Google Drive backup, its schedule and Revoke are grouped in one place.
+- Automatic backups show when the next one runs and how the last one went, including when you need to sign in again.
+- The Board sheet has a hidden Process ID column so edited rows match their process.
+- Add `GET` and `PUT /api/google/backup-schedule`, a `backup_schedules` table (migration 25) and the `BACKUP_SCHEDULER_ENABLED` setting (default `true`).
+
+# References
+- [#2](https://github.com/NoveliaYuki/war-room/pull/2) / noissue
+
 Version 0.0.1 — 2026-11-16 · Issues: none · Release: [v0.0.1](https://github.com/NoveliaYuki/war-room/releases/tag/v0.0.1)
 
 # Highlights

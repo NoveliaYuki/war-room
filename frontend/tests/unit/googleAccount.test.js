@@ -78,11 +78,15 @@ describe('google account menu', () => {
     expect(document.querySelector('#google-account-section').textContent).toContain('not available in the browser demo');
     document.querySelector('#btn-data-management-menu').click();
     await flush();
-    expect(document.querySelector('#btn-export-backup').disabled).toBe(true);
-    expect(document.querySelector('#backup-import-file').disabled).toBe(true);
-    expect(document.querySelector('#backup-import-choose').disabled).toBe(true);
-    expect(document.querySelector('#backup-import-confirm').disabled).toBe(true);
-    expect(document.querySelector('#detail-modal').textContent).toContain('unavailable in the browser demo');
+    // The demo exports and imports spreadsheets; only the encrypted backup format is unavailable.
+    expect(document.querySelector('input[name=data-export-format][value=backup]').disabled).toBe(true);
+    expect(document.querySelector('input[name=data-export-format][value=spreadsheet]').checked).toBe(true);
+    expect(document.querySelector('#btn-export-data').disabled).toBe(false);
+    expect(document.querySelector('#data-export-section').textContent).toContain('Encrypted backups are available in the local War Room app, not in the browser demo.');
+    expect(document.querySelector('#data-import-file').disabled).toBe(false);
+    expect(document.querySelector('#data-import-choose').disabled).toBe(false);
+    expect(document.querySelector('#google-drive-section').textContent).toContain('unavailable in the browser demo');
+    expect(document.querySelector('#btn-google-drive-revoke')).toBeNull();
     expect(mocks.api.getGoogleStatus).not.toHaveBeenCalled();
     expect(mocks.api.getAuthMe).not.toHaveBeenCalled();
     document.querySelector('#btn-close-data-modal').click();
@@ -133,7 +137,11 @@ describe('google account menu', () => {
     expect(document.querySelector('#google-drive-backup-status').textContent).toContain('uploaded');
     expect(document.querySelector('#google-drive-backup-folder').textContent).toBe('My Drive (root)');
     expect(document.querySelector('#btn-google-drive-choose-folder')).not.toBeNull();
-    expect(document.querySelector('#btn-google-drive-revoke')).not.toBeNull();
+    // Folder and Back up now come first, then the schedule, and Revoke last.
+    const revokeButton = document.querySelector('#btn-google-drive-revoke');
+    expect(revokeButton).not.toBeNull();
+    expect(document.querySelector('#google-backup-schedule').compareDocumentPosition(revokeButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(driveBackupButton.compareDocumentPosition(document.querySelector('#google-backup-schedule')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     document.querySelector('#btn-close-data-modal').click();
     document.querySelector('#btn-account-menu').click();
     await flush();

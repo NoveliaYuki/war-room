@@ -17,6 +17,7 @@ services:
       WARROOM_DATA_DIR: /data
       LOGO_LOOKUP_ENABLED: "${LOGO_LOOKUP_ENABLED:-false}"
       JOB_IMPORT_ENABLED: "${JOB_IMPORT_ENABLED:-true}"
+      BACKUP_SCHEDULER_ENABLED: "${BACKUP_SCHEDULER_ENABLED:-true}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
       LOG_FORMAT: "${LOG_FORMAT:-json}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}"
@@ -71,7 +72,9 @@ services:
       HOST: "${BACKEND_HOST:-0.0.0.0}"
       WARROOM_DATA_DIR: /data
       LOGO_LOOKUP_ENABLED: "false"
+      BACKUP_SCHEDULER_ENABLED: "false"
       CORS_ALLOWED_ORIGINS: http://test-frontend:8080
+      GOOGLE_FRONTEND_URL: http://test-frontend:8080
       WARROOM_TEST_MODE: "true"
       LOG_LEVEL: "debug"
       SESSION_COOKIE_SECURE: "false"

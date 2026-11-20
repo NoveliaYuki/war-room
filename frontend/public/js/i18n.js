@@ -102,6 +102,23 @@ export function t(key, params = {}) {
   return interpolate(selectPlural(entry, params.count), params);
 }
 
+/**
+ * Runs a synchronous function with t() answering in another language, without touching the page.
+ * @template T
+ * @param {string} language - Supported language code; any other value keeps the active language.
+ * @param {() => T} render - Synchronous function to run.
+ * @returns {T} What render returns.
+ */
+export function withLanguage(language, render) {
+  const previous = currentLanguage;
+  currentLanguage = matchLanguage(language) || previous;
+  try {
+    return render();
+  } finally {
+    currentLanguage = previous;
+  }
+}
+
 function readParams(element) {
   if (!element.dataset.i18nParams) return {};
   try { return JSON.parse(element.dataset.i18nParams); } catch { return {}; }

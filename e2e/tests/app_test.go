@@ -2248,10 +2248,7 @@ func TestInvalidBackupImportPreservesExistingProcesses(t *testing.T) {
 	assertBackupImportDisabled(t, importButton, "before closing and reopening the dialog")
 	importButton = reopenBackupDuringDetailClose(t, page, card)
 	assertBackupImportDisabled(t, importButton, "without a file and confirmation")
-	invalidBackup := createInvalidBackupFixture(t)
-	if err := page.Locator("#backup-import-file").SetInputFiles(invalidBackup); err != nil {
-		t.Fatalf("select invalid backup: %v", err)
-	}
+	chooseBackupFile(t, page, createInvalidBackupFixture(t), importButton)
 	assertBackupImportDisabled(t, importButton, "until replacement is confirmed")
 	if err := page.Locator("#backup-import-confirm").Check(); err != nil {
 		t.Fatalf("confirm replacement: %v", err)
@@ -2260,9 +2257,9 @@ func TestInvalidBackupImportPreservesExistingProcesses(t *testing.T) {
 	if err := importButton.Click(); err != nil {
 		t.Fatalf("submit invalid backup: %v", err)
 	}
-	status := page.Locator("#backup-import-status")
+	status := page.Locator("#data-import-status")
 	if _, err := page.WaitForFunction(`() => {
-		const status = document.querySelector("#backup-import-status")?.textContent.trim();
+		const status = document.querySelector("#data-import-status")?.textContent.trim();
 		return status && status !== "Validating and importing backup…";
 	}`, nil); err != nil {
 		t.Fatalf("wait for invalid backup error: %v", err)
@@ -2309,17 +2306,29 @@ func openBackupDialog(t *testing.T, page playwright.Page) playwright.Locator {
 	if err := page.Locator("#btn-data-management-menu").Click(); err != nil {
 		t.Fatalf("open data and backups: %v", err)
 	}
-	importButton := page.Locator("#btn-import-backup")
-	if err := importButton.WaitFor(); err != nil {
-		t.Fatalf("wait for import button: %v", err)
+	if err := page.Locator("#data-import-choose").WaitFor(); err != nil {
+		t.Fatalf("wait for the import file picker: %v", err)
 	}
-	return importButton
+	// The backup import button stays hidden until the chosen file is recognized as a backup.
+	return page.Locator("#btn-import-backup")
+}
+
+// chooseBackupFile picks a file in the import section and waits for it to be recognized as a backup.
+func chooseBackupFile(t *testing.T, page playwright.Page, path string, importButton playwright.Locator) {
+	t.Helper()
+	if err := page.Locator("#data-import-file").SetInputFiles(path); err != nil {
+		t.Fatalf("select backup: %v", err)
+	}
+	if err := importButton.WaitFor(); err != nil {
+		t.Fatalf("wait for the backup to be recognized: %v", err)
+	}
 }
 
 func createInvalidBackupFixture(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "invalid-backup.zip")
-	if err := os.WriteFile(path, []byte("not a ZIP archive"), 0o600); err != nil {
+	// It starts with the backup marker, so the picker offers a backup import, but the server cannot decrypt it.
+	path := filepath.Join(t.TempDir(), "invalid-backup.wrbackup")
+	if err := os.WriteFile(path, []byte("WRBACKUP\x02not a real backup"), 0o600); err != nil {
 		t.Fatalf("write invalid backup fixture: %v", err)
 	}
 	return path

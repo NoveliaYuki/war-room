@@ -35,6 +35,9 @@ const DEFAULT_STAGE_DESCRIPTION_KEYS = {
   "Compensation proposal, equity review, and final agreement.": "stageDefault.offerDecisionDescription",
 };
 
+/** Message keys of the stored statuses, work arrangements, and employment types, for reading labels back. */
+export const LABEL_KEYS = Object.freeze({ status: STATUS_KEYS, workArrangement: ARRANGEMENT_KEYS, employmentType: EMPLOYMENT_TYPE_KEYS });
+
 function lookup(keys, value, fallback) {
   return Object.hasOwn(keys, value) ? t(keys[value]) : fallback;
 }

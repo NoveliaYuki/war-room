@@ -88,6 +88,7 @@ func newIntegrationStack(t *testing.T) integrationStack {
 	h := handlers.NewHandler(jobSvc, logoSvc, cfg)
 	h.SetDriveService(service.NewDriveBackupService(db, cfg, func(userID string, w io.Writer) error { return jobSvc.ExportArchive(userID, w) }))
 	h.SetAuthService(authSvc)
+	h.SetBackupScheduleService(service.NewBackupScheduleService(repo, nil))
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)

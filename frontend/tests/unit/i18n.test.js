@@ -120,6 +120,20 @@ describe('message lookup', () => {
     expect(t('status.rejected')).toBe('Rechazado');
   });
 
+  it('answers in another language for one synchronous call without touching the page', async () => {
+    const { getLanguage, t, withLanguage } = await loadI18n();
+    const listener = vi.fn();
+    window.addEventListener('war-room:languagechange', listener);
+    expect(withLanguage('ca', () => t('status.rejected'))).toBe('Rebutjat');
+    expect(withLanguage('xx', () => t('status.rejected'))).toBe('Rejected');
+    expect(() => withLanguage('es', () => { throw new Error('render failed'); })).toThrow('render failed');
+    expect(getLanguage()).toBe('en');
+    expect(t('status.rejected')).toBe('Rejected');
+    expect(document.documentElement.lang).toBe('');
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener('war-room:languagechange', listener);
+  });
+
   it('keeps a browser regional variant for Intl formatting', async () => {
     const { getLocale, setLanguage } = await loadI18n({ languages: ['en-GB', 'es-MX'] });
     expect(getLocale()).toBe('en-GB');

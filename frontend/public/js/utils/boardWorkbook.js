@@ -82,9 +82,22 @@ const BOARD_GROUPS = [
     column("workbook.recruiterContactDate", "date", 14, (job) => calendarSerial(job.recruiter_first_contact_date)),
   ]],
 ];
-const BOARD_COLUMNS = BOARD_GROUPS.flatMap(([, columns]) => columns);
 
-const QUESTION_COLUMNS = [
+/**
+ * Board sheet columns in order: the grouped columns A to Z, then a hidden Process ID that lets an
+ * edited sheet be matched back to its processes. Each has an i18n key, a cell kind, a width, and
+ * value(job, periodNames), which returns what the export writes.
+ */
+export const BOARD_COLUMNS = Object.freeze([
+  ...BOARD_GROUPS.flatMap(([, columns]) => columns),
+  { ...column("workbook.processId", "text", 38, (job) => job.id), hidden: true },
+]);
+
+/**
+ * Interview questions sheet columns in order, ending with hidden process, stage, and question IDs.
+ * Each value({job, stage, question}) returns what the export writes.
+ */
+export const QUESTION_COLUMNS = Object.freeze([
   column("workbook.company", "text", 24, ({ job }) => companyText(job.company_name)),
   column("workbook.role", "text", 28, ({ job }) => job.position_title),
   column("workbook.stage", "text", 24, ({ stage }) => stageName(stage)),
@@ -95,7 +108,7 @@ const QUESTION_COLUMNS = [
   { ...column("workbook.processId", "text", 38, ({ job }) => job.id), hidden: true },
   { ...column("workbook.stageId", "text", 38, ({ stage }) => stage.id), hidden: true },
   { ...column("workbook.questionId", "text", 38, ({ question }) => question.id), hidden: true },
-];
+]);
 
 const headerCell = (value) => ({ kind: "header", value });
 
@@ -111,12 +124,29 @@ function groupHeaders() {
   return { cells, merges };
 }
 
-function columnHeaders() {
-  return BOARD_GROUPS.flatMap(([, columns], group) => columns.map((item, index) => headerCell(`${group + 1}.${index + 1} ${t(item.key)}`)));
+/**
+ * Returns the board's column headers in the active language, in {@link BOARD_COLUMNS} order:
+ * numbered within their groups, then the unnumbered Process ID.
+ *
+ * @returns {string[]} The headers.
+ */
+export function boardColumnTitles() {
+  const grouped = BOARD_GROUPS.flatMap(([, columns], group) => columns.map((item, index) => `${group + 1}.${index + 1} ${t(item.key)}`));
+  return [...grouped, t("workbook.processId")];
 }
 
 /**
- * Lays out the board sheet: numbered, merged group headers, numbered column headers, and one row per job.
+ * Returns the interview questions sheet's column headers in the active language, in {@link QUESTION_COLUMNS} order.
+ *
+ * @returns {string[]} The headers.
+ */
+export function questionColumnTitles() {
+  return QUESTION_COLUMNS.map((item) => t(item.key));
+}
+
+/**
+ * Lays out the board sheet: numbered, merged group headers, numbered column headers, one row per job,
+ * and a hidden Process ID column after the groups.
  *
  * @param {object[]} jobs - Job processes, in the order to export.
  * @param {object[]} [searchPeriods=[]] - Search periods, used to name each job's period.
@@ -129,7 +159,7 @@ export function boardSheet(jobs, searchPeriods = []) {
   return {
     name: sheetName(t("workbook.sheetBoard")),
     columns: BOARD_COLUMNS,
-    rows: [groups.cells, columnHeaders(), ...rows],
+    rows: [groups.cells, boardColumnTitles().map(headerCell), ...rows],
     merges: groups.merges,
     frozenRows: 2,
     filterRow: 2,
@@ -158,7 +188,7 @@ export function questionsSheet(jobs, stagesByJob) {
   return {
     name: sheetName(t("workbook.sheetQuestions")),
     columns: QUESTION_COLUMNS,
-    rows: [QUESTION_COLUMNS.map((item) => headerCell(t(item.key))), ...rows],
+    rows: [questionColumnTitles().map(headerCell), ...rows],
     frozenRows: 1,
     filterRow: 1,
   };

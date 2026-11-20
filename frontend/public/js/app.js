@@ -12,7 +12,10 @@ import { captureLoadingView, revealLoadedContent } from "./utils/loadingTransiti
 import { openDetailModal } from "./components/detailModal.js";
 import { openCvLibrary } from "./components/cvLibrary.js";
 import { openTechnologyLibrary } from "./components/technologyLibrary.js";
+import { mountBackupSchedule } from "./components/backupSchedule.js";
 import { bindJobImport, renderJobImportStatus, renderProcessEntry, renderTechnologySuggestions } from "./components/jobImport.js";
+import { bindDataExport, renderDataExport } from "./components/dataExport.js";
+import { bindDataImport, renderDataImport } from "./components/dataImport.js";
 import { closeWithFlip, cancelPendingFlipClose } from "./flip.js";
 import { icon } from "./icons.js";
 import { activateModal, restoreModalFocus, setModalBackgroundScrollPosition, trapModalTab } from "./modalA11y.js";
@@ -417,7 +420,8 @@ function renderGoogleAccount() {
 function renderConnectedGoogleAccount() {
   const folder = googleStatus.folder_name || t("google.rootFolder");
   const last = googleStatus.last_backup_at ? t("google.lastBackup", { date: new Date(googleStatus.last_backup_at).toLocaleString(getLocale()) }) : t("google.noBackup");
-  const failed = googleStatus.last_status === "error" ? `<p class="account-note account-error">${escapeHtml(t("google.lastBackupFailed"))}</p>` : "";
+  const failedKey = { error: "google.lastBackupFailed", reauth_required: "google.reauthRequired" }[googleStatus.last_status];
+  const failed = failedKey ? `<p class="account-note account-error">${escapeHtml(t(failedKey))}</p>` : "";
   const cleanupPending = googleStatus.last_status === "cleanup_pending" ? `<p class="account-note">${escapeHtml(t("google.cleanupPending"))}</p>` : "";
   googleAccountSection.innerHTML = `<div class="account-status-card">
       <p class="account-heading">${icon("cloud", 15)} ${escapeHtml(t("google.heading"))}</p>
@@ -546,48 +550,52 @@ async function runGoogleBackupNow() {
   }
 }
 
-function renderGoogleBackupOption() {
-  const option = modalEl.querySelector("#google-drive-backup-option");
-  if (!option) return;
-  if (isDemoMode) {
-    option.innerHTML = `<p>${escapeHtml(t("google.dataDemoUnavailable"))}</p>`;
-    return;
-  }
-  if (!googleStatus) {
-    option.innerHTML = `<p>${escapeHtml(t("google.checkingConnection"))}</p>`;
-    return;
-  }
-  if (!googleStatus.configured) {
-    option.innerHTML = `<p>${escapeHtml(t("google.dataNotConfigured"))}</p>`;
-    return;
-  }
-  if (!googleStatus.connected) {
-    option.innerHTML = `<p>${escapeHtml(t("google.signInToUpload"))}</p><a class="btn-primary" id="btn-google-drive-backup" href="/api/google/connect">${escapeHtml(t("google.connectDrive"))}</a>`;
-    return;
-  }
+/** Explains why Drive backups are not available yet, or returns "" when Drive is connected. */
+function googleBackupMessage() {
+  if (isDemoMode) return `<p>${escapeHtml(t("google.dataDemoUnavailable"))}</p>`;
+  if (!googleStatus) return `<p>${escapeHtml(t("google.checkingConnection"))}</p>`;
+  if (!googleStatus.configured) return `<p>${escapeHtml(t("google.dataNotConfigured"))}</p>`;
+  if (!googleStatus.connected) return `<p>${escapeHtml(t("google.signInToUpload"))}</p><a class="btn-primary" id="btn-google-drive-backup" href="/api/google/connect">${escapeHtml(t("google.connectDrive"))}</a>`;
+  return "";
+}
+
+/** Renders the Drive folder and Back up now above the schedule, and Revoke below it, for a connected account. */
+function renderConnectedGoogleBackup(option, revoke) {
   const folder = escapeHtml(googleStatus.folder_name || t("google.rootFolder"));
   option.innerHTML = `<p>${escapeHtml(t("google.backupFolder"))} <strong id="google-drive-backup-folder">${folder}</strong></p>
-    <button class="btn-secondary" id="btn-google-drive-choose-folder" type="button">${escapeHtml(t("google.chooseDriveFolder"))}</button>
+    <div class="google-drive-actions">
+      <button class="btn-secondary" id="btn-google-drive-choose-folder" type="button">${escapeHtml(t("google.chooseDriveFolder"))}</button>
+      <button class="btn-primary" id="btn-google-drive-backup" type="button">${icon("upload", 15)} <span>${escapeHtml(t("google.backUpToDrive"))}</span></button>
+    </div>
     <div class="data-transfer-status" id="google-drive-folder-status" role="status" aria-live="polite"></div>
-    <p>${escapeHtml(t("google.uploadNowNote"))}</p>
-    <button class="btn-primary" id="btn-google-drive-backup" type="button">${escapeHtml(t("google.backUpToDrive"))}</button>
-    <div class="data-transfer-status" id="google-drive-backup-status" role="status" aria-live="polite"></div>
-    <p>${escapeHtml(t("google.revokeNote"))}</p>
+    <div class="data-transfer-status" id="google-drive-backup-status" role="status" aria-live="polite"></div>`;
+  revoke.innerHTML = `<p>${escapeHtml(t("google.revokeNote"))}</p>
     <button class="btn-danger" id="btn-google-drive-revoke" type="button">${escapeHtml(t("google.revoke"))}</button>`;
   option.querySelector("#btn-google-drive-choose-folder").addEventListener("click", (event) => {
     void openFolderPicker(event.currentTarget, option.querySelector("#google-drive-folder-status"));
   });
   option.querySelector("#btn-google-drive-backup").addEventListener("click", () => {
     const button = option.querySelector("#btn-google-drive-backup");
+    const label = button.querySelector("span");
     button.disabled = true;
-    button.textContent = t("common.uploading");
+    label.textContent = t("common.uploading");
     void runGoogleBackupNow().finally(() => {
       if (!button.isConnected) return;
       button.disabled = false;
-      button.textContent = t("google.backUpToDrive");
+      label.textContent = t("google.backUpToDrive");
     });
   });
-  option.querySelector("#btn-google-drive-revoke").addEventListener("click", () => void revokeGoogleDriveAccess());
+  revoke.querySelector("#btn-google-drive-revoke").addEventListener("click", () => void revokeGoogleDriveAccess());
+}
+
+function renderGoogleBackupOption() {
+  const option = modalEl.querySelector("#google-drive-backup-option");
+  const revoke = modalEl.querySelector("#google-drive-revoke");
+  if (!option || !revoke) return;
+  const message = googleBackupMessage();
+  revoke.innerHTML = "";
+  if (message) option.innerHTML = message;
+  else renderConnectedGoogleBackup(option, revoke);
 }
 
 async function refreshDataGoogleStatus() {
@@ -1499,53 +1507,21 @@ function openDataModal() {
       <div><div class="modal-title">${escapeHtml(t("data.title"))}</div><div class="modal-company">${escapeHtml(t("data.subtitle"))}</div></div>
       <button class="btn-secondary" id="btn-close-data-modal" type="button" aria-label="${escapeAttr(t("common.close"))}">${icon("close", 18)}</button>
     </div>
-    <div class="data-transfer-content">
-      <section class="data-transfer-section">
-        <h3>${escapeHtml(t("data.spreadsheetTitle"))}</h3>
-        <p>${escapeHtml(t("data.spreadsheetBody"))}</p>
-        <button class="btn-primary" id="btn-export-spreadsheet" type="button">${icon("download", 15)} ${escapeHtml(t("data.spreadsheetButton"))}</button>
-      </section>
-      <section class="data-transfer-section">
-        <h3>${escapeHtml(t("data.exportTitle"))}</h3>
-        <p>${escapeHtml(t(isDemoMode ? "data.exportDemo" : "data.exportBody"))}</p>
-        <button class="btn-primary" id="btn-export-backup" type="button" ${isDemoMode ? "disabled" : ""}>${icon("download", 15)} ${escapeHtml(t("data.exportButton"))}</button>
-      </section>
-      <section class="data-transfer-section">
+    <div class="data-transfer-content">${renderDataExport({ demo: isDemoMode })}${renderDataImport()}
+      <section class="data-transfer-section" id="google-drive-section">
         <h3>${escapeHtml(t("google.heading"))}</h3>
         <div id="google-drive-backup-option" aria-live="polite"></div>
-      </section>
-      <section class="data-transfer-section">
-        <h3>${escapeHtml(t("data.importTitle"))}</h3>
-        <p>${escapeHtml(t(isDemoMode ? "data.importDemo" : "data.importBody"))}</p>
-        <label class="data-transfer-file-label" for="backup-import-file">${escapeHtml(t("data.backupFile"))}</label>
-        <div class="data-transfer-file-picker">
-          <input id="backup-import-file" class="data-transfer-file-input" type="file" accept=".wrbackup,application/octet-stream" aria-label="${escapeAttr(t("data.chooseBackupFile"))}" tabindex="-1" ${isDemoMode ? "disabled" : ""} />
-          <button id="backup-import-choose" class="data-transfer-choose" type="button" ${isDemoMode ? "disabled" : ""}>${escapeHtml(t("common.chooseFile"))}</button>
-          <span id="backup-import-file-name" class="data-transfer-file-name" role="status" aria-live="polite" aria-atomic="true">${escapeHtml(t("common.noFileSelected"))}</span>
-        </div>
-        <div class="data-transfer-warning">${escapeHtml(t("data.importWarning"))}</div>
-        <label class="data-transfer-confirm"><input id="backup-import-confirm" type="checkbox" ${isDemoMode ? "disabled" : ""} /> ${escapeHtml(t("data.importConfirm"))}</label>
-        <button class="btn-danger" id="btn-import-backup" type="button" disabled>${escapeHtml(t("data.importButton"))}</button>
-        <div class="data-transfer-status" id="backup-import-status" aria-live="polite"></div>
+        <div id="google-backup-schedule"></div>
+        <div id="google-drive-revoke"></div>
       </section>
     </div>`;
   backdropEl.classList.add("active");
   activateModal(modalEl, "#btn-close-data-modal");
-  void refreshDataGoogleStatus();
+  const scheduleContainer = modalEl.querySelector("#google-backup-schedule");
+  void refreshDataGoogleStatus().then(() => mountBackupSchedule(scheduleContainer, { demo: isDemoMode, driveStatus: googleStatus }));
   modalEl.querySelector("#btn-close-data-modal").addEventListener("click", closeDataModal);
-  modalEl.querySelector("#btn-export-spreadsheet").addEventListener("click", downloadBoardWorkbook);
-  modalEl.querySelector("#btn-export-backup").addEventListener("click", downloadBackup);
-  const fileInput = modalEl.querySelector("#backup-import-file");
-  const confirmation = modalEl.querySelector("#backup-import-confirm");
-  const importButton = modalEl.querySelector("#btn-import-backup");
-  const updateImportButton = () => { importButton.disabled = !fileInput.files.length || !confirmation.checked; };
-  modalEl.querySelector("#backup-import-choose").addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", () => {
-    modalEl.querySelector("#backup-import-file-name").textContent = fileInput.files[0]?.name || t("common.noFileSelected");
-    updateImportButton();
-  });
-  confirmation.addEventListener("change", updateImportButton);
-  importButton.addEventListener("click", () => importBackup(fileInput.files[0]));
+  bindDataExport(modalEl, { spreadsheet: downloadBoardWorkbook, backup: downloadBackup });
+  bindDataImport(modalEl, { demo: isDemoMode, onImported: handleDataImported });
 }
 
 /** Opens the CV library from the active job's CV section. */
@@ -1588,6 +1564,12 @@ async function downloadBoardWorkbook(event) {
   }
 }
 
+/** Shows imported data on the board, closing Data & Backups when everything was saved. */
+async function handleDataImported({ close }) {
+  if (close) closeDataModal();
+  await refreshApp();
+}
+
 /** Downloads the encrypted portable backup. */
 async function downloadBackup(event) {
   const button = event.currentTarget;
@@ -1599,35 +1581,6 @@ async function downloadBackup(event) {
   } catch (err) {
     showToast(err.message || t("data.exportFailed"), "error");
   } finally {
-    button.disabled = false;
-  }
-}
-
-/** Replaces the local process data with the selected validated backup. */
-async function importBackup(file, allowEmpty = false) {
-  const button = modalEl.querySelector("#btn-import-backup");
-  const status = modalEl.querySelector("#backup-import-status");
-  button.disabled = true;
-  status.textContent = t("data.importing");
-  try {
-    await api.importBackup(file, allowEmpty);
-    closeDataModal();
-    showToast(t("data.imported"), "success");
-    await refreshApp();
-  } catch (err) {
-    if (err.requiresEmptyConfirmation) {
-      button.disabled = false;
-      status.textContent = "";
-      const confirmed = await confirmAction({
-        title: t("data.emptyBackupTitle"),
-        message: t("data.emptyBackupMessage"),
-        confirmLabel: t("data.emptyBackupConfirm"),
-        danger: true,
-      });
-      if (confirmed) await importBackup(file, true);
-      return;
-    }
-    status.textContent = err.message || t("data.importFailed");
     button.disabled = false;
   }
 }

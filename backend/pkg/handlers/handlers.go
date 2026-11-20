@@ -32,6 +32,7 @@ type Handler struct {
 	logos          *service.LogoService
 	cfg            *config.Config
 	drive          *service.DriveBackupService
+	schedules      *service.BackupScheduleService
 	auth           *service.AuthService
 	imports        *jobimport.Importer
 	backupMaxBytes int64
@@ -177,6 +178,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/google/picker-token", h.handleGooglePickerToken)
 	mux.HandleFunc("PUT /api/google/folder", h.handleGoogleSetFolder)
 	mux.HandleFunc("POST /api/google/backup", h.handleGoogleBackupNow)
+	mux.HandleFunc("GET /api/google/backup-schedule", h.handleGetBackupSchedule)
+	mux.HandleFunc("PUT /api/google/backup-schedule", h.handleSaveBackupSchedule)
 	if h.cfg.TestMode {
 		mux.HandleFunc("POST /api/test/session", h.handleTestSession)
 	}

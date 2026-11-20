@@ -95,7 +95,7 @@ func TestBoardWorkbookExportDownloadsEveryProcess(t *testing.T) {
 	if strings.Join(workbook.sheetNames, "|") != "Board|Interview questions" {
 		t.Fatalf("sheets = %q, want Board and Interview questions", workbook.sheetNames)
 	}
-	assertBoardSheet(t, workbook.board, company, title)
+	assertBoardSheet(t, workbook.board, company, title, jobID)
 	assertQuestionsSheet(t, workbook.questions, jobID, title, question)
 }
 
@@ -134,11 +134,15 @@ func seedWorkbookProcess(t *testing.T, page playwright.Page, company, title, que
 	return jobID.(string)
 }
 
-func downloadBoardWorkbook(t *testing.T, page playwright.Page) exportedWorkbook {
+// downloadWorkbookFile downloads the board workbook from Data & Backups, which stays open.
+func downloadWorkbookFile(t *testing.T, page playwright.Page) []byte {
 	t.Helper()
 	openBackupDialog(t, page)
+	if err := page.Locator("input[name=data-export-format][value=spreadsheet]").Check(); err != nil {
+		t.Fatalf("choose the spreadsheet format: %v", err)
+	}
 	download, err := page.ExpectDownload(func() error {
-		return page.Locator("#btn-export-spreadsheet").Click()
+		return page.Locator("#btn-export-data").Click()
 	})
 	if err != nil {
 		t.Fatalf("download board workbook: %v", err)
@@ -146,7 +150,12 @@ func downloadBoardWorkbook(t *testing.T, page playwright.Page) exportedWorkbook 
 	if name := download.SuggestedFilename(); !boardWorkbookFilename.MatchString(name) {
 		t.Fatalf("workbook filename = %q, want war-room-board-YYYY-MM-DD.xlsx", name)
 	}
-	contents := readDownload(t, download)
+	return readDownload(t, download)
+}
+
+func downloadBoardWorkbook(t *testing.T, page playwright.Page) exportedWorkbook {
+	t.Helper()
+	contents := downloadWorkbookFile(t, page)
 	archive, err := zip.NewReader(bytes.NewReader(contents), int64(len(contents)))
 	if err != nil {
 		t.Fatalf("open workbook as ZIP: %v", err)
@@ -211,12 +220,27 @@ func assertBoardLayout(t *testing.T, sheet xlsxWorksheet) {
 	if got := strings.Join(merges, " "); got != "A1:K1 L1:Q1 R1:V1 W1:Z1" {
 		t.Errorf("merged group headers = %q", got)
 	}
-	if sheet.Pane.YSplit != "2" || sheet.Pane.State != "frozen" || !strings.HasPrefix(sheet.AutoFilter.Ref, "A2:Z") {
+	if sheet.Pane.YSplit != "2" || sheet.Pane.State != "frozen" || !strings.HasPrefix(sheet.AutoFilter.Ref, "A2:AA") {
 		t.Errorf("frozen rows %q (%q), autofilter %q", sheet.Pane.YSplit, sheet.Pane.State, sheet.AutoFilter.Ref)
 	}
+	if got := hiddenColumns(sheet); got != "27" {
+		t.Errorf("hidden board columns = %q, want the Process ID column 27", got)
+	}
+	expectTexts(t, "process ID header", sheet.row(1), map[string]string{"AA": "Process ID"})
 }
 
-func assertBoardSheet(t *testing.T, sheet xlsxWorksheet, company, title string) {
+// hiddenColumns lists the one-based numbers of a sheet's hidden columns, comma-separated.
+func hiddenColumns(sheet xlsxWorksheet) string {
+	hidden := []string{}
+	for _, column := range sheet.Cols {
+		if column.Hidden == "1" {
+			hidden = append(hidden, fmt.Sprint(column.Min))
+		}
+	}
+	return strings.Join(hidden, ",")
+}
+
+func assertBoardSheet(t *testing.T, sheet xlsxWorksheet, company, title, jobID string) {
 	t.Helper()
 	assertBoardLayout(t, sheet)
 	row := sheet.rowWhere(t, "B", title)
@@ -224,10 +248,11 @@ func assertBoardSheet(t *testing.T, sheet xlsxWorksheet, company, title string) 
 		t.Errorf("company cell = %+v, want an inline string", cell)
 	}
 	expectTexts(t, "board row", row, map[string]string{
-		"A": company,
-		"C": "About Acme\nWe build fast services.\n\n• Go\n• Docs (https://example.com/docs)",
-		"L": "Waiting",
-		"V": "No",
+		"A":  company,
+		"C":  "About Acme\nWe build fast services.\n\n• Go\n• Docs (https://example.com/docs)",
+		"L":  "Waiting",
+		"V":  "No",
+		"AA": jobID,
 	})
 	expectNumber(t, "minimum salary", row["F"], `^60000$`)
 	expectNumber(t, "date added", row["O"], `^\d{5}$`)
@@ -236,13 +261,7 @@ func assertBoardSheet(t *testing.T, sheet xlsxWorksheet, company, title string) 
 func assertQuestionsSheet(t *testing.T, sheet xlsxWorksheet, jobID, title, question string) {
 	t.Helper()
 	expectTexts(t, "question header", sheet.row(0), map[string]string{"A": "Company", "C": "Stage", "D": "Question", "G": "Process ID", "I": "Question ID"})
-	hidden := []string{}
-	for _, column := range sheet.Cols {
-		if column.Hidden == "1" {
-			hidden = append(hidden, fmt.Sprint(column.Min))
-		}
-	}
-	if got := strings.Join(hidden, ","); got != "7,8,9" {
+	if got := hiddenColumns(sheet); got != "7,8,9" {
 		t.Errorf("hidden columns = %q, want the three ID columns 7,8,9", got)
 	}
 	row := sheet.rowWhere(t, "D", question)
